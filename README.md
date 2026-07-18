@@ -14,7 +14,7 @@ CI catches accessibility regressions *if you set it up* — and almost nobody se
 
 tabstop is the zero-setup version: **monitoring, not gating**. Paste a URL and you have a baseline in thirty seconds.
 
-I maintain [Ariakit](https://github.com/ariakit/ariakit), an accessibility-focused UI component library. This is the monitoring tool I kept wishing the people using it had.
+I contribute to [Ariakit](https://github.com/ariakit/ariakit), an accessibility-focused UI component library. This is the monitoring tool I kept wishing the people using it had.
 
 ## How it works
 
