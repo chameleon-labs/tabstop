@@ -6,6 +6,18 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-20 — correlate score drops with product metrics (deferred)
+
+Idea (from a friend, relayed via voice note): when a page's score drops, cross-reference the customer's own PostHog data for a conversion/funnel metric on a relevant segment (e.g. checkout conversion among keyboard-only users) — "this regression cost you 7% conversion," not just "your score dropped."
+
+Why deferred: strong positioning — ties the score to revenue instead of compliance — but it means reading a customer's own analytics: OAuth into their PostHog project, querying their events, a real trust/access surface. That's a v2+ integration for once tabstop has real users, not a v1 feature. Revisit after the funnel-driven iteration weeks (Phase 2, Wk 11–12) show whether existing users would actually want it.
+
+## 2026-07-20 — deploy-webhook trigger (elaborates the CI/API-tokens defer below)
+
+Idea (same source): instead of pasting a URL, a customer's deploy pipeline POSTs a webhook to tabstop on deploy; tabstop scans automatically, diffs against the previous baseline, and alerts on regression with no manual step.
+
+Why deferred: this is the "CI integration / API tokens" item already deferred below, just with the mechanics spelled out (webhook in, not an API key pull). Good v2 shape — keep this exact framing for when it's built — but v1's whole pitch is zero-setup, and wiring into someone's deploy pipeline is setup.
+
 ## 2026-07-18 — v1 scope is a contract
 
 Ship: paste-a-URL audits (no signup), saved pages with daily re-audits, score trend per page, regression emails, public shareable results.
