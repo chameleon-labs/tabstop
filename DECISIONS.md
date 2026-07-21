@@ -10,7 +10,7 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 Idea (from a friend, relayed via voice note): when a page's score drops, cross-reference the customer's own PostHog data for a conversion/funnel metric on a relevant segment (e.g. checkout conversion among keyboard-only users) — "this regression cost you 7% conversion," not just "your score dropped."
 
-Why deferred: strong positioning — ties the score to revenue instead of compliance — but it means reading a customer's own analytics: OAuth into their PostHog project, querying their events, a real trust/access surface. That's a v2+ integration for once tabstop has real users, not a v1 feature. Revisit after the funnel-driven iteration weeks (Phase 2, Wk 11–12) show whether existing users would actually want it.
+Why deferred: strong positioning — ties the score to revenue instead of compliance — but it means reading a customer's own analytics: OAuth into their PostHog project, querying their events, a real trust/access surface. That's a v2+ integration for once tabstop has real users, not a v1 feature. Revisit once there's actual usage data suggesting demand for it.
 
 ## 2026-07-20 — deploy-webhook trigger (elaborates the CI/API-tokens defer below)
 
