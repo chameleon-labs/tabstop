@@ -6,6 +6,14 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-22 — backend is Node/TS, not Django
+
+Scaffolded `server/` from [chameleon-labs/clean-node-template](https://github.com/chameleon-labs/clean-node-template) (Express, Clean Architecture layering, TypeScript 7, pnpm 11, Node 24, Vitest) — no code existed under the previously-named Django+DRF stack, so this is a stack pick, not a migration.
+
+Why: consolidates on a single language across this whole codebase and George's actual 8y depth (Node/TS), rather than splitting focus across two ecosystems for a solo build.
+
+What was deferred, same "no speculative code" principle as the template: Postgres client/ORM, what replaces a Celery+Redis-style scheduler for daily re-audits, email delivery, and the Playwright/axe-core audit worker's integration into the layered structure. Only the template's own `health-check` vertical slice ships for now — none of tabstop's actual audit/score domain logic is part of this pass.
+
 ## 2026-07-20 — correlate score drops with product metrics (deferred)
 
 Idea (from a friend, relayed via voice note): when a page's score drops, cross-reference the customer's own PostHog data for a conversion/funnel metric on a relevant segment (e.g. checkout conversion among keyboard-only users) — "this regression cost you 7% conversion," not just "your score dropped."
