@@ -30,7 +30,7 @@ Single public URLs (no crawling), Chromium only, daily cadence, email alerts, pu
 
 ## Stack
 
-Django + DRF · Postgres · Celery + Redis · Playwright + axe-core · React + Vite + TypeScript.
+Node.js + TypeScript + Express (`server/`) · Playwright + axe-core · React + Vite + TypeScript.
 
 ## License
 
