@@ -15,3 +15,8 @@ export const serverError = (error: Error): HttpResponse<{ error: string }> => ({
   statusCode: 500,
   body: { error: new ServerError(error).message }
 })
+
+export const serviceUnavailable = <T>(body: T): HttpResponse<T> => ({
+  statusCode: 503,
+  body
+})

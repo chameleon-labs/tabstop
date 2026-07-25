@@ -6,6 +6,24 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-25 — Postgres via Kysely, wired behind constructor injection
+
+Kysely (query builder over `pg`) is the database client, wired into `server/` behind protocols in `data/protocols/db/`. Proven by a reachability probe on `GET /api/health`; no application tables exist yet.
+
+Why Kysely: it returns plain objects, so mapping to domain models at the infra boundary stays explicit and persistence types cannot quietly become domain types. Rejected: Drizzle (its inferred row types are convenient enough that skipping the mapping becomes tempting), raw `pg` with hand-written SQL (nothing verifies the declared row type matches the query), and Prisma (a generated client plus query-engine binary is the hardest to hide behind a protocol, and adds a codegen step to CI and to the worker image that already carries Playwright).
+
+Two deliberate departures from the reference implementation of this template, [georgekaran/survey-server](https://github.com/georgekaran/survey-server):
+
+1. **Constructor injection, not a static helper.** `AccountMongoRepository` calls `MongoHelper.getCollection()` from inside itself — a service locator, which hides the dependency and needs global state in tests. That was justified there because `getCollection()` carries lazy-reconnect logic and had to be reachable from within the repository; `pg`'s pool reconnects internally, so a Kysely instance is an inert handle that can simply be passed in. The singleton lives in `main/config/database.ts`, where wiring state belongs.
+
+2. **A dead database degrades rather than prevents boot.** `survey-server` chains `connect().then(listen)`, so a failed connection means nothing ever listens. Here the process starts and `/api/health` returns 503 with `database: "down"`. Since the deploy health check will point at that endpoint, an honest 503 stops traffic being routed while keeping the container alive and its logs readable. Missing `DATABASE_URL` is still fatal at boot: bad configuration should fail fast, unreachable infrastructure should not.
+
+Manual verification turned up a defect in that second decision: `pg.Pool` emits an `'error'` event for idle clients when the backend terminates them (Postgres code `57P01` — a database restart, or an operator dropping the connection), and with no listener attached, Node treats that as fatal and kills the process. That's the exact scenario the degrade-don't-die decision exists to handle, so the one case it was meant to survive was the one crashing the server. The whole suite was green and typecheck was clean the entire time this was broken — it only surfaced by actually killing a connection and watching what happened. Fixed with a log-and-swallow `pool.on('error')` handler in `makeDatabase`, covered by a regression spec that terminates a backend via `pg_terminate_backend` and asserts the process survives. Graceful shutdown also closes idle connections up front and carries an `unref()`'d 10-second force-exit backstop that exits non-zero, so a drain that hangs can't silently skip closing the pool.
+
+Also decided: migrations are registered in a typechecked object literal rather than discovered by `FileMigrationProvider`, whose `__dirname`-relative resolution differs across `tsx`, `dist/`, and Vitest under `"type": "module"`. Integration specs get a real database from Testcontainers via Vitest `globalSetup`, so `pnpm test` needs Docker and exercises migrations on every run.
+
+Still deferred: the job runtime, email delivery, and the audit worker's integration into the layered structure.
+
 ## 2026-07-22 — backend is Node/TS, not Django
 
 Scaffolded `server/` from [chameleon-labs/clean-node-template](https://github.com/chameleon-labs/clean-node-template) (Express, Clean Architecture layering, TypeScript 7, pnpm 11, Node 24, Vitest) — no code existed under the previously-named Django+DRF stack, so this is a stack pick, not a migration.

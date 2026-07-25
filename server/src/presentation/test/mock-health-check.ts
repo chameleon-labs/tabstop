@@ -2,10 +2,14 @@ import { vi } from 'vitest'
 import type { HealthCheck } from '../../domain/usecases/health-check.js'
 import type { HealthCheckModel } from '../../domain/models/health-check.js'
 
-export const mockHealthCheckModel = (): HealthCheckModel => ({
+export const mockHealthCheckModel = (
+  overrides: Partial<HealthCheckModel> = {}
+): HealthCheckModel => ({
   status: 'up',
   uptimeInSeconds: 42,
-  checkedAt: new Date().toISOString()
+  database: 'up',
+  checkedAt: new Date().toISOString(),
+  ...overrides
 })
 
 export const mockHealthCheck = (): HealthCheck => ({

@@ -1,6 +1,6 @@
 import type { Controller } from '../../protocols/controller.js'
 import type { HealthCheck } from '../../../domain/usecases/health-check.js'
-import { ok, serverError } from '../../helpers/http/http-helper.js'
+import { ok, serverError, serviceUnavailable } from '../../helpers/http/http-helper.js'
 import type { HttpResponse } from '../../protocols/http.js'
 
 export class HealthCheckController implements Controller {
@@ -9,7 +9,7 @@ export class HealthCheckController implements Controller {
   async handle (): Promise<HttpResponse> {
     try {
       const result = await this.healthCheck.check()
-      return ok(result)
+      return result.status === 'up' ? ok(result) : serviceUnavailable(result)
     } catch (error) {
       return serverError(error as Error)
     }
