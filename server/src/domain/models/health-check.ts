@@ -1,5 +1,6 @@
 export type HealthCheckModel = {
-  status: 'up'
+  status: 'up' | 'degraded'
   uptimeInSeconds: number
+  database: 'up' | 'down'
   checkedAt: string
 }

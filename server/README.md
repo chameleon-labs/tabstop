@@ -17,13 +17,13 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-Only the template's `GET /api/health` slice exists so far — this repo is being scaffolded before the actual audit/score domain logic is designed. See `../DECISIONS.md` for the backend stack decision and `docs/superpowers/specs/2026-07-22-server-scaffold-design.md` for the scaffold design.
+Only the `GET /api/health` slice exists so far, now including a Postgres reachability probe. No application tables exist yet — the schema lands with the data model in #4. See `../DECISIONS.md` for stack decisions and `docs/superpowers/specs/` for designs.
 
 ## Stack
 
-Express 5 · TypeScript 7 · Vitest + Supertest · pnpm.
+Express 5 · TypeScript 7 · Kysely + Postgres · Vitest + Supertest + Testcontainers · pnpm.
 
-Deliberately excluded to keep this minimal, same reasoning as the template: no database driver, no `dotenv`, no `cors` package, no ESLint (`typescript-eslint` doesn't support TS 7 yet), no validation layer — added per-usecase as soon as something real needs them.
+Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no ESLint (`typescript-eslint` doesn't support TS 7 yet), no validation layer — added per-usecase as soon as something real needs them.
 
 ## Conventions
 
@@ -34,8 +34,10 @@ Deliberately excluded to keep this minimal, same reasoning as the template: no d
 
 ```bash
 pnpm install
+docker compose up -d   # local Postgres, required by pnpm dev
+pnpm migrate           # run migrations
 pnpm dev          # tsx watch, loads .env
-pnpm test         # vitest run (unit + integration)
+pnpm test         # requires Docker: starts a throwaway Postgres per run
 pnpm test:watch
 pnpm typecheck
 pnpm build         # tsc -> dist/
@@ -43,3 +45,11 @@ pnpm start          # run built output
 ```
 
 Copy `.env.example` to `.env` before running.
+
+## Database
+
+Kysely over `pg`. `makeDatabase(url)` in `infra/db/postgres/helpers/` is a pure factory; the single long-lived instance lives in `main/config/database.ts`. Adapters receive `Kysely<Database>` through their constructor — they never reach for a global.
+
+Migrations are registered in `infra/db/postgres/migrations/index.ts` rather than discovered from disk, because Kysely's `FileMigrationProvider` resolves paths relative to `__dirname`, which differs between `tsx`, `dist/`, and Vitest under `"type": "module"`.
+
+Note the migration API is imported from the `kysely/migration` subpath; importing it from `kysely` fails typecheck by design.
