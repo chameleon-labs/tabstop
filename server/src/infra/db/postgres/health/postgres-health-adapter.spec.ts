@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sql, type Kysely } from 'kysely'
 import { PostgresHealthAdapter } from './postgres-health-adapter.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
@@ -12,6 +12,7 @@ const connectionString = (): string => {
 
 describe('PostgresHealthAdapter', () => {
   let db: Kysely<Database>
+  let errorSpy: ReturnType<typeof vi.spyOn>
 
   beforeAll(() => {
     db = makeDatabase(connectionString())
@@ -21,10 +22,23 @@ describe('PostgresHealthAdapter', () => {
     await db.destroy()
   })
 
+  beforeEach(() => {
+    // Two of these tests provoke the failure path on purpose, and the adapter
+    // logs the diagnosis by design. Silence it so a passing run doesn't print
+    // alarming stderr in CI, and assert on the spy instead - the logging is
+    // part of the adapter's contract, so it's worth pinning rather than hiding.
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    errorSpy.mockRestore()
+  })
+
   it('returns true against a reachable database', async () => {
     const sut = new PostgresHealthAdapter(db)
 
     await expect(sut.isReachable()).resolves.toBe(true)
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 
   it('returns false instead of throwing when the pool is destroyed', async () => {
@@ -38,6 +52,7 @@ describe('PostgresHealthAdapter', () => {
       const sut = new PostgresHealthAdapter(destroyed)
 
       await expect(sut.isReachable()).resolves.toBe(false)
+      expect(errorSpy).toHaveBeenCalledWith('Postgres health check failed:', expect.any(Error))
     } finally {
       // destroy() throws if the pool was already destroyed above; that's
       // expected on the happy path, so swallow it here - this is only a
@@ -52,6 +67,7 @@ describe('PostgresHealthAdapter', () => {
 
     try {
       await expect(sut.isReachable()).resolves.toBe(false)
+      expect(errorSpy).toHaveBeenCalledWith('Postgres health check failed:', expect.any(Error))
     } finally {
       await unreachable.destroy()
     }
