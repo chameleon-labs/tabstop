@@ -5,6 +5,13 @@ import { makeDatabase } from '../../infra/db/postgres/helpers/postgres-helper.js
 let database: Kysely<Database> | null = null
 
 export const connectDatabase = (connectionString: string): Kysely<Database> => {
+  if (database !== null) {
+    // Overwriting would strand the previous pool: nothing else holds a
+    // reference, so it would stay open until the process exits. Reconnecting
+    // is always a wiring mistake, so fail loudly rather than leak quietly.
+    throw new Error('Database is already connected. Call disconnectDatabase() before reconnecting.')
+  }
+
   database = makeDatabase(connectionString)
   return database
 }

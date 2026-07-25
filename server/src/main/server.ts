@@ -33,8 +33,13 @@ const shutdown = (signal: string): void => {
 
   server.close(() => {
     void disconnectDatabase()
-      .catch((error: unknown) => { console.error('Error closing the database pool:', error) })
-      .finally(() => { process.exit(0) })
+      .then(() => { process.exit(0) })
+      .catch((error: unknown) => {
+        // Exit non-zero so a supervisor or CI can distinguish a failed teardown
+        // from a clean one - matching the force-exit path above.
+        console.error('Error closing the database pool:', error)
+        process.exit(1)
+      })
   })
   server.closeIdleConnections()
 }
