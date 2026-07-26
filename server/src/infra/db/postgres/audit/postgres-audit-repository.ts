@@ -10,6 +10,12 @@ import type {
 import type { Database } from '../database.js'
 import { toAuditModel } from './audit-mapper.js'
 
+// Postgres rejects a malformed value compared against a `uuid` column (SQLSTATE
+// 22P02) instead of just returning zero rows. A value that cannot be a UUID
+// cannot match a row, so it's a miss, not an error — the protocol promises
+// `| null`, which the database's own type checking would otherwise break.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export class PostgresAuditRepository implements AddAuditRepository, LoadAuditByPublicUuidRepository {
   constructor (private readonly db: Kysely<Database>) {}
 
@@ -26,6 +32,8 @@ export class PostgresAuditRepository implements AddAuditRepository, LoadAuditByP
   }
 
   async loadByPublicUuid (publicUuid: string): Promise<AuditModel | null> {
+    if (!UUID_PATTERN.test(publicUuid)) return null
+
     const row = await this.db
       .selectFrom('audits')
       .selectAll()

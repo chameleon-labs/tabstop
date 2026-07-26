@@ -36,13 +36,17 @@ describe('001-initial-schema', () => {
           'audits_public_uuid_idx',
           'audits_page_created_idx',
           'violations_audit_idx',
-          'alert_events_one_per_page_per_day'
+          'alert_events_one_per_page_per_day',
+          'alert_events_audit_idx',
+          'alert_events_previous_audit_idx'
         )
       order by indexname
     `.execute(db)
 
     expect(result.rows.map(row => row.indexname)).toEqual([
+      'alert_events_audit_idx',
       'alert_events_one_per_page_per_day',
+      'alert_events_previous_audit_idx',
       'audits_page_created_idx',
       'audits_public_uuid_idx',
       'violations_audit_idx'

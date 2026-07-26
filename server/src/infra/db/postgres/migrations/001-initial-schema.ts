@@ -98,6 +98,9 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     create unique index alert_events_one_per_page_per_day
       on alert_events (page_id, ((emailed_at at time zone 'UTC')::date))
   `.execute(db)
+
+  await sql`create index alert_events_audit_idx on alert_events (audit_id)`.execute(db)
+  await sql`create index alert_events_previous_audit_idx on alert_events (previous_audit_id)`.execute(db)
 }
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
