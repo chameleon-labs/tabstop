@@ -6,6 +6,22 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-26 — the schema, and three things the issue got wrong
+
+Five tables — `sites`, `pages`, `audits`, `violations`, `alert_events` — in one migration. Domain models stay camelCase and persistence-free; repositories own the snake_case translation, matching the constructor-injection decision from the Postgres wiring entry below.
+
+**Anonymous audits are the product's hook, so `audits.page_id` is nullable.** A one-off is an audit with no page, addressed by an unguessable `public_uuid` that is separate from the `bigserial` primary key: internal joins stay cheap, and the world never sees a sequential id it could enumerate.
+
+Three corrections to the shape the issue proposed, all found by running it rather than reading it:
+
+1. **The daily alert dedupe index could not be created at all.** `(page_id, (emailed_at::date))` is rejected — casting a `timestamptz` to `date` is STABLE, not IMMUTABLE, because it depends on the session `TimeZone`. Pinning the zone fixes it, and makes the dedupe window explicitly a **UTC** day: `((emailed_at at time zone 'UTC')::date)`.
+2. **`counts_by_impact` defaulted to `'{}'` while the domain type declared `Record<Impact, number>`** — so every queued audit would have violated its own type. The default is now all-zeros, and a check constraint (`?& array[...]`) makes the type true by construction instead of by convention, since jsonb enforces no shape of its own.
+3. **jsonb writes must be stringified.** node-postgres serialises a plain object as JSON but an array as a Postgres array literal, which the jsonb parser rejects. So `counts_by_impact` would have worked and `violations.nodes` would have failed at runtime — the worst kind of half-truth. Every jsonb column is typed to require a string on insert, which makes the compiler enforce it. Worth knowing for specs too: jsonb does not preserve key order, so jsonb values must be compared structurally rather than as serialised JSON.
+
+Also decided: deleting a page **cascades** to its audits, violations and alert events, which means its public share links stop resolving. That is the intended privacy behaviour — a user who deletes a tracked page should not leave working public URLs exposing that page's failures. `alert_events.previous_audit_id` is the one exception, `on delete set null`, because an alert is about its *current* audit and must survive retention deleting the older one it compared against.
+
+Scope deliberately left out: repositories for `Site`, `Page` and `AlertEvent`. They have no caller until the pages API and regression detection exist, and a query shape written months before its first use is written against a guess — the same reasoning that kept a queue singleton out of the job-runtime work. The obligations were recorded as comments on the issues that inherit them rather than only here.
+
 ## 2026-07-26 — background jobs run on BullMQ, and Redis is the price
 
 Audits take ~30 seconds of real compute, so they cannot run inside an HTTP request. `POST /api/audits` will return 202 and hand the work to a BullMQ queue consumed by a separate worker process.
