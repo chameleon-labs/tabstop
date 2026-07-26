@@ -32,7 +32,19 @@ describe('runMigrations', () => {
     expect(await bookkeepingTables()).toEqual(['kysely_migration', 'kysely_migration_lock'])
   })
 
-  it('returns no results while the registry is empty', async () => {
+  it('records every registered migration in the bookkeeping table', async () => {
+    await runMigrations(db)
+
+    const result = await sql<{ name: string }>`
+      select name from kysely_migration order by name
+    `.execute(db)
+
+    expect(result.rows.map(row => row.name)).toEqual(['001-initial-schema'])
+  })
+
+  it('returns no results when every migration is already applied', async () => {
+    await runMigrations(db)
+
     const results = await runMigrations(db)
 
     expect(results).toEqual([])
