@@ -6,6 +6,20 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-26 — background jobs run on BullMQ, and Redis is the price
+
+Audits take ~30 seconds of real compute, so they cannot run inside an HTTP request. `POST /api/audits` will return 202 and hand the work to a BullMQ queue consumed by a separate worker process.
+
+Rejected: **pg-boss**, which is Postgres-backed and would have added no new infrastructure at all — the strongest argument on the table, and declined deliberately. **Graphile Worker**, also Postgres-backed, but still 0.x and it pulls a config/CLI surface this project does not need.
+
+Why BullMQ anyway: it is the most widely used Node queue, and on a solo-operated product the ability to reason about the queue at 2am outweighs one fewer service to run. Its concurrency and rate-limiting primitives are also the most mature of the three, which matters directly for the audit worker's cost controls.
+
+**Redis is accepted knowingly as a second datastore.** That is the cost of this choice, and it lands on local development, CI, and deploy. Recording it here because "why not the Postgres-backed one, when Postgres was right there" is the obvious question to ask of this repo later, and the answer should not be that nobody considered it.
+
+Also decided: no `queue` field on `/api/health`. A health endpoint that fails because a dependency is unreachable is a deep health check, and its failure mode is correlated — Redis blips, every instance reports unhealthy at once, and a partial degradation becomes a total outage. The same critique applies to the `database` field already shipped, and revisiting it is deferred to the deploy issue, where the platform's actual restart and readiness semantics are known rather than guessed at.
+
+Two implementation notes worth keeping: BullMQ has no per-job timeout of any kind, so handlers supply their own via an `AbortSignal` that is passed into the handler rather than raced around it — otherwise a timed-out job leaves its work running. And `lockDuration` defaults to 30 seconds while an audit takes about that long; automatic lock renewal is the only reason the default is safe, so the audit worker should set it explicitly rather than inherit it.
+
 ## 2026-07-25 — Postgres via Kysely, wired behind constructor injection
 
 Kysely (query builder over `pg`) is the database client, wired into `server/` behind protocols in `data/protocols/db/`. Proven by a reachability probe on `GET /api/health`; no application tables exist yet.
