@@ -1,4 +1,5 @@
 import type { Migration, MigrationProvider } from 'kysely/migration'
+import * as initialSchema from './001-initial-schema.js'
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -7,10 +8,10 @@ import type { Migration, MigrationProvider } from 'kysely/migration'
  * which under "type": "module" + NodeNext means three different paths — one
  * under tsx, one under dist/, one under Vitest. A typechecked object literal
  * removes the problem and cannot drift from what actually compiled.
- *
- * Empty until #4 introduces the first real migration.
  */
-export const migrations: Record<string, Migration> = {}
+export const migrations: Record<string, Migration> = {
+  '001-initial-schema': initialSchema
+}
 
 export const staticMigrationProvider: MigrationProvider = {
   async getMigrations (): Promise<Record<string, Migration>> {

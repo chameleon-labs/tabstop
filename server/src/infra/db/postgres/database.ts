@@ -1,5 +1,80 @@
+import type { ColumnType, Generated } from 'kysely'
+import type { AlertKind } from '../../../domain/models/alert-event.js'
+import type { AuditStatus } from '../../../domain/models/audit.js'
+import type { CountsByImpact, Impact } from '../../../domain/models/impact.js'
+import type { ViolationNode } from '../../../domain/models/violation.js'
+
 /**
- * Kysely's view of the schema. Deliberately empty — tabstop's real tables
- * (Site, Page, Audit, Violation, AlertEvent) are introduced in #4.
+ * Nullable and omittable on insert. Kysely does not infer the second part from
+ * `T | null` alone — a bare `string | null` column is required on every insert.
  */
-export interface Database {}
+type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>
+
+/**
+ * jsonb: reads as a parsed value, but is WRITTEN as a JSON string.
+ *
+ * Passing a JS value straight through works for plain objects and silently
+ * breaks for arrays — node-postgres serialises an array as a Postgres array
+ * literal (`{...}`), which the jsonb parser rejects with
+ * `invalid input syntax for type json`. Requiring a string on the insert side
+ * removes the asymmetry: every jsonb write goes through JSON.stringify.
+ */
+type Json<T> = ColumnType<T, string | undefined, string>
+
+export interface SitesTable {
+  id: Generated<string>
+  user_id: Nullable<string>
+  domain: string
+  created_at: Generated<Date>
+}
+
+export interface PagesTable {
+  id: Generated<string>
+  site_id: string
+  url: string
+  monitoring_enabled: Generated<boolean>
+  created_at: Generated<Date>
+}
+
+export interface AuditsTable {
+  id: Generated<string>
+  public_uuid: Generated<string>
+  page_id: Nullable<string>
+  url: string
+  status: AuditStatus
+  score: Nullable<number>
+  counts_by_impact: Json<CountsByImpact>
+  axe_version: Nullable<string>
+  duration_ms: Nullable<number>
+  error: Nullable<string>
+  created_at: Generated<Date>
+  completed_at: Nullable<Date>
+}
+
+export interface ViolationsTable {
+  id: Generated<string>
+  audit_id: string
+  rule_id: string
+  impact: Impact
+  description: string
+  help_url: string
+  nodes: Json<ViolationNode[]>
+}
+
+export interface AlertEventsTable {
+  id: Generated<string>
+  page_id: string
+  audit_id: string
+  previous_audit_id: Nullable<string>
+  kind: AlertKind
+  created_at: Generated<Date>
+  emailed_at: Nullable<Date>
+}
+
+export interface Database {
+  sites: SitesTable
+  pages: PagesTable
+  audits: AuditsTable
+  violations: ViolationsTable
+  alert_events: AlertEventsTable
+}

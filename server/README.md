@@ -79,3 +79,22 @@ await q.add('ping', { requestedAt: new Date().toISOString() })
 await q.close()
 "
 ```
+
+## Schema
+
+Five tables, created by a single migration (`src/infra/db/postgres/migrations/001-initial-schema.ts`):
+
+| Table | Notes |
+|---|---|
+| `sites` | `user_id` is nullable with no FK until accounts land |
+| `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
+| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid` |
+| `violations` | `nodes` is display-only jsonb, never queried across |
+| `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
+
+Two rules when working with this schema:
+
+- **Write jsonb with `JSON.stringify`.** The column types require a string on insert for exactly this reason — passing a JS array through directly makes node-postgres emit a Postgres array literal, which jsonb rejects.
+- **Compare jsonb structurally in tests.** jsonb reorders object keys, so `JSON.stringify` equality fails spuriously.
+
+Specs share one database and run in parallel, so they create `randomUUID()`-suffixed fixtures and never `TRUNCATE`.
