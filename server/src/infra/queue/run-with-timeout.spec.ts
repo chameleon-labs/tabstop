@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { JobTimeoutError, runWithTimeout } from './run-with-timeout.js'
 
-const sleep = async (ms: number): Promise<void> =>
-  await new Promise((resolve) => setTimeout(resolve, ms))
+// A handler that hangs forever. Simulating one with a long sleep would leave a
+// live timer behind after the timeout wins the race, and make the suite wait
+// out a delay that proves nothing.
+const hangs = async (): Promise<never> => await new Promise(() => { /* never settles */ })
 
 describe('runWithTimeout', () => {
   it('resolves with the handler result when it finishes in time', async () => {
@@ -13,7 +15,7 @@ describe('runWithTimeout', () => {
 
   it('rejects with JobTimeoutError when the handler runs over budget', async () => {
     await expect(
-      runWithTimeout(20, async () => { await sleep(1000) })
+      runWithTimeout(20, hangs)
     ).rejects.toBeInstanceOf(JobTimeoutError)
   })
 
@@ -21,8 +23,12 @@ describe('runWithTimeout', () => {
     let observed: boolean | null = null
 
     await expect(
+      // Waiting on the abort event rather than a fixed delay also proves the
+      // handler's own listener survives runWithTimeout's cleanup.
       runWithTimeout(20, async (signal) => {
-        await sleep(1000)
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
         observed = signal.aborted
       })
     ).rejects.toBeInstanceOf(JobTimeoutError)

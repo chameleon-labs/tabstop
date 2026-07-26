@@ -20,6 +20,7 @@ export const runWithTimeout = async <T>(
   run: (signal: AbortSignal) => Promise<T>
 ): Promise<T> => {
   const controller = new AbortController()
+  const cleanup = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, timeoutMs)
 
   try {
@@ -29,10 +30,18 @@ export const runWithTimeout = async <T>(
     return await Promise.race([
       run(controller.signal),
       new Promise<never>((_resolve, reject) => {
-        controller.signal.addEventListener('abort', () => { reject(new JobTimeoutError(timeoutMs)) })
+        controller.signal.addEventListener(
+          'abort',
+          () => { reject(new JobTimeoutError(timeoutMs)) },
+          { signal: cleanup.signal }
+        )
       })
     ])
   } finally {
     clearTimeout(timer)
+    // A handler that outlives the race may keep the signal we handed it.
+    // Detaching our listener stops that retention from also pinning this
+    // promise's reject closure.
+    cleanup.abort()
   }
 }
