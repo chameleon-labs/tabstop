@@ -67,7 +67,8 @@ export interface AlertEventsTable {
   audit_id: string
   previous_audit_id: Nullable<string>
   kind: AlertKind
-  emailed_at: Generated<Date>
+  created_at: Generated<Date>
+  emailed_at: Nullable<Date>
 }
 
 export interface Database {

@@ -90,7 +90,7 @@ Five tables, created by a single migration (`src/infra/db/postgres/migrations/00
 | `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
 | `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid` |
 | `violations` | `nodes` is display-only jsonb, never queried across |
-| `alert_events` | at most one row per page per **UTC** day, enforced by a unique index |
+| `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
 
 Two rules when working with this schema:
 

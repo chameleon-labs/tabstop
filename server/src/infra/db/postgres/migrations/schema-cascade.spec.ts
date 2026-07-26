@@ -124,16 +124,56 @@ describe('schema deletion semantics', () => {
       page_id: fixture.pageId,
       audit_id: fixture.currentAuditId,
       kind: 'score_drop',
-      emailed_at: new Date(`${day}T01:00:00Z`)
+      created_at: new Date(`${day}T01:00:00Z`)
     }).execute()
 
     const sameDayAgain = db.insertInto('alert_events').values({
       page_id: fixture.pageId,
       audit_id: fixture.currentAuditId,
       kind: 'new_critical',
-      emailed_at: new Date(`${day}T23:00:00Z`)
+      created_at: new Date(`${day}T23:00:00Z`)
     }).execute()
 
     await expect(sameDayAgain).rejects.toThrow(/alert_events_one_per_page_per_day/)
+  })
+
+  it('dedupes alerts that have not been emailed yet', async () => {
+    // The regression this pins: if the dedupe keyed on emailed_at, unsent
+    // events would carry NULL there, and NULLs never collide in a unique
+    // index - so the rule would silently permit unlimited duplicates for
+    // exactly the rows it exists to catch.
+    const fixture = await makeFixture()
+    const day = '2026-02-20'
+    await db.insertInto('alert_events').values({
+      page_id: fixture.pageId,
+      audit_id: fixture.currentAuditId,
+      kind: 'score_drop',
+      created_at: new Date(`${day}T09:00:00Z`)
+    }).execute()
+
+    const secondUnsent = db.insertInto('alert_events').values({
+      page_id: fixture.pageId,
+      audit_id: fixture.currentAuditId,
+      kind: 'new_critical',
+      created_at: new Date(`${day}T18:00:00Z`)
+    }).execute()
+
+    await expect(secondUnsent).rejects.toThrow(/alert_events_one_per_page_per_day/)
+
+    const stored = await db.selectFrom('alert_events').selectAll()
+      .where('page_id', '=', fixture.pageId)
+      .where('emailed_at', 'is', null)
+      .execute()
+    expect(stored.every(row => row.emailed_at === null)).toBe(true)
+  })
+
+  it('leaves emailed_at null on insert, so the send job can find unsent alerts', async () => {
+    const fixture = await makeFixture()
+
+    const alert = await db.selectFrom('alert_events').selectAll()
+      .where('page_id', '=', fixture.pageId).executeTakeFirstOrThrow()
+
+    expect(alert.emailed_at).toBeNull()
+    expect(alert.created_at).toBeInstanceOf(Date)
   })
 })

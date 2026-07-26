@@ -77,7 +77,12 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     .addColumn('previous_audit_id', 'bigint', (col) =>
       col.references('audits.id').onDelete('set null'))
     .addColumn('kind', 'text', (col) => col.notNull())
-    .addColumn('emailed_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    // When the regression was DETECTED (#14). Distinct from emailed_at because
+    // #14 records the event and #15 sends it, as two separate steps.
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    // Null until a confirmed send (#15). It must stay null on delivery failure,
+    // otherwise the send job cannot find the events it still owes.
+    .addColumn('emailed_at', 'timestamptz')
     .addCheckConstraint('alert_events_kind_check', sql`kind in ('score_drop','new_critical')`)
     .execute()
 
@@ -92,11 +97,20 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
   await sql`create index violations_audit_idx on violations (audit_id)`.execute(db)
 
-  // The #14 dedupe rule. The zone must be pinned: `emailed_at::date` alone is
-  // STABLE, not IMMUTABLE, and Postgres refuses to index it.
+  // The #14 dedupe rule, keyed on detection rather than delivery.
+  //
+  // Two reasons it cannot key on emailed_at. #15 only sets that column on a
+  // confirmed send, so it is null for exactly the rows dedupe must catch - and
+  // NULLs never collide in a unique index, so the rule would silently permit
+  // unlimited duplicate alerts. It would also be wrong in principle: whether a
+  // page has already alerted today is a fact about detection, not about whether
+  // an email provider happened to accept the message.
+  //
+  // The zone must be pinned: `created_at::date` alone is STABLE, not IMMUTABLE,
+  // and Postgres refuses to index it.
   await sql`
     create unique index alert_events_one_per_page_per_day
-      on alert_events (page_id, ((emailed_at at time zone 'UTC')::date))
+      on alert_events (page_id, ((created_at at time zone 'UTC')::date))
   `.execute(db)
 
   await sql`create index alert_events_audit_idx on alert_events (audit_id)`.execute(db)
