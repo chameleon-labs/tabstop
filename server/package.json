@@ -9,20 +9,24 @@
   "packageManager": "pnpm@11.15.1",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/main/server.ts",
+    "dev:worker": "tsx watch --env-file=.env src/main/worker.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file=.env dist/main/server.js",
+    "start:worker": "node --env-file=.env dist/main/worker.js",
     "migrate": "tsx --env-file=.env src/main/scripts/migrate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "bullmq": "^5.81.2",
     "express": "^5.2.1",
     "kysely": "^0.29.4",
     "pg": "^8.22.0"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.0.4",
+    "@testcontainers/redis": "^12.0.4",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
