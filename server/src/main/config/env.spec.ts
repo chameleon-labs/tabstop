@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { parseEnv } from './env.js'
 
-const validSource = { DATABASE_URL: 'postgres://user:pass@localhost:5432/db' }
+const validSource = {
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
+  REDIS_URL: 'redis://localhost:6379'
+}
 
 describe('parseEnv', () => {
   it('returns the parsed port when PORT is a valid number', () => {
@@ -37,5 +40,19 @@ describe('parseEnv', () => {
 
   it('throws when DATABASE_URL is empty', () => {
     expect(() => parseEnv({ DATABASE_URL: '' })).toThrow('DATABASE_URL')
+  })
+
+  it('returns REDIS_URL when set', () => {
+    const result = parseEnv(validSource)
+
+    expect(result.redisUrl).toBe('redis://localhost:6379')
+  })
+
+  it('throws when REDIS_URL is missing', () => {
+    expect(() => parseEnv({ DATABASE_URL: 'postgres://x' })).toThrow('REDIS_URL')
+  })
+
+  it('throws when REDIS_URL is empty', () => {
+    expect(() => parseEnv({ DATABASE_URL: 'postgres://x', REDIS_URL: '' })).toThrow('REDIS_URL')
   })
 })
