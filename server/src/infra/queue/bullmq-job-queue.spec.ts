@@ -67,6 +67,35 @@ describe('BullMqJobQueue', () => {
     }, { timeout: 10_000 })
   })
 
+  it('lands a job in the failed state once its attempts are exhausted', async () => {
+    const name = `test-${randomUUID()}`
+    let attempts = 0
+
+    queue = makeQueue<TestPayload>(name, connectionUrl())
+    worker = makeWorker<TestPayload>(name, connectionUrl(), async () => {
+      attempts += 1
+      throw new Error('permanent')
+    })
+    await worker.waitUntilReady()
+
+    const job = await queue.add(name, { value: 'always fails' }, { attempts: 3, backoff: { type: 'fixed', delay: 10 } })
+
+    const jobId = job.id
+    if (jobId === undefined) throw new Error('BullMQ did not assign a job id')
+
+    await vi.waitFor(async () => {
+      // getJob resolving at all is part of the assertion: removeOnFail keeps
+      // failed jobs for a day precisely so a failure can be inspected. If that
+      // default is ever changed to drop them, this lookup returns undefined.
+      const stored = await queue?.getJob(jobId)
+      expect(await stored?.getState()).toBe('failed')
+      expect(stored?.attemptsMade).toBe(3)
+      expect(stored?.failedReason).toBe('permanent')
+    }, { timeout: 10_000 })
+
+    expect(attempts).toBe(3)
+  })
+
   it('applies the shared default job options', () => {
     const name = `test-${randomUUID()}`
     queue = makeQueue<TestPayload>(name, connectionUrl())
