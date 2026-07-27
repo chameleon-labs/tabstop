@@ -1,6 +1,7 @@
 import { DbRunAudit } from '../../../../data/usecases/run-audit/db-run-audit.js'
 import type { RunAudit } from '../../../../domain/usecases/run-audit.js'
 import { PlaywrightAxeAuditor } from '../../../../infra/audit/playwright-axe-auditor.js'
+import { NodeDnsResolver } from '../../../../infra/net/node-dns-resolver.js'
 import {
   PostgresAuditRepository, claimLeaseFor
 } from '../../../../infra/db/postgres/audit/postgres-audit-repository.js'
@@ -20,7 +21,7 @@ export const getPageAuditor = (): PlaywrightAxeAuditor => {
     navigationMs: env.auditNavigationTimeoutMs,
     settleMs: env.auditSettleBudgetMs,
     fallbackSettleMs: env.auditFallbackSettleMs
-  })
+  }, new NodeDnsResolver())
   return auditor
 }
 

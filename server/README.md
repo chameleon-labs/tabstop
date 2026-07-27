@@ -21,7 +21,7 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Stack
 
-Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · zod · Playwright + axe-core · Vitest + Supertest + Testcontainers · pnpm.
+Express 5 · TypeScript 7 (ES2024) · Kysely + Postgres · BullMQ + Redis · zod · Playwright + axe-core · Vitest + Supertest + Testcontainers · pnpm.
 
 Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no `cookie-parser`, no ESLint (`typescript-eslint` doesn't support TS 7 yet), and no password-hashing or JWT library — `node:crypto` covers both.
 
@@ -96,6 +96,22 @@ The `audit` queue runs accessibility audits: navigate with Chromium, inject vend
   ```
 
   `--with-deps` also installs the OS libraries Chromium needs, which a slim container image will not have. This is a deploy requirement (#16), not just a test-setup step. `playwright` is a runtime **dependency** for the same reason: a `pnpm install --prod` that omitted it would fail the worker at module load, before it could consume a single job.
+
+### URL safety
+
+Auditing a user-supplied URL is an SSRF primitive, so the worker refuses private and reserved addresses, non-http schemes, and any port other than 80 or 443.
+
+- **`domain/services/url-safety.ts` is pure** — no DNS, no network, no clock. That is what makes the range list cheap to test exhaustively, and exhaustive tests are the only thing that catches this class of bug.
+- **Redirects are followed by the guard, not the browser.** `context.route` fires only for the first hop, so a `302` to a private address would otherwise never be checked. `infra/audit/request-guard.ts` walks the chain with `route.fetch({ maxRedirects: 0 })`, validating each hop and capping at five.
+- **Every request is checked**, not just navigations — a page can embed a subresource pointing at an internal host. A blocked subresource refuses only itself, so the page still audits.
+- **The submitted URL is validated before navigating**, not only by the route guard: `file:` and `data:` need not produce an interceptable request at all.
+- **WebRTC and WebTransport are removed** before page scripts run. Neither interceptor sees them, and a data channel needs no permission. Init scripts do not reach dedicated workers, so that residual is recorded on #16 with downloads.
+- **Redirects keep the browser's document URL.** The guard validates the chain, then hands the browser a redirect to the final address rather than serving the final body against the original URL — which would leave relative assets resolving against the wrong base.
+- **Downloads are a known gap.** `context.route` does not see them, and a download request reaches the network even with `acceptDownloads: false` — verified. Nothing is written to disk, but the request leaves. Closing it needs egress policy at the infrastructure level (#16).
+- **WebSockets are refused, not validated.** `context.route` does not see them, so a page could otherwise open a socket straight past every check. Nothing an audit needs arrives over one.
+- **Redirects follow browser method semantics** — 303, 301 and 302 demote to GET and drop the body; 307 and 308 preserve it. Replaying a POST at every hop would repeat side effects the server has already performed.
+- **Rejection messages never distinguish blocked from unreachable.** Everything becomes `That address can't be audited`. Anything more specific turns the audit endpoint into an internal port scanner.
+- The submission-time gate arrives with #9, in its `request-audit` usecase.
 
 Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300–500MB per context), `AUDIT_JOB_TIMEOUT_MS` (45s), `AUDIT_NAVIGATION_TIMEOUT_MS` (20s), `AUDIT_SETTLE_BUDGET_MS` (10s), `AUDIT_FALLBACK_SETTLE_MS` (1s).
 

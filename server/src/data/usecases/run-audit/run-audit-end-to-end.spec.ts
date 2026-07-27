@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { isBlockedAddress, type UrlPolicy } from '../../../domain/services/url-safety.js'
+import { NodeDnsResolver } from '../../../infra/net/node-dns-resolver.js'
 import { randomUUID } from 'node:crypto'
 import type { Kysely } from 'kysely'
 import { DbRunAudit } from './db-run-audit.js'
@@ -17,6 +19,19 @@ import {
  * audit row, a real browser, a real page, and a real database. The unit specs
  * cover the branches; this proves the pieces actually fit together.
  */
+/**
+ * The production policy with exactly two holes, both forced by the fixture
+ * server: it listens on loopback and on an ephemeral port. Every other range -
+ * 10/8, 169.254/16 and the rest - stays genuinely enforced, so the blocking
+ * these specs assert is the real policy at work rather than a stub agreeing
+ * with them.
+ */
+const allowingFixtureServer: UrlPolicy = {
+  isAllowedPort: () => true,
+  isBlockedAddress: (address) =>
+    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)
+}
+
 describe('run-audit end to end', () => {
   let db: Kysely<Database>
   let server: FixtureServer
@@ -30,9 +45,11 @@ describe('run-audit end to end', () => {
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     db = makeDatabase(url)
     server = await startFixtureServer()
-    auditor = new PlaywrightAxeAuditor({
-      navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500
-    })
+    auditor = new PlaywrightAxeAuditor(
+      { navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500 },
+      new NodeDnsResolver(),
+      allowingFixtureServer
+    )
     audits = new PostgresAuditRepository(db)
     violations = new PostgresViolationRepository(db)
     sut = new DbRunAudit(audits, audits, violations, auditor)
@@ -194,6 +211,20 @@ describe('run-audit end to end', () => {
     expect(
       await db.selectFrom('violations').select('id').where('audit_id', '=', auditId).execute()
     ).not.toHaveLength(0)
+  }, 60_000)
+
+  it('records a blocked address as a failed audit with a non-leaking message', async () => {
+    const auditId = await queueAudit('http://169.254.169.254/latest/meta-data/')
+
+    await expect(sut.run(params(auditId))).rejects.toThrow(PermanentAuditError)
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('failed')
+    expect(audit.error).toBe("That address can't be audited")
+    // The message must not reveal whether anything is listening there. A
+    // response that distinguished "blocked" from "unreachable" would turn this
+    // endpoint into an internal port scanner.
+    expect(audit.error).not.toMatch(/refused|timed out|resolve|blocked|private|internal|169\.254/i)
   }, 60_000)
 
   it('keeps a permanently failed audit terminal rather than releasing it', async () => {

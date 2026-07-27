@@ -1,7 +1,14 @@
-import { chromium, type Browser } from 'playwright'
+import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { fileURLToPath } from 'node:url'
+import { isIP } from 'node:net'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
+import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
+import { CoalescingDnsResolver } from '../net/coalescing-dns-resolver.js'
+import { makeRequestGuard, type RouteLike } from './request-guard.js'
+import {
+  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+} from '../../domain/services/url-safety.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -21,6 +28,176 @@ type EvaluatedResult = {
     helpUrl: string
     nodes: Array<{ target: string[], html: string }>
   }>
+}
+
+/**
+ * Exported so a spec can prove these hold by driving a real context, rather
+ * than by reading the object back and agreeing with itself.
+ */
+/**
+ * Removed before any page script runs.
+ *
+ * WebRTC and WebTransport are intercepted by neither `route` nor
+ * `routeWebSocket`. A data channel needs no permission and will send packets
+ * to whatever ICE candidate address a page supplies; WebTransport opens QUIC
+ * to any host. Both are direct paths to an internal address past every check
+ * here. Non-configurable so a page cannot put them back.
+ *
+ * This covers pages and frames. Init scripts do not reach dedicated workers,
+ * so a worker could still construct either - closing that needs enforcement
+ * below the browser, recorded with the download gap on #16.
+ */
+export const DISABLE_UNINTERCEPTED_TRANSPORTS = (): void => {
+  // WebTransport rides QUIC and is intercepted by neither route nor
+  // routeWebSocket either, so an https page could open one straight to a
+  // private endpoint on 443.
+  for (const name of [
+    'RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport'
+  ]) {
+    Object.defineProperty(globalThis, name, {
+      value: undefined, configurable: false, writable: false
+    })
+  }
+}
+
+export const AUDIT_CONTEXT_OPTIONS = {
+  viewport: { width: 1280, height: 720 },
+  // Nothing is ever saved. This does NOT stop the request being issued -
+  // measured: a download reaches the server with this false, and with the
+  // download event cancelled - but it keeps hostile bytes off the worker's
+  // disk. See the residual recorded in DECISIONS.md and on #16.
+  acceptDownloads: false,
+  // context.route does not reliably intercept requests made by a service
+  // worker, and service workers are enabled by default - so an audited page
+  // could register one and issue requests straight past the guard.
+  serviceWorkers: 'block',
+  // Load-bearing. A well-configured Content-Security-Policy blocks the
+  // injected engine, so without this we fail on exactly the sites most likely
+  // to have been built carefully. Verified: addScriptTag throws "Executing
+  // inline script violates the following Content Security Policy" when false.
+  bypassCSP: true
+} as const
+
+/**
+ * Runs in the BROWSER: page.evaluate serialises this function, so it may not
+ * reference anything in this module. Exported and kept self-contained for that
+ * reason, and so it can be exercised directly in Node against a stand-in
+ * global rather than only through a real page.
+ *
+ * The globals are reached through a cast because this file is typechecked as
+ * part of a Node project - `lib` is ES2024, and adding "DOM" would make
+ * `document`, `window` and `localStorage` compile throughout the server, while
+ * a per-file `/// <reference lib="dom" />` leaks program-wide (verified). #38
+ * moves this into its own DOM-typed compilation unit and removes the cast.
+ *
+ * Until then the cast is at least CHECKED rather than merely asserted: the
+ * shape is verified before use, so an axe that is absent or has changed shape
+ * fails with a message the classifier maps to an engine failure instead of
+ * producing an undefined-property error somewhere downstream.
+ */
+export const runAxeInPage = async (): Promise<EvaluatedResult> => {
+  const browserGlobals = globalThis as unknown as {
+    document?: unknown
+    axe?: {
+      run?: (context: unknown, options: { resultTypes: string[] }) => Promise<unknown>
+    }
+  }
+
+  const axe = browserGlobals.axe
+  if (axe === undefined || typeof axe.run !== 'function') {
+    // Wording matters: the classifier matches this as a permanent engine
+    // failure, so the user is told the engine could not run rather than
+    // seeing three retries of an unrecognised error.
+    throw new Error('axe is not defined on the page')
+  }
+
+  const run = await axe.run(browserGlobals.document, { resultTypes: ['violations'] }) as {
+    testEngine?: { version?: unknown }
+    violations?: unknown
+  }
+
+  if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
+    throw new Error('axe returned an unrecognised result shape')
+  }
+
+  return {
+    axeVersion: run.testEngine.version,
+    violations: (run.violations as Array<{
+      id: string
+      impact: string | null
+      description: string
+      helpUrl: string
+      nodes: Array<{ target: Array<string | string[]>, html: string }>
+    }>).map((violation) => ({
+      ruleId: violation.id,
+      impact: violation.impact,
+      description: violation.description,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes.map((node) => ({
+        // axe does not always hand back a flat list of selectors: a node
+        // inside shadow DOM arrives as a NESTED array, verified as
+        // [["#host","img"]]. Flattening here keeps `string[]` true all the way
+        // down, and ' >>> ' is Playwright's own shadow-piercing notation so
+        // the result still reads as a selector path.
+        target: node.target.map((entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry),
+        html: node.html
+      }))
+    }))
+  }
+}
+
+/**
+ * Just the two methods this needs, taken from Playwright's own type rather
+ * than restated: a handler parameter is contravariant, so any hand-written
+ * stand-in would have to name `Route` exactly to be satisfied by a real
+ * context - at which point restating it buys nothing and can drift.
+ */
+export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket' | 'addInitScript'>
+
+/**
+ * Both interceptors, registered together because leaving either off is a hole
+ * rather than a degradation.
+ *
+ * `context.route` does not see WebSockets at all, so without the second
+ * registration a page could open `ws://10.0.0.5/` and reach straight past
+ * every check the first one performs. Nothing an accessibility audit needs
+ * arrives over a socket, so they are refused outright rather than validated -
+ * there is no useful "safe WebSocket" case to preserve here.
+ */
+export const installGuards = async (
+  context: GuardedContext,
+  guard: (route: RouteLike) => Promise<void>
+): Promise<void> => {
+  // The one place Playwright's Route is translated into the guard's own
+  // contract. It cannot be structural: Route.fulfill takes Playwright's
+  // APIResponse, so satisfying RouteLike structurally would mean importing
+  // Playwright into request-guard.ts and losing the boundary that makes the
+  // guard unit-testable at all. An adapter converting a vendor type into a
+  // local port is exactly where a cast earns its place.
+  await context.addInitScript(DISABLE_UNINTERCEPTED_TRANSPORTS)
+  await context.route('**/*', (route) => guard(route as unknown as RouteLike))
+  await context.routeWebSocket('**/*', (ws) => { ws.close() })
+}
+
+/**
+ * The same rules the route guard applies, run before the first navigation.
+ *
+ * The duplication is deliberate: the guard is a NETWORK boundary, and a scheme
+ * that never produces an interceptable HTTP request slips underneath it - a
+ * `file:///` audit could read the worker's own disk before the guard ever saw
+ * a request.
+ */
+const isNavigable = async (
+  url: string, resolver: DnsResolver, policy: UrlPolicy
+): Promise<boolean> => {
+  const parsed = parseAuditUrl(url, policy)
+  if (!parsed.safe) return false
+
+  const host = bareHostname(parsed.url)
+  if (isIP(host) !== 0) return !policy.isBlockedAddress(host)
+
+  const addresses = await resolver.resolve(host)
+  return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address))
 }
 
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
@@ -50,7 +227,17 @@ export class PlaywrightAxeAuditor implements PageAuditor {
    */
   private launching: Promise<Browser> | null = null
 
-  constructor (private readonly budgets: AuditBudgets) {}
+  constructor (
+    private readonly budgets: AuditBudgets,
+    private readonly dnsResolver: DnsResolver,
+    /**
+     * Overridden only by integration tests, which must serve fixtures from
+     * loopback on an ephemeral port - both of which the real policy refuses,
+     * and rightly so. They relax exactly those two and leave every other range
+     * enforced, so the blocking those specs assert is real policy at work.
+     */
+    private readonly urlPolicy?: UrlPolicy
+  ) {}
 
   /**
    * Launched lazily and reused for the process's lifetime. Launching per job
@@ -88,15 +275,24 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     const startedAt = Date.now()
     const browser = await this.getBrowser()
 
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      // Load-bearing. A well-configured Content-Security-Policy blocks the
-      // injected engine, so without this we fail on exactly the sites most
-      // likely to have been built carefully. Verified: addScriptTag throws
-      // "Executing inline script violates the following Content Security
-      // Policy" when this is false.
-      bypassCSP: true
-    })
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+
+    // Every request the page makes is checked, not only the navigation: a page
+    // can embed <img src="http://169.254.169.254/..."> and the worker would
+    // fetch it from inside the network. Nothing reaches the user either way -
+    // axe reads the DOM, not image bytes - so this is about side effects
+    // rather than disclosure, but a GET that changes state still fires.
+    //
+    // The resolver is wrapped per AUDIT and coalesces only lookups that are
+    // in flight together - it never holds a completed answer. Caching one
+    // would mean validating an address once and trusting it for the rest of an
+    // audit that can run for tens of seconds, which is long enough to flip DNS
+    // underneath it.
+    // Shared with the pre-navigation check below, so one host resolves once.
+    const guardResolver = new CoalescingDnsResolver(this.dnsResolver)
+    const policy = this.urlPolicy ?? DEFAULT_URL_POLICY
+    const guard = makeRequestGuard(guardResolver, policy)
+    await installGuards(context, guard)
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
     // otherwise the work carries on unattended with a live Chromium behind it.
@@ -120,6 +316,15 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       // their rejections are swallowed rather than left to kill the process.
       page.on('dialog', (dialog) => { void dialog.dismiss().catch(() => undefined) })
       context.on('page', (popup) => { void popup.close().catch(() => undefined) })
+
+      // The submitted URL is checked BEFORE navigating, not only by the route
+      // guard. A route handler is a network boundary, and `file:` and `data:`
+      // are not guaranteed to produce an interceptable HTTP request at all -
+      // a file:/// audit could read the worker's own disk before the guard
+      // ever saw a request. This is the same policy, applied one layer up.
+      if (!await isNavigable(url, guardResolver, policy)) {
+        throw new Error(`net::ERR_BLOCKED_BY_CLIENT at ${url}`)
+      }
 
       await page.goto(url, {
         waitUntil: 'domcontentloaded',
@@ -145,54 +350,13 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       // only the mapped violations is 621 bytes, because `passes` never
       // crosses the CDP boundary at all. It also means no axe type ever
       // exists in Node, so the protocol boundary is real rather than nominal.
-      const evaluated = await page.evaluate(async (): Promise<EvaluatedResult> => {
-        // This body executes in the browser, but it is TYPE-CHECKED as part of
-        // a Node project whose lib is ES2023. Adding "DOM" to the compiler
-        // options would fix the reference and quietly make `document`,
-        // `fetch` and `window` look available throughout the server, so the
-        // browser globals are reached through a local cast instead.
-        const browserGlobals = globalThis as unknown as {
-          document: unknown
-          axe: {
-            run: (context: unknown, options: { resultTypes: string[] }) => Promise<{
-              testEngine: { version: string }
-              violations: Array<{
-                id: string
-                impact: string | null
-                description: string
-                helpUrl: string
-                nodes: Array<{ target: Array<string | string[]>, html: string }>
-              }>
-            }>
-          }
-        }
-
-        const run = await browserGlobals.axe.run(
-          browserGlobals.document, { resultTypes: ['violations'] }
-        )
-
-        return {
-          axeVersion: run.testEngine.version,
-          violations: run.violations.map((violation) => ({
-            ruleId: violation.id,
-            impact: violation.impact,
-            description: violation.description,
-            helpUrl: violation.helpUrl,
-            nodes: violation.nodes.map((node) => ({
-              // axe does not always hand back a flat list of selectors: a
-              // node inside shadow DOM arrives as a NESTED array, verified as
-              // [["#host","img"]]. Flattening here keeps `string[]` true all
-              // the way down rather than storing a shape the type denies, and
-              // ' >>> ' is Playwright's own shadow-piercing notation, so the
-              // result still reads as a selector path.
-              target: node.target.map(
-                (entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry
-              ),
-              html: node.html
-            }))
-          }))
-        }
-      })
+      // Mapped INSIDE the browser. Measured on a fixture: the raw result
+      // serialises to 42,996 bytes and 41,922 with resultTypes - a 2.5%
+      // saving, not the "dramatic" one the issue assumed - while returning
+      // only the mapped violations is 621 bytes, because `passes` never
+      // crosses the CDP boundary at all. It also means no axe type ever
+      // exists in Node, so the protocol boundary is real rather than nominal.
+      const evaluated = await page.evaluate(runAxeInPage)
 
       return {
         violations: evaluated.violations.map((violation) => ({
