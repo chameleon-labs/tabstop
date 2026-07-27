@@ -99,4 +99,81 @@ describe('PostgresAuditRepository', () => {
       expect(found).toBeNull()
     })
   })
+
+  describe('status transitions', () => {
+    const makeQueuedAudit = async (): Promise<string> => {
+      const audit = await sut.add({ url: `https://${randomUUID()}.test/x`, pageId: null })
+      return audit.id
+    }
+
+    const load = async (id: string) =>
+      await db.selectFrom('audits').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
+
+    it('marks an audit running', async () => {
+      const id = await makeQueuedAudit()
+
+      await sut.markRunning(id)
+
+      expect((await load(id)).status).toBe('running')
+    })
+
+    it('marks an audit done with counts, version, duration and settled', async () => {
+      const id = await makeQueuedAudit()
+
+      await sut.markDone(id, {
+        countsByImpact: { minor: 1, moderate: 0, serious: 2, critical: 3 },
+        axeVersion: '4.12.1',
+        durationMs: 1234,
+        settled: false
+      })
+
+      const row = await load(id)
+      expect(row.status).toBe('done')
+      // jsonb reorders keys, so this must be compared structurally.
+      expect(row.counts_by_impact).toEqual({ minor: 1, moderate: 0, serious: 2, critical: 3 })
+      expect(row.axe_version).toBe('4.12.1')
+      expect(row.duration_ms).toBe(1234)
+      expect(row.settled).toBe(false)
+      expect(row.completed_at).toBeInstanceOf(Date)
+      // Scoring is #6; this worker never writes one.
+      expect(row.score).toBeNull()
+    })
+
+    it('writes all four impact keys, which the check constraint requires', async () => {
+      const id = await makeQueuedAudit()
+
+      await sut.markDone(id, {
+        countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+        axeVersion: '4.12.1',
+        durationMs: 10,
+        settled: true
+      })
+
+      expect((await load(id)).counts_by_impact)
+        .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 0 })
+    })
+
+    it('marks an audit failed with a readable message and a completion time', async () => {
+      const id = await makeQueuedAudit()
+
+      await sut.markFailed(id, 'Could not resolve that domain')
+
+      const row = await load(id)
+      expect(row.status).toBe('failed')
+      expect(row.error).toBe('Could not resolve that domain')
+      expect(row.completed_at).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('loadById', () => {
+    it('returns the audit for an internal id', async () => {
+      const created = await sut.add({ url: `https://${randomUUID()}.test/x`, pageId: null })
+
+      expect(await sut.loadById(created.id)).toEqual(created)
+    })
+
+    it('returns null for an id that does not exist', async () => {
+      expect(await sut.loadById('999999999')).toBeNull()
+    })
+  })
 })
