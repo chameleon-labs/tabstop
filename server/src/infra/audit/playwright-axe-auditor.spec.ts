@@ -117,6 +117,64 @@ describe('PlaywrightAxeAuditor', () => {
   })
 })
 
+describe('PlaywrightAxeAuditor URL safety', () => {
+  let server: FixtureServer
+  let sut: PlaywrightAxeAuditor
+
+  beforeAll(async () => {
+    server = await startFixtureServer()
+    sut = new PlaywrightAxeAuditor(BUDGETS, new NodeDnsResolver(), allowingFixtureServer)
+  }, 60_000)
+
+  afterAll(async () => {
+    await sut.close()
+    await server.close()
+  })
+
+  const signal = (): AbortSignal => new AbortController().signal
+
+  it('refuses a literal private address', async () => {
+    await expect(sut.audit('http://169.254.169.254/latest/meta-data/', signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  })
+
+  it('refuses a public page that redirects to a private one', async () => {
+    // The case the issue's own mechanism misses entirely: context.route fires
+    // only for the first hop, so without the manual redirect walk this
+    // RESOLVES and the private response is sitting in the page.
+    await expect(sut.audit(`${server.baseUrl}/redirect-to-private`, signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  })
+
+  it('refuses a redirect into a non-http scheme', async () => {
+    await expect(sut.audit(`${server.baseUrl}/redirect-to-file`, signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  })
+
+  it('refuses a redirect loop rather than following it forever', async () => {
+    await expect(sut.audit(`${server.baseUrl}/redirect-loop`, signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  }, 30_000)
+
+  it('blocks a private subresource but still audits the page', async () => {
+    // One hostile embed must not make an otherwise fine page un-auditable.
+    const result = await sut.audit(`${server.baseUrl}/private-subresource`, signal())
+
+    expect(result.violations.map((violation) => violation.ruleId)).toContain('label')
+    expect(result.settled).toBe(true)
+  }, 30_000)
+
+  it('still audits an ordinary page unchanged', async () => {
+    // The control. The guard rewrites how every navigation is fetched, so
+    // proving normal auditing is untouched matters as much as the blocks.
+    const result = await sut.audit(server.baseUrl, signal())
+
+    expect(result.violations.map((violation) => violation.ruleId)).toContain('image-alt')
+    expect(result.axeVersion).toBe(VENDORED_VERSION)
+    expect(result.settled).toBe(true)
+  })
+})
+
 describe('vendored engine in the build output', () => {
   it('reaches dist/ when a build has been run', () => {
     // tsc copies no .js assets, so without the explicit copy step this passes

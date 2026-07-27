@@ -42,6 +42,15 @@ const SHADOW_PAGE = `<!doctype html>
   </script>
 </main></body></html>`
 
+/** A valid page that pulls one subresource from a private address. */
+const PRIVATE_SUBRESOURCE_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Embedded</title></head>
+<body><main>
+  <h1>Page with a hostile embed</h1>
+  <input type="text">
+  <img src="http://10.0.0.5/tracker.png" alt="">
+</main></body></html>`
+
 export type FixtureServer = {
   baseUrl: string
   close: () => Promise<void>
@@ -61,6 +70,32 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     if (request.url === '/shadow') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(SHADOW_PAGE)
+      return
+    }
+
+    // A public page whose 302 lands on link-local - the metadata endpoint
+    // every cloud provider exposes, and the reason this guard exists.
+    if (request.url === '/redirect-to-private') {
+      response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' })
+      response.end()
+      return
+    }
+
+    if (request.url === '/redirect-to-file') {
+      response.writeHead(302, { location: 'file:///etc/passwd' })
+      response.end()
+      return
+    }
+
+    if (request.url === '/redirect-loop') {
+      response.writeHead(302, { location: '/redirect-loop' })
+      response.end()
+      return
+    }
+
+    if (request.url === '/private-subresource') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(PRIVATE_SUBRESOURCE_PAGE)
       return
     }
 
