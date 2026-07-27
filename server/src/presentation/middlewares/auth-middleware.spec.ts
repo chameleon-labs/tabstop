@@ -4,7 +4,7 @@ import { mockAccountModel, mockLoadAccountBySession } from '../test/mock-account
 
 const makeSut = () => {
   const loadAccountBySession = mockLoadAccountBySession()
-  const sut = new AuthMiddleware(loadAccountBySession)
+  const sut = new AuthMiddleware(loadAccountBySession, 'sid')
   return { sut, loadAccountBySession }
 }
 

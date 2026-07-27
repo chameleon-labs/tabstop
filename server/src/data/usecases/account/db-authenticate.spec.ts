@@ -52,6 +52,33 @@ describe('DbAuthenticate', () => {
     expect(hasher.hash).toHaveBeenCalledTimes(1)
   })
 
+  it('retries the dummy digest after a hashing failure, instead of caching the rejection', async () => {
+    // `??=` caches a rejected promise as happily as a fulfilled one, so one
+    // transient failure would make every later unknown-email login throw for
+    // the life of the process - a permanent 500 on exactly the path that must
+    // be indistinguishable from a wrong password.
+    const { sut, loadAccountByEmailRepository, hasher } = makeSut()
+    loadAccountByEmailRepository.loadByEmail.mockResolvedValue(null)
+    hasher.hash.mockRejectedValueOnce(new Error('scrypt failed'))
+
+    const first = await sut.auth({ email: 'a@test.test', password: 'x' })
+    const second = await sut.auth({ email: 'b@test.test', password: 'x' })
+
+    expect(first).toBeNull()
+    expect(second).toBeNull()
+    expect(hasher.hash.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it('answers null, not an error, when the dummy digest cannot be produced', async () => {
+    // Being unable to burn time is not a reason to answer 500 where a real
+    // account would have received 401.
+    const { sut, loadAccountByEmailRepository, hasher } = makeSut()
+    loadAccountByEmailRepository.loadByEmail.mockResolvedValue(null)
+    hasher.hash.mockRejectedValue(new Error('scrypt permanently broken'))
+
+    await expect(sut.auth({ email: 'a@test.test', password: 'x' })).resolves.toBeNull()
+  })
+
   it('returns null on a wrong password without starting a session', async () => {
     const { sut, hashComparer, startSession } = makeSut()
     hashComparer.compare.mockResolvedValueOnce(false)

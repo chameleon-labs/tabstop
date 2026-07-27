@@ -1,3 +1,5 @@
+import { isValidScryptCost } from '../../infra/cryptography/scrypt-adapter.js'
+
 export type Env = {
   port: number
   databaseUrl: string
@@ -33,10 +35,36 @@ const requiredBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
   return value === 'true'
 }
 
-const positiveIntegerOr = (raw: string | undefined, fallback: number): number => {
+/**
+ * Unset means "use the default". Set means the operator had an intention, so an
+ * unusable value is a configuration error and must not be silently replaced by
+ * the default - that is how a deliberate change becomes a no-op nobody notices.
+ */
+const positiveIntegerOr = (
+  raw: string | undefined, fallback: number, name: string
+): number => {
   if (raw === undefined || raw === '') return fallback
   const parsed = Number(raw)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer, but was "${raw}"`)
+  }
+  return parsed
+}
+
+/**
+ * A cost that is merely a positive integer still breaks scrypt at runtime: it
+ * must be a power of two, and must fit within maxmem. Left unchecked, a value
+ * like 20000 boots cleanly and then fails every signup with a 500 while login
+ * keeps working from stored digests - a partial breakage that is easy to miss.
+ */
+const scryptCostOr = (raw: string | undefined, fallback: number): number => {
+  const cost = positiveIntegerOr(raw, fallback, 'SCRYPT_COST')
+  if (!isValidScryptCost(cost)) {
+    throw new Error(
+      `SCRYPT_COST must be a power of two that fits scrypt's memory budget, but was "${cost}"`
+    )
+  }
+  return cost
 }
 
 /**
@@ -59,8 +87,10 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     frontendOrigin: required(source, 'FRONTEND_ORIGIN'),
     sessionCookieSecure: requiredBoolean(source, 'SESSION_COOKIE_SECURE'),
     // A tuning knob, not a correctness knob: CI lowers it, production must not.
-    scryptCost: positiveIntegerOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),
-    sessionTtlDays: positiveIntegerOr(source.SESSION_TTL_DAYS, DEFAULT_SESSION_TTL_DAYS)
+    scryptCost: scryptCostOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),
+    sessionTtlDays: positiveIntegerOr(
+      source.SESSION_TTL_DAYS, DEFAULT_SESSION_TTL_DAYS, 'SESSION_TTL_DAYS'
+    )
   }
 }
 

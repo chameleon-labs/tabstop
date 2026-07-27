@@ -1,16 +1,18 @@
 import type { LoadAccountBySession } from '../../domain/usecases/load-account-by-session.js'
 import { UnauthorizedError } from '../errors/unauthorized-error.js'
 import { ok, serverError, unauthorized } from '../helpers/http/http-helper.js'
-import { SESSION_COOKIE_NAME } from '../helpers/session-cookie.js'
 import type { HttpResponse } from '../protocols/http.js'
 import type { Middleware, MiddlewareRequest } from '../protocols/middleware.js'
 
 export class AuthMiddleware implements Middleware {
-  constructor (private readonly loadAccountBySession: LoadAccountBySession) {}
+  constructor (
+    private readonly loadAccountBySession: LoadAccountBySession,
+    private readonly sessionCookieName: string
+  ) {}
 
   async handle (request: MiddlewareRequest): Promise<HttpResponse> {
     try {
-      const sessionId = request.cookies[SESSION_COOKIE_NAME]
+      const sessionId = request.cookies[this.sessionCookieName]
       if (sessionId === undefined || sessionId === '') {
         return unauthorized(new UnauthorizedError())
       }

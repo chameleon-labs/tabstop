@@ -164,4 +164,20 @@ describe('account routes', () => {
       expect(response.headers['access-control-allow-headers']).toBe('content-type')
     })
   })
+
+  describe('caching', () => {
+    it('marks authenticated responses no-store', async () => {
+      // GET /api/me returns per-user data. A 200 with no Cache-Control is
+      // heuristically cacheable, and the only thing a shared cache in front of
+      // the API could vary on is the session cookie - so without this, a CDN
+      // could serve one user's identity to another.
+      const signup = await request(app).post('/api/signup')
+        .send({ email: newEmail(), password }).expect(201)
+
+      const me = await request(app).get('/api/me').set('Cookie', firstSetCookie(signup))
+
+      expect(me.status).toBe(200)
+      expect(me.headers['cache-control']).toBe('no-store')
+    })
+  })
 })

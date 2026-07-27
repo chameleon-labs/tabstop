@@ -1,6 +1,6 @@
 import type { RevokeSession } from '../../../domain/usecases/revoke-session.js'
 import { noContent, serverError } from '../../helpers/http/http-helper.js'
-import { SESSION_COOKIE_NAME, clearSessionCookie } from '../../helpers/session-cookie.js'
+import { clearSessionCookie } from '../../helpers/session-cookie.js'
 import type { Controller } from '../../protocols/controller.js'
 import type { HttpResponse } from '../../protocols/http.js'
 
@@ -14,16 +14,19 @@ export type LogoutRequest = {
  * never reports whether the session existed.
  */
 export class LogoutController implements Controller<LogoutRequest> {
-  constructor (private readonly revokeSession: RevokeSession) {}
+  constructor (
+    private readonly revokeSession: RevokeSession,
+    private readonly sessionCookieName: string
+  ) {}
 
   async handle (request: LogoutRequest): Promise<HttpResponse> {
     try {
-      const sessionId = request.cookies[SESSION_COOKIE_NAME]
+      const sessionId = request.cookies[this.sessionCookieName]
       if (sessionId !== undefined && sessionId !== '') {
         await this.revokeSession.revoke(sessionId)
       }
 
-      return noContent(clearSessionCookie())
+      return noContent(clearSessionCookie(this.sessionCookieName))
     } catch (error) {
       return serverError(error as Error)
     }

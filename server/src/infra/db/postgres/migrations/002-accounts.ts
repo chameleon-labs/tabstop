@@ -54,11 +54,13 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
       add constraint sites_user_domain_unique unique (user_id, domain)
   `.execute(db)
 
-  await sql`create index sites_user_idx on sites (user_id)`.execute(db)
+  // No separate index on sites(user_id): the unique constraint above already
+  // creates a btree with user_id leading, which serves FK cascade lookups and
+  // `where user_id = ?` alike. A second one would be maintained on every write
+  // for no query it uniquely answers.
 }
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
-  await sql`drop index if exists sites_user_idx`.execute(db)
   await sql`alter table sites drop constraint if exists sites_user_domain_unique`.execute(db)
   await sql`alter table sites alter column user_id drop not null`.execute(db)
   await sql`alter table sites drop constraint if exists sites_user_id_fkey`.execute(db)

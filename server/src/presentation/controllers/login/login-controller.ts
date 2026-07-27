@@ -10,7 +10,8 @@ import type { Validation } from '../../protocols/validation.js'
 export class LoginController implements Controller {
   constructor (
     private readonly validation: Validation<AuthenticateParams>,
-    private readonly authenticate: Authenticate
+    private readonly authenticate: Authenticate,
+    private readonly sessionCookieName: string
   ) {}
 
   async handle (request: unknown): Promise<HttpResponse> {
@@ -22,7 +23,7 @@ export class LoginController implements Controller {
       // One response for an unknown email and a wrong password alike.
       if (session === null) return unauthorized(new InvalidCredentialsError())
 
-      return okWithCookies(toAccountView(session.account), setSessionCookie(session))
+      return okWithCookies(toAccountView(session.account), setSessionCookie(this.sessionCookieName, session))
     } catch (error) {
       return serverError(error as Error)
     }

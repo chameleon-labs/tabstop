@@ -4,7 +4,7 @@ import { mockRevokeSession } from '../../test/mock-account.js'
 
 const makeSut = () => {
   const revokeSession = mockRevokeSession()
-  const sut = new LogoutController(revokeSession)
+  const sut = new LogoutController(revokeSession, 'sid')
   return { sut, revokeSession }
 }
 

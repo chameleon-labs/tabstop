@@ -7,7 +7,7 @@ const request = { email: 'a@b.co', password: 'correct horse battery staple' }
 const makeSut = () => {
   const validation = mockValidation(request)
   const addAccount = mockAddAccount()
-  const sut = new SignupController(validation, addAccount)
+  const sut = new SignupController(validation, addAccount, 'sid')
   return { sut, validation, addAccount }
 }
 

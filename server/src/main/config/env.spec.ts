@@ -74,12 +74,26 @@ describe('parseEnv', () => {
     expect(parseEnv({ ...validSource, SESSION_COOKIE_SECURE: 'false' }).sessionCookieSecure).toBe(false)
   })
 
-  it('defaults the scrypt cost and session ttl, ignoring nonsense', () => {
+  it('defaults the scrypt cost and session ttl when they are unset', () => {
     expect(parseEnv(validSource).scryptCost).toBe(32768)
     expect(parseEnv(validSource).sessionTtlDays).toBe(30)
-    expect(parseEnv({ ...validSource, SCRYPT_COST: 'nonsense' }).scryptCost).toBe(32768)
-    expect(parseEnv({ ...validSource, SCRYPT_COST: '0' }).scryptCost).toBe(32768)
     expect(parseEnv({ ...validSource, SCRYPT_COST: '16384' }).scryptCost).toBe(16384)
+  })
+
+  it('rejects a set-but-unusable value rather than silently defaulting', () => {
+    // Setting the variable is a statement of intent. Falling back to the
+    // default would turn a deliberate change into a no-op nobody notices.
+    expect(() => parseEnv({ ...validSource, SCRYPT_COST: 'nonsense' })).toThrow('SCRYPT_COST')
+    expect(() => parseEnv({ ...validSource, SCRYPT_COST: '0' })).toThrow('SCRYPT_COST')
+    expect(() => parseEnv({ ...validSource, SESSION_TTL_DAYS: '-1' })).toThrow('SESSION_TTL_DAYS')
+  })
+
+  it('rejects a scrypt cost that is a positive integer but not a usable one', () => {
+    // 20000 is an integer above zero and still makes every hash throw
+    // ERR_CRYPTO_INVALID_SCRYPT_PARAMS: N must be a power of two.
+    expect(() => parseEnv({ ...validSource, SCRYPT_COST: '20000' })).toThrow('power of two')
+    // 262144 is a power of two that exceeds scrypt's memory budget.
+    expect(() => parseEnv({ ...validSource, SCRYPT_COST: '262144' })).toThrow('SCRYPT_COST')
   })
 
   it('throws when REDIS_URL is empty', () => {

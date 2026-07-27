@@ -11,7 +11,8 @@ import type { Validation } from '../../protocols/validation.js'
 export class SignupController implements Controller {
   constructor (
     private readonly validation: Validation<AddAccountParams>,
-    private readonly addAccount: AddAccount
+    private readonly addAccount: AddAccount,
+    private readonly sessionCookieName: string
   ) {}
 
   async handle (request: unknown): Promise<HttpResponse> {
@@ -24,7 +25,7 @@ export class SignupController implements Controller {
       // the race, which the repository turns into the same outcome.
       if (session === null) return conflict(new EmailInUseError())
 
-      return created(toAccountView(session.account), setSessionCookie(session))
+      return created(toAccountView(session.account), setSessionCookie(this.sessionCookieName, session))
     } catch (error) {
       return serverError(error as Error)
     }

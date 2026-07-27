@@ -1,21 +1,28 @@
 import type { AuthenticatedSession } from '../../domain/models/session.js'
 import type { CookieDirective } from '../protocols/http.js'
 
-export const SESSION_COOKIE_NAME = 'sid'
-
 /**
- * expiresAt comes from the persisted session, not from a duration recomputed
- * here, so the cookie and the row can never disagree about when it dies.
+ * The cookie's NAME is injected rather than fixed here, because the name is a
+ * security control: `__Host-` is a prefix browsers refuse to accept unless the
+ * cookie is Secure, Path=/ and carries no Domain. That is what stops a sibling
+ * subdomain setting its own `sid` with `Domain=.example.com` and silently
+ * replacing the victim's session ("cookie tossing"). The prefix cannot be used
+ * over plain http, so the composition root picks the name per environment.
  */
-export const setSessionCookie = (session: AuthenticatedSession): CookieDirective[] => [
+export const setSessionCookie = (
+  name: string,
+  session: AuthenticatedSession
+): CookieDirective[] => [
   {
     action: 'set',
-    name: SESSION_COOKIE_NAME,
+    name,
     value: session.sessionId,
+    // Taken from the persisted session, not a duration recomputed here, so the
+    // cookie and the row cannot disagree about when it dies.
     expiresAt: session.expiresAt
   }
 ]
 
-export const clearSessionCookie = (): CookieDirective[] => [
-  { action: 'clear', name: SESSION_COOKIE_NAME }
+export const clearSessionCookie = (name: string): CookieDirective[] => [
+  { action: 'clear', name }
 ]
