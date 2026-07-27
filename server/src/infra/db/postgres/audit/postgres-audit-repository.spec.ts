@@ -21,8 +21,11 @@ describe('PostgresAuditRepository', () => {
   })
 
   const makePage = async (): Promise<string> => {
+    const user = await db.insertInto('users')
+      .values({ email: `${randomUUID()}@test.test`, password_digest: 'x' })
+      .returning('id').executeTakeFirstOrThrow()
     const site = await db.insertInto('sites')
-      .values({ domain: `${randomUUID()}.test` })
+      .values({ user_id: user.id, domain: `${randomUUID()}.test` })
       .returning('id').executeTakeFirstOrThrow()
     const page = await db.insertInto('pages')
       .values({ site_id: site.id, url: `https://${randomUUID()}.test/a` })

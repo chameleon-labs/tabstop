@@ -15,6 +15,14 @@ export async function setup (): Promise<void> {
     redis = await new RedisContainer('redis:8-alpine').start()
     process.env.REDIS_URL = redis.getConnectionUrl()
 
+    // env.ts parses at module load and throws on anything missing, so every
+    // spec that reaches main/ needs these set before it imports.
+    process.env.FRONTEND_ORIGIN ??= 'http://localhost:5173'
+    process.env.SESSION_COOKIE_SECURE ??= 'false'
+    // scrypt at the production cost is ~89ms per call, which would dominate
+    // the suite. 16384 is the highest cost Node accepts on default maxmem.
+    process.env.SCRYPT_COST ??= '16384'
+
     const db = makeDatabase(connectionString)
     try {
       await runMigrations(db)

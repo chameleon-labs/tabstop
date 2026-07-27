@@ -17,13 +17,13 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-Only the `GET /api/health` slice exists so far, now including a Postgres reachability probe. A BullMQ queue and a separate worker process are also wired up: the worker consumes the `ping` heartbeat queue, and jobs are currently enqueued by the test suite and by hand — nothing in production enqueues one yet. A scheduled producer arrives with cron support. No real job (the audit worker) exists yet. No application tables exist yet — the schema lands with the data model in #4. See `../DECISIONS.md` for stack decisions and `docs/superpowers/specs/` for designs.
+`GET /api/health` (including a Postgres reachability probe) and the account slice — signup, login, logout and `GET /api/me` — exist so far. A BullMQ queue and a separate worker process are also wired up: the worker consumes the `ping` heartbeat queue, and jobs are currently enqueued by the test suite and by hand — nothing in production enqueues one yet. A scheduled producer arrives with cron support. No real job (the audit worker) exists yet. See `../DECISIONS.md` for stack decisions and `docs/superpowers/specs/` for designs.
 
 ## Stack
 
-Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · Vitest + Supertest + Testcontainers · pnpm.
+Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · zod · Vitest + Supertest + Testcontainers · pnpm.
 
-Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no ESLint (`typescript-eslint` doesn't support TS 7 yet), no validation layer — added per-usecase as soon as something real needs them.
+Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no `cookie-parser`, no ESLint (`typescript-eslint` doesn't support TS 7 yet), and no password-hashing or JWT library — `node:crypto` covers both.
 
 ## Conventions
 
@@ -46,7 +46,7 @@ pnpm start          # run built output
 pnpm start:worker      # run built worker
 ```
 
-Copy `.env.example` to `.env` before running. That copy only happens once: if your checkout has an older `.env` predating a variable added to `.env.example` (e.g. `REDIS_URL`), re-diff the two by hand after pulling — nothing will do it for you, and the failure mode is an opaque `... is required but was not set` at startup.
+Copy `.env.example` to `.env` before running. That copy only happens once: if your checkout has an older `.env` predating a variable added to `.env.example` (e.g. `REDIS_URL`, and now `FRONTEND_ORIGIN` and `SESSION_COOKIE_SECURE`), re-diff the two by hand after pulling — nothing will do it for you, and the failure mode is an opaque `... is required but was not set` at startup.
 
 ## Database
 
@@ -82,11 +82,13 @@ await q.close()
 
 ## Schema
 
-Five tables, created by a single migration (`src/infra/db/postgres/migrations/001-initial-schema.ts`):
+Seven tables, across two migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|
-| `sites` | `user_id` is nullable with no FK until accounts land |
+| `users` | `email` is stored lowercased; `alert_threshold` (score points) is read by regression detection |
+| `sessions` | primary key **is** the cookie value; `expires_at` is filtered in SQL so no caller can forget it |
+| `sites` | `unique (user_id, domain)`; deleting a user cascades all the way down |
 | `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
 | `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid` |
 | `violations` | `nodes` is display-only jsonb, never queried across |
@@ -98,3 +100,17 @@ Two rules when working with this schema:
 - **Compare jsonb structurally in tests.** jsonb reorders object keys, so `JSON.stringify` equality fails spuriously.
 
 Specs share one database and run in parallel, so they create `randomUUID()`-suffixed fixtures and never `TRUNCATE`.
+
+## Auth
+
+Sessions are an opaque id — 32 random bytes as hex — in an `httpOnly`, `SameSite=Lax`, host-only cookie backed by the `sessions` table. The cookie is named **`__Host-sid`** wherever `SESSION_COOKIE_SECURE=true`, falling back to `sid` over plain http where the prefix is invalid — so production and local development differ, which matters when debugging. Logout deletes the row, so revocation is real rather than a client-side cookie clear.
+
+Four things to know before touching it:
+
+- **Express 5 writes cookies but cannot read them.** `res.cookie()` is core; `req.cookies` does not exist, because core ships no parser. `main/adapters/cookies.ts` parses the header instead — the session id is hex, so percent-decoding never arises.
+- **Controllers never touch Express.** An `HttpResponse` may carry `cookies: CookieDirective[]` describing what to set or clear; `adaptRoute` applies it and owns `httpOnly`, `sameSite`, `secure` and `path`, so a controller cannot weaken them and there is one place to audit.
+- **`adaptRoute` merges `res.locals` last**, after body, params and query. With it first, a client posts `{"userId": ...}` and impersonates. A spec pins the ordering; reversing the spread fails it.
+- **State-changing requests are origin-checked.** `SameSite=Lax` blocks a cross-*site* form POST, but the app and API share a registrable domain by design, so a sibling host is same-site and its POST would carry the cookie. `sameOrigin` rejects a mismatched `Origin` on POST/PUT/PATCH/DELETE; an absent `Origin` is allowed, since browsers always send it on those methods.
+- **The frontend and API must share a registrable domain** (`app.example.com` and `api.example.com`). `SameSite=Lax` otherwise makes the session a third-party cookie, which Safari blocks outright — login appears to succeed and nothing is ever authenticated. Clients must also send `credentials: 'include'` on every request, and read auth state from `GET /api/me` rather than from storage, since `httpOnly` means JavaScript can never see the cookie.
+
+Passwords use `node:crypto` scrypt with a self-describing digest (`scrypt$N$r$p$salt$key`), so `SCRYPT_COST` can rise later without invalidating stored passwords. The suite lowers the cost — at the production setting each hash is ~89ms and would dominate the run.
