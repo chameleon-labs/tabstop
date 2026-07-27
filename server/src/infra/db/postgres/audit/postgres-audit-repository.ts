@@ -71,12 +71,20 @@ export class PostgresAuditRepository implements
     return row === undefined ? null : toAuditModel(row)
   }
 
-  async markRunning (auditId: string): Promise<void> {
-    await this.db
+  async claimForRun (auditId: string): Promise<boolean> {
+    // Conditional on the current status, so two deliveries racing for the same
+    // audit cannot both proceed and a finished audit cannot be resurrected.
+    // `running` is claimable because a worker that died mid-audit leaves the
+    // row there and that attempt has to be retryable.
+    const claimed = await this.db
       .updateTable('audits')
       .set({ status: 'running' })
       .where('id', '=', auditId)
-      .execute()
+      .where('status', 'in', ['queued', 'running'])
+      .returning('id')
+      .executeTakeFirst()
+
+    return claimed !== undefined
   }
 
   async markDone (auditId: string, result: MarkDoneParams): Promise<void> {

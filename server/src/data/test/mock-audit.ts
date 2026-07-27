@@ -54,7 +54,7 @@ export const mockLoadAuditByIdRepository = () => ({
 })
 
 export const mockAuditStatusRepository = () => ({
-  markRunning: vi.fn<MarkRunningRepository['markRunning']>(async () => { /* no-op */ }),
+  claimForRun: vi.fn<MarkRunningRepository['claimForRun']>(async () => true),
   markDone: vi.fn<MarkDoneRepository['markDone']>(async () => { /* no-op */ }),
   markFailed: vi.fn<MarkFailedRepository['markFailed']>(async () => { /* no-op */ })
 })

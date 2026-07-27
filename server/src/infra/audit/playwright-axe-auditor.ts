@@ -100,7 +100,11 @@ export class PlaywrightAxeAuditor implements PageAuditor {
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
     // otherwise the work carries on unattended with a live Chromium behind it.
-    const abort = (): void => { void context.close() }
+    // `void` discards the value, NOT the rejection. If the browser has already
+    // crashed, close() rejects and Node treats an unhandled rejection as fatal
+    // - killing the worker instead of letting the job be retried. The awaited
+    // close in `finally` is what reports a genuine cleanup failure.
+    const abort = (): void => { void context.close().catch(() => undefined) }
     signal.addEventListener('abort', abort, { once: true })
 
     try {
@@ -111,9 +115,11 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       signal.throwIfAborted()
 
       const page = await context.newPage()
-      // An alert() blocks navigation until something answers it.
-      page.on('dialog', (dialog) => { void dialog.dismiss() })
-      context.on('page', (popup) => { void popup.close() })
+      // An alert() blocks navigation until something answers it. Both of these
+      // race with teardown - the page can be gone by the time they fire - so
+      // their rejections are swallowed rather than left to kill the process.
+      page.on('dialog', (dialog) => { void dialog.dismiss().catch(() => undefined) })
+      context.on('page', (popup) => { void popup.close().catch(() => undefined) })
 
       await page.goto(url, {
         waitUntil: 'domcontentloaded',

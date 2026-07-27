@@ -109,12 +109,52 @@ describe('PostgresAuditRepository', () => {
     const load = async (id: string) =>
       await db.selectFrom('audits').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
 
-    it('marks an audit running', async () => {
+    it('claims a queued audit', async () => {
       const id = await makeQueuedAudit()
 
-      await sut.markRunning(id)
-
+      expect(await sut.claimForRun(id)).toBe(true)
       expect((await load(id)).status).toBe('running')
+    })
+
+    it('claims an audit left running by a worker that died mid-audit', async () => {
+      const id = await makeQueuedAudit()
+      await sut.claimForRun(id)
+
+      expect(await sut.claimForRun(id)).toBe(true)
+    })
+
+    it('refuses to resurrect an audit that already finished', async () => {
+      // Two deliveries can race: one finishes while the other is between
+      // reading the row and claiming it. A plain update would put a completed
+      // audit back into `running` and let a later run overwrite its result.
+      for (const finish of ['done', 'failed'] as const) {
+        const id = await makeQueuedAudit()
+        if (finish === 'done') {
+          await sut.markDone(id, {
+            countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+            axeVersion: '4.12.1', durationMs: 1, settled: true
+          })
+        } else {
+          await sut.markFailed(id, 'Could not resolve that domain')
+        }
+
+        expect(await sut.claimForRun(id)).toBe(false)
+        expect((await load(id)).status).toBe(finish)
+      }
+    })
+
+    it('lets exactly one of several concurrent deliveries claim the audit', async () => {
+      const id = await makeQueuedAudit()
+      await sut.markDone(id, {
+        countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+        axeVersion: '4.12.1', durationMs: 1, settled: true
+      })
+
+      const claims = await Promise.all([
+        sut.claimForRun(id), sut.claimForRun(id), sut.claimForRun(id)
+      ])
+
+      expect(claims).toEqual([false, false, false])
     })
 
     it('marks an audit done with counts, version, duration and settled', async () => {

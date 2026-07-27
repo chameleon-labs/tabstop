@@ -47,12 +47,13 @@ export class DbRunAudit implements RunAudit {
     if (audit === null) throw new PermanentAuditError(`Audit ${auditId} no longer exists`)
 
     // A queue redelivers - after a lost acknowledgement, or a process that
-    // died between finishing the work and reporting it. Re-running a finished
-    // audit would overwrite a completed result with a second, differently-timed
-    // one, so an audit that already reached a terminal state is left alone.
-    if (audit.status === 'done' || audit.status === 'failed') return
-
-    await this.auditStatusRepository.markRunning(auditId)
+    // died between finishing the work and reporting it. Claiming is a single
+    // conditional update rather than a check followed by a write: between
+    // reading the row above and claiming it, another delivery can finish the
+    // same audit, and a plain update would then resurrect it into `running`
+    // and overwrite the completed result with a second, later one.
+    const claimed = await this.auditStatusRepository.claimForRun(auditId)
+    if (!claimed) return
 
     try {
       const result = await this.pageAuditor.audit(audit.url, signal)

@@ -29,7 +29,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markRunning).toHaveBeenCalledWith('audit-1')
+    expect(auditStatus.claimForRun).toHaveBeenCalledWith('audit-1')
     expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', expect.any(Array))
     expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', {
       // counted per NODE, not per rule: two alt-less images are two problems
@@ -147,20 +147,18 @@ describe('DbRunAudit', () => {
     await expect(sut.run(params())).rejects.toBe(original)
   })
 
-  it('skips an audit that already reached a terminal state', async () => {
-    // The queue redelivers after a lost acknowledgement. Re-running a finished
-    // audit would overwrite a completed result with a second, differently-timed
-    // one - and re-insert its violations.
-    for (const status of ['done', 'failed'] as const) {
-      const { sut, loadAudit, auditStatus, violations, pageAuditor } = makeSut()
-      loadAudit.loadById.mockResolvedValueOnce({ ...mockAuditModel(), status })
+  it('does nothing when the audit could not be claimed', async () => {
+    // The claim is the only thing that decides this, because another delivery
+    // can finish the audit between the read above and the claim itself.
+    const { sut, auditStatus, violations, pageAuditor } = makeSut()
+    auditStatus.claimForRun.mockResolvedValueOnce(false)
 
-      await sut.run(params())
+    await sut.run(params())
 
-      expect(pageAuditor.audit).not.toHaveBeenCalled()
-      expect(auditStatus.markRunning).not.toHaveBeenCalled()
-      expect(violations.replaceAll).not.toHaveBeenCalled()
-    }
+    expect(pageAuditor.audit).not.toHaveBeenCalled()
+    expect(violations.replaceAll).not.toHaveBeenCalled()
+    expect(auditStatus.markDone).not.toHaveBeenCalled()
+    expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
   it('runs an audit that was left in running by an earlier crash', async () => {
@@ -177,6 +175,6 @@ describe('DbRunAudit', () => {
     loadAudit.loadById.mockResolvedValueOnce(null)
 
     await expect(sut.run(params())).rejects.toThrow(PermanentAuditError)
-    expect(auditStatus.markRunning).not.toHaveBeenCalled()
+    expect(auditStatus.claimForRun).not.toHaveBeenCalled()
   })
 })
