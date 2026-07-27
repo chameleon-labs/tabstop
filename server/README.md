@@ -21,7 +21,7 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Stack
 
-Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · zod · Playwright + axe-core · Vitest + Supertest + Testcontainers · pnpm.
+Express 5 · TypeScript 7 (ES2024) · Kysely + Postgres · BullMQ + Redis · zod · Playwright + axe-core · Vitest + Supertest + Testcontainers · pnpm.
 
 Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no `cookie-parser`, no ESLint (`typescript-eslint` doesn't support TS 7 yet), and no password-hashing or JWT library — `node:crypto` covers both.
 
