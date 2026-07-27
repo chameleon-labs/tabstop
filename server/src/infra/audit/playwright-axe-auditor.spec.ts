@@ -50,6 +50,23 @@ describe('PlaywrightAxeAuditor', () => {
     expect(Array.isArray(node?.target)).toBe(true)
   })
 
+  it('flattens a shadow-DOM selector rather than storing a nested array', async () => {
+    // axe hands back [["#host","input"]] for a node inside a shadow root. The
+    // protocol claims string[], so without flattening the annotation would be
+    // a runtime lie and any consumer doing string work on an entry would break.
+    const result = await sut.audit(`${server.baseUrl}/shadow`, signal())
+
+    const targets = result.violations.flatMap((violation) =>
+      violation.nodes.map((node) => node.target))
+    expect(targets.length).toBeGreaterThan(0)
+    for (const target of targets) {
+      for (const entry of target) {
+        expect(typeof entry).toBe('string')
+      }
+    }
+    expect(targets.some((target) => target.some((entry) => entry.includes('>>>')))).toBe(true)
+  })
+
   it('reports only impacts the database will accept', async () => {
     const result = await sut.audit(server.baseUrl, signal())
 

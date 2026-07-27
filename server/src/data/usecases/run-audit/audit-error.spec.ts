@@ -27,6 +27,12 @@ describe('classifyAuditError', () => {
     ['a Content Security Policy blocking the engine',
       new Error('page.addScriptTag: Executing inline script violates the following Content Security Policy'),
       true, 'Could not run the accessibility engine on this page'],
+    ['a browser that closed mid-evaluate',
+      new Error('page.evaluate: Target page, context or browser has been closed'),
+      false, 'Something went wrong running this audit'],
+    ['a launch timeout on an unhealthy host',
+      named('TimeoutError', 'browserType.launch: Timeout 30000ms exceeded.'),
+      false, 'Something went wrong running this audit'],
     ['a closed or crashed browser',
       new Error('browserType.launch: Target page, context or browser has been closed'),
       false, 'Something went wrong running this audit'],
@@ -52,6 +58,24 @@ describe('classifyAuditError', () => {
 
     expect(error.constructor.name).toBe('TimeoutError2')
     expect(classifyAuditError(error).permanent).toBe(true)
+  })
+
+  it('does not let a crash disguised as an engine failure become permanent', () => {
+    // "page.evaluate: ..." is how a mid-run browser crash surfaces, and the
+    // engine-failure pattern matches that prefix. Classifying it permanent
+    // would make a deliberately retryable failure unretryable.
+    expect(classifyAuditError(
+      new Error('page.evaluate: Target page, context or browser has been closed')
+    ).permanent).toBe(false)
+  })
+
+  it('keeps a launch timeout retryable, unlike a navigation timeout', () => {
+    // Both carry error.name === 'TimeoutError'. Only one is the page's fault.
+    const launch = named('TimeoutError', 'browserType.launch: Timeout 30000ms exceeded.')
+    const navigation = named('TimeoutError', 'page.goto: Timeout 20000ms exceeded.')
+
+    expect(classifyAuditError(launch).permanent).toBe(false)
+    expect(classifyAuditError(navigation).permanent).toBe(true)
   })
 
   it('treats a thrown non-Error as transient rather than throwing itself', () => {

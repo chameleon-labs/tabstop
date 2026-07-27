@@ -9,8 +9,10 @@ export interface MarkRunningRepository {
    * terminal audit back into `running` and its result would be overwritten by
    * a second, later run.
    *
-   * Claiming from `running` is deliberate: a worker that died mid-audit leaves
-   * the row there, and that attempt must be retryable.
+   * A `running` audit is claimable only once its claim has gone stale. Status
+   * alone cannot tell "another worker is running this right now" from "a
+   * worker died and left it here", and those need opposite answers - so the
+   * claim carries a lease, and a live one excludes every other delivery.
    */
   claimForRun: (auditId: string) => Promise<boolean>
 }

@@ -69,6 +69,8 @@ export interface AuditsTable {
   completed_at: Nullable<Date>
   /** False when the page never reached network idle and was audited anyway. */
   settled: Generated<boolean>
+  /** When the current attempt claimed this audit. Null before any attempt. */
+  claimed_at: Nullable<Date>
 }
 
 export interface ViolationsTable {

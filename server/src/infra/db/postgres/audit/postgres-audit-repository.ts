@@ -28,6 +28,13 @@ import { toAuditModel } from './audit-mapper.js'
 // `| null`, which the database's own type checking would otherwise break.
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * How long a claim is honoured before another delivery may take the audit.
+ * Comfortably above the job budget plus its unwind grace, so a slow-but-alive
+ * attempt is never stolen from.
+ */
+const DEFAULT_STALE_CLAIM_AFTER_MS = 10 * 60_000
+
 export class PostgresAuditRepository implements
   AddAuditRepository,
   LoadAuditByPublicUuidRepository,
@@ -35,7 +42,10 @@ export class PostgresAuditRepository implements
   MarkRunningRepository,
   MarkDoneRepository,
   MarkFailedRepository {
-  constructor (private readonly db: Kysely<Database>) {}
+  constructor (
+    private readonly db: Kysely<Database>,
+    private readonly staleClaimAfterMs: number = DEFAULT_STALE_CLAIM_AFTER_MS
+  ) {}
 
   async add (params: AddAuditParams): Promise<AuditModel> {
     // score, axe_version, duration_ms, error and completed_at are omitted
@@ -72,15 +82,31 @@ export class PostgresAuditRepository implements
   }
 
   async claimForRun (auditId: string): Promise<boolean> {
-    // Conditional on the current status, so two deliveries racing for the same
-    // audit cannot both proceed and a finished audit cannot be resurrected.
-    // `running` is claimable because a worker that died mid-audit leaves the
-    // row there and that attempt has to be retryable.
+    // Status alone is not mutual exclusion. Under READ COMMITTED a second
+    // delivery re-evaluates this predicate after the first commits, so
+    // `status in ('queued','running')` would still match the row the first
+    // one just claimed - and both would run Chromium against the same audit,
+    // then overwrite each other's metadata.
+    //
+    // The lease is what makes it exclusive: a claim younger than
+    // staleClaimAfterMs excludes everyone else, while an older one is assumed
+    // to belong to a worker that died and is reclaimable.
+    const staleBefore = new Date(Date.now() - this.staleClaimAfterMs)
+
     const claimed = await this.db
       .updateTable('audits')
-      .set({ status: 'running' })
+      .set({ status: 'running', claimed_at: new Date() })
       .where('id', '=', auditId)
-      .where('status', 'in', ['queued', 'running'])
+      .where((eb) => eb.or([
+        eb('status', '=', 'queued'),
+        eb.and([
+          eb('status', '=', 'running'),
+          eb.or([
+            eb('claimed_at', 'is', null),
+            eb('claimed_at', '<', staleBefore)
+          ])
+        ])
+      ]))
       .returning('id')
       .executeTakeFirst()
 

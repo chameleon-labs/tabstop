@@ -116,11 +116,39 @@ describe('PostgresAuditRepository', () => {
       expect((await load(id)).status).toBe('running')
     })
 
-    it('claims an audit left running by a worker that died mid-audit', async () => {
+    it('refuses a second claim while the first is still live', async () => {
+      // Status alone is not exclusion: under READ COMMITTED the second
+      // delivery re-checks the predicate after the first commits, and would
+      // match the row the first just claimed. The lease is what excludes it.
       const id = await makeQueuedAudit()
       await sut.claimForRun(id)
 
+      expect(await sut.claimForRun(id)).toBe(false)
+    })
+
+    it('reclaims an audit whose worker died and left the claim stale', async () => {
+      const id = await makeQueuedAudit()
+      await sut.claimForRun(id)
+
+      // Age the claim rather than shortening the lease: a zero-length lease
+      // compares two clock reads that can land in the same millisecond, which
+      // makes the test flaky. Writing an old timestamp exercises the real
+      // production lease and is deterministic.
+      await db.updateTable('audits')
+        .set({ claimed_at: new Date(Date.now() - 60 * 60_000) })
+        .where('id', '=', id).execute()
+
       expect(await sut.claimForRun(id)).toBe(true)
+    })
+
+    it('lets exactly one of several concurrent deliveries claim a queued audit', async () => {
+      const id = await makeQueuedAudit()
+
+      const claims = await Promise.all([
+        sut.claimForRun(id), sut.claimForRun(id), sut.claimForRun(id)
+      ])
+
+      expect(claims.filter(Boolean)).toHaveLength(1)
     })
 
     it('refuses to resurrect an audit that already finished', async () => {
@@ -143,7 +171,7 @@ describe('PostgresAuditRepository', () => {
       }
     })
 
-    it('lets exactly one of several concurrent deliveries claim the audit', async () => {
+    it('refuses every concurrent delivery once the audit has finished', async () => {
       const id = await makeQueuedAudit()
       await sut.markDone(id, {
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },

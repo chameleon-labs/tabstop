@@ -161,7 +161,7 @@ export class PlaywrightAxeAuditor implements PageAuditor {
                 impact: string | null
                 description: string
                 helpUrl: string
-                nodes: Array<{ target: string[], html: string }>
+                nodes: Array<{ target: Array<string | string[]>, html: string }>
               }>
             }>
           }
@@ -178,7 +178,18 @@ export class PlaywrightAxeAuditor implements PageAuditor {
             impact: violation.impact,
             description: violation.description,
             helpUrl: violation.helpUrl,
-            nodes: violation.nodes.map((node) => ({ target: node.target, html: node.html }))
+            nodes: violation.nodes.map((node) => ({
+              // axe does not always hand back a flat list of selectors: a
+              // node inside shadow DOM arrives as a NESTED array, verified as
+              // [["#host","img"]]. Flattening here keeps `string[]` true all
+              // the way down rather than storing a shape the type denies, and
+              // ' >>> ' is Playwright's own shadow-piercing notation, so the
+              // result still reads as a selector path.
+              target: node.target.map(
+                (entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry
+              ),
+              html: node.html
+            }))
           }))
         }
       })

@@ -18,6 +18,7 @@ const makeRow = (overrides: Partial<Selectable<AuditsTable>> = {}): Selectable<A
   created_at: new Date('2026-07-26T10:00:00Z'),
   completed_at: new Date('2026-07-26T10:00:30Z'),
   settled: true,
+  claimed_at: null,
   ...overrides
 })
 

@@ -25,6 +25,23 @@ const NEVER_IDLE_PAGE = `<!doctype html>
   <script>setInterval(function () { fetch('/slow').catch(function () {}) }, 200)</script>
 </main></body></html>`
 
+/**
+ * A violation inside a shadow root. axe reports its target as a NESTED array -
+ * verified as [["#host","input"]] - which is the case the flat `string[]`
+ * annotation would otherwise be lying about.
+ */
+const SHADOW_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shadow</title></head>
+<body><main>
+  <h1>Shadow fixture</h1>
+  <div id="host"></div>
+  <script>
+    document.getElementById('host')
+      .attachShadow({ mode: 'open' })
+      .innerHTML = '<input type="text">'
+  </script>
+</main></body></html>`
+
 export type FixtureServer = {
   baseUrl: string
   close: () => Promise<void>
@@ -38,6 +55,12 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     if (request.url === '/never-idle') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(NEVER_IDLE_PAGE)
+      return
+    }
+
+    if (request.url === '/shadow') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(SHADOW_PAGE)
       return
     }
 

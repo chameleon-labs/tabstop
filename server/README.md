@@ -101,7 +101,7 @@ Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300
 
 ## Schema
 
-Seven tables, across four migrations in `src/infra/db/postgres/migrations/`:
+Seven tables, across five migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|
@@ -109,7 +109,7 @@ Seven tables, across four migrations in `src/infra/db/postgres/migrations/`:
 | `sessions` | primary key **is** the cookie value; `expires_at` is filtered in SQL so no caller can forget it |
 | `sites` | `unique (user_id, domain)`; deleting a user cascades all the way down |
 | `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
-| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `settled` false means the page never finished loading, so treat the result as provisional |
+| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker |
 | `violations` | `nodes` is display-only jsonb, never queried across; `impact` is nullable, because axe reports violations with no severity and dropping them would hide real findings |
 | `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
 
