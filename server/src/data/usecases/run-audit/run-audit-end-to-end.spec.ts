@@ -145,16 +145,46 @@ describe('run-audit end to end', () => {
     expect(audit.completed_at).toBeInstanceOf(Date)
   }, 60_000)
 
-  it('leaves an audit running when a transient failure still has attempts left', async () => {
-    // A row that flapped to `failed` here would tell the user their audit had
-    // finished while the queue was still retrying it.
+  it('hands the audit back after a retryable failure, and the retry completes it', async () => {
+    // The regression this pins, end to end and against the real repository: a
+    // retryable failure writes no terminal status, so if the claim were kept
+    // the row would sit in `running` holding a live lease. The queue's retry
+    // arrives seconds later, far inside a ten minute lease, fails to claim,
+    // finds nothing to do, reports success - and the audit is stranded in
+    // `running` for ever, with no result and no error.
     const auditId = await queueAudit(server.baseUrl)
     const aborted = new AbortController()
     aborted.abort()
 
+    // Attempt 1: fails transiently, with attempts still remaining.
     await expect(sut.run({ auditId, signal: aborted.signal, isFinalAttempt: false }))
       .rejects.toThrow()
 
-    expect((await load(auditId)).status).toBe('running')
+    const betweenAttempts = await load(auditId)
+    expect(betweenAttempts.status).toBe('queued')
+    expect(betweenAttempts.claimed_at).toBeNull()
+
+    // Attempt 2: the queue's retry, which must be able to claim and finish.
+    await sut.run(params(auditId))
+
+    const finished = await load(auditId)
+    expect(finished.status).toBe('done')
+    expect(finished.completed_at).toBeInstanceOf(Date)
+    expect(
+      await db.selectFrom('violations').select('id').where('audit_id', '=', auditId).execute()
+    ).not.toHaveLength(0)
+  }, 60_000)
+
+  it('keeps a permanently failed audit terminal rather than releasing it', async () => {
+    const auditId = await queueAudit('http://127.0.0.1:45999/')
+
+    await expect(sut.run(params(auditId))).rejects.toThrow(PermanentAuditError)
+
+    const failed = await load(auditId)
+    expect(failed.status).toBe('failed')
+    // A released claim here would invite another delivery to re-run a
+    // finished audit.
+    expect(await sut.run(params(auditId))).toBeUndefined()
+    expect((await load(auditId)).status).toBe('failed')
   }, 60_000)
 })

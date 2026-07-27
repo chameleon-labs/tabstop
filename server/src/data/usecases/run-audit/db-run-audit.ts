@@ -52,8 +52,8 @@ export class DbRunAudit implements RunAudit {
     // reading the row above and claiming it, another delivery can finish the
     // same audit, and a plain update would then resurrect it into `running`
     // and overwrite the completed result with a second, later one.
-    const claimed = await this.auditStatusRepository.claimForRun(auditId)
-    if (!claimed) return
+    const claimedAt = await this.auditStatusRepository.claimForRun(auditId)
+    if (claimedAt === null) return
 
     try {
       const result = await this.pageAuditor.audit(audit.url, signal)
@@ -77,6 +77,13 @@ export class DbRunAudit implements RunAudit {
       // the queue is still working on it.
       if (failure.permanent || isFinalAttempt) {
         await this.auditStatusRepository.markFailed(auditId, failure.message)
+      } else {
+        // Retryable, and no terminal status was written - so the claim has to
+        // go back. Holding it would leave the row `running` with a live lease
+        // that the queue's own retry, arriving seconds later, could not claim:
+        // that attempt would find nothing to do, report success, and strand
+        // the audit in `running` permanently.
+        await this.auditStatusRepository.releaseClaim(auditId, claimedAt)
       }
 
       if (failure.permanent) throw new PermanentAuditError(failure.message)

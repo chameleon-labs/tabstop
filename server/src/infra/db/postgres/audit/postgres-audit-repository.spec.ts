@@ -112,7 +112,7 @@ describe('PostgresAuditRepository', () => {
     it('claims a queued audit', async () => {
       const id = await makeQueuedAudit()
 
-      expect(await sut.claimForRun(id)).toBe(true)
+      expect(await sut.claimForRun(id)).toBeInstanceOf(Date)
       expect((await load(id)).status).toBe('running')
     })
 
@@ -123,7 +123,7 @@ describe('PostgresAuditRepository', () => {
       const id = await makeQueuedAudit()
       await sut.claimForRun(id)
 
-      expect(await sut.claimForRun(id)).toBe(false)
+      expect(await sut.claimForRun(id)).toBeNull()
     })
 
     it('reclaims an audit whose worker died and left the claim stale', async () => {
@@ -138,7 +138,7 @@ describe('PostgresAuditRepository', () => {
         .set({ claimed_at: new Date(Date.now() - 60 * 60_000) })
         .where('id', '=', id).execute()
 
-      expect(await sut.claimForRun(id)).toBe(true)
+      expect(await sut.claimForRun(id)).toBeInstanceOf(Date)
     })
 
     it('lets exactly one of several concurrent deliveries claim a queued audit', async () => {
@@ -148,7 +148,7 @@ describe('PostgresAuditRepository', () => {
         sut.claimForRun(id), sut.claimForRun(id), sut.claimForRun(id)
       ])
 
-      expect(claims.filter(Boolean)).toHaveLength(1)
+      expect(claims.filter((claim) => claim !== null)).toHaveLength(1)
     })
 
     it('refuses to resurrect an audit that already finished', async () => {
@@ -166,7 +166,7 @@ describe('PostgresAuditRepository', () => {
           await sut.markFailed(id, 'Could not resolve that domain')
         }
 
-        expect(await sut.claimForRun(id)).toBe(false)
+        expect(await sut.claimForRun(id)).toBeNull()
         expect((await load(id)).status).toBe(finish)
       }
     })
@@ -182,7 +182,46 @@ describe('PostgresAuditRepository', () => {
         sut.claimForRun(id), sut.claimForRun(id), sut.claimForRun(id)
       ])
 
-      expect(claims).toEqual([false, false, false])
+      expect(claims).toEqual([null, null, null])
+    })
+
+    it('lets the next attempt claim once the previous one released', async () => {
+      // The regression this pins: a retryable failure writes no terminal
+      // status, so without a release the row keeps a live lease and the retry
+      // - which arrives seconds later - can never claim it.
+      const id = await makeQueuedAudit()
+      const claimedAt = await sut.claimForRun(id)
+      if (claimedAt === null) throw new Error('fixture failed to claim')
+
+      await sut.releaseClaim(id, claimedAt)
+
+      expect((await load(id)).status).toBe('queued')
+      expect(await sut.claimForRun(id)).toBeInstanceOf(Date)
+    })
+
+    it('ignores a release from an attempt that no longer holds the claim', async () => {
+      const id = await makeQueuedAudit()
+      const stale = await sut.claimForRun(id)
+      if (stale === null) throw new Error('fixture failed to claim')
+      await sut.releaseClaim(id, stale)
+      const current = await sut.claimForRun(id)
+
+      // The superseded attempt tries to release the claim it used to hold.
+      await sut.releaseClaim(id, stale)
+
+      expect(current).toBeInstanceOf(Date)
+      expect((await load(id)).status).toBe('running')
+    })
+
+    it('refuses to drag a finished audit back to queued', async () => {
+      const id = await makeQueuedAudit()
+      const claimedAt = await sut.claimForRun(id)
+      if (claimedAt === null) throw new Error('fixture failed to claim')
+      await sut.markFailed(id, 'Could not resolve that domain')
+
+      await sut.releaseClaim(id, claimedAt)
+
+      expect((await load(id)).status).toBe('failed')
     })
 
     it('marks an audit done with counts, version, duration and settled', async () => {

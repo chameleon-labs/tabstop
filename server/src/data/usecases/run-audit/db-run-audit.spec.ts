@@ -130,6 +130,33 @@ describe('DbRunAudit', () => {
     expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
+  it('hands the claim back when a transient failure will be retried', async () => {
+    // Without this the row sits in `running` holding a live lease, and the
+    // queue's retry - arriving seconds later, far inside a ten minute lease -
+    // cannot claim it. That attempt finds nothing to do, reports success, and
+    // the audit is stranded in `running` for good.
+    const { sut, auditStatus, pageAuditor } = makeSut()
+    pageAuditor.audit.mockRejectedValueOnce(new Error('some transient blip'))
+
+    await expect(sut.run(params({ isFinalAttempt: false }))).rejects.toThrow('some transient blip')
+
+    expect(auditStatus.releaseClaim)
+      .toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'))
+  })
+
+  it('keeps the claim when a permanent failure ends the audit', async () => {
+    // Nothing will retry it, and the row is terminal, so handing the claim
+    // back would only invite another delivery to re-run a finished audit.
+    const { sut, auditStatus, pageAuditor } = makeSut()
+    pageAuditor.audit.mockRejectedValueOnce(
+      new Error('page.goto: net::ERR_NAME_NOT_RESOLVED at http://x/')
+    )
+
+    await expect(sut.run(params())).rejects.toThrow(PermanentAuditError)
+
+    expect(auditStatus.releaseClaim).not.toHaveBeenCalled()
+  })
+
   it('marks failed for a transient failure on the final attempt', async () => {
     const { sut, auditStatus, pageAuditor } = makeSut()
     pageAuditor.audit.mockRejectedValueOnce(new Error('some transient blip'))
@@ -137,6 +164,8 @@ describe('DbRunAudit', () => {
     await expect(sut.run(params({ isFinalAttempt: true }))).rejects.toThrow('some transient blip')
     expect(auditStatus.markFailed)
       .toHaveBeenCalledWith('audit-1', 'Something went wrong running this audit')
+    // Terminal, so there is nothing to hand back.
+    expect(auditStatus.releaseClaim).not.toHaveBeenCalled()
   })
 
   it('rethrows a transient failure unchanged, so the queue can retry it', async () => {
@@ -151,7 +180,7 @@ describe('DbRunAudit', () => {
     // The claim is the only thing that decides this, because another delivery
     // can finish the audit between the read above and the claim itself.
     const { sut, auditStatus, violations, pageAuditor } = makeSut()
-    auditStatus.claimForRun.mockResolvedValueOnce(false)
+    auditStatus.claimForRun.mockResolvedValueOnce(null)
 
     await sut.run(params())
 

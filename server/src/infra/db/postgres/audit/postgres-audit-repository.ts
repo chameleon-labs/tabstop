@@ -81,7 +81,7 @@ export class PostgresAuditRepository implements
     return row === undefined ? null : toAuditModel(row)
   }
 
-  async claimForRun (auditId: string): Promise<boolean> {
+  async claimForRun (auditId: string): Promise<Date | null> {
     // Status alone is not mutual exclusion. Under READ COMMITTED a second
     // delivery re-evaluates this predicate after the first commits, so
     // `status in ('queued','running')` would still match the row the first
@@ -92,10 +92,12 @@ export class PostgresAuditRepository implements
     // staleClaimAfterMs excludes everyone else, while an older one is assumed
     // to belong to a worker that died and is reclaimable.
     const staleBefore = new Date(Date.now() - this.staleClaimAfterMs)
+    // Kept rather than read back, so it can serve as this attempt's fence.
+    const claimedAt = new Date()
 
     const claimed = await this.db
       .updateTable('audits')
-      .set({ status: 'running', claimed_at: new Date() })
+      .set({ status: 'running', claimed_at: claimedAt })
       .where('id', '=', auditId)
       .where((eb) => eb.or([
         eb('status', '=', 'queued'),
@@ -110,7 +112,20 @@ export class PostgresAuditRepository implements
       .returning('id')
       .executeTakeFirst()
 
-    return claimed !== undefined
+    return claimed === undefined ? null : claimedAt
+  }
+
+  async releaseClaim (auditId: string, claimedAt: Date): Promise<void> {
+    // Fenced on both the status and the exact claim: an attempt that has
+    // already been superseded must not hand back a claim another attempt now
+    // holds, and a finished audit must never be dragged back to `queued`.
+    await this.db
+      .updateTable('audits')
+      .set({ status: 'queued', claimed_at: null })
+      .where('id', '=', auditId)
+      .where('status', '=', 'running')
+      .where('claimed_at', '=', claimedAt)
+      .execute()
   }
 
   async markDone (auditId: string, result: MarkDoneParams): Promise<void> {
