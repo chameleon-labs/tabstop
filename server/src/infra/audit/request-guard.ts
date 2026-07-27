@@ -30,7 +30,13 @@ export type RouteLike = {
     isNavigationRequest: () => boolean
     method: () => string
     headers: () => Record<string, string>
-    postData: () => string | null
+    /**
+     * The BUFFER, not postData(): that decodes as UTF-8, which corrupts binary
+     * bodies and multipart uploads carrying arbitrary file bytes. Every
+     * request passes through here now, so replaying a mangled body is not a
+     * corner case.
+     */
+    postDataBuffer: () => Buffer | null
   }
   abort: (errorCode: string) => Promise<void>
   fetch: (options: {
@@ -38,9 +44,14 @@ export type RouteLike = {
     method: string
     headers: Record<string, string>
     maxRedirects: number
-    data?: string
+    data?: Buffer
   }) => Promise<FetchedResponse>
-  fulfill: (options: { response: FetchedResponse }) => Promise<void>
+  fulfill: (options: {
+    response?: FetchedResponse
+    status?: number
+    headers?: Record<string, string>
+    body?: string
+  }) => Promise<void>
   continue: () => Promise<void>
 }
 
@@ -62,7 +73,7 @@ const METHOD_PRESERVING_REDIRECTS = new Set([307, 308])
  */
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
-type Attempt = { url: string, method: string, headers: Record<string, string>, data?: string }
+type Attempt = { url: string, method: string, headers: Record<string, string>, data?: Buffer }
 
 const followRedirect = (attempt: Attempt, status: number, url: string): Attempt => {
   if (METHOD_PRESERVING_REDIRECTS.has(status)) return { ...attempt, url }
@@ -145,9 +156,10 @@ export const makeRequestGuard = (
     // private response in the page. Walking the chain by hand is what makes
     // every hop checkable, and it makes the cap countable too, which
     // page.goto does not otherwise expose.
-    const body = request.postData()
+    const body = request.postDataBuffer()
+    const originalUrl = request.url()
     let attempt: Attempt = {
-      url: request.url(),
+      url: originalUrl,
       method: request.method(),
       headers: request.headers(),
       ...(body === null ? {} : { data: body })
@@ -164,7 +176,28 @@ export const makeRequestGuard = (
       }
 
       const status = response.status()
-      if (!REDIRECT_STATUSES.has(status)) return await fulfilAndDispose(route, response)
+      if (!REDIRECT_STATUSES.has(status)) {
+        // The chain ended here. If it never moved, serve what we fetched.
+        if (attempt.url === originalUrl) return await fulfilAndDispose(route, response)
+
+        // It DID move, and fulfilling this body against the original request
+        // would collapse the chain: Playwright copies status, headers and body
+        // onto the FIRST url, so Chromium keeps the document at the start
+        // address. Measured - `/start` redirecting to `/dir/page` left the
+        // page at `/start`, resolved `<img src="asset.png">` to `/asset.png`
+        // (a 404), and ran the target's content under the start origin.
+        //
+        // So hand the browser a redirect to the final url instead and let it
+        // own the document. Every hop has already been checked on the way
+        // here; the cost is that the final url is fetched once more, by the
+        // browser, which for a page audit is a repeated GET.
+        await response.dispose()
+        return await route.fulfill({
+          status: 302,
+          headers: { location: attempt.url },
+          body: ''
+        })
+      }
 
       const location = response.headers().location
       if (location === undefined) return await fulfilAndDispose(route, response)

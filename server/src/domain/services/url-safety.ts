@@ -42,6 +42,17 @@ blocked.addSubnet('64:ff9b::', 96, 'ipv6')
 // translator routes 64:ff9b:1::a00:1 to 10.0.0.1. Verified as allowed before
 // this line existed.
 blocked.addSubnet('64:ff9b:1::', 48, 'ipv6')
+// The rest of IANA's non-global IPv6 space. Not globally routable, which is
+// exactly why they are reachable inside an operator's network - and Teredo,
+// like 6to4, embeds an IPv4 address, so it can name a private host outright.
+blocked.addSubnet('100::', 64, 'ipv6')      // discard-only
+blocked.addSubnet('2001::', 32, 'ipv6')     // Teredo, embeds IPv4
+blocked.addSubnet('2001:2::', 48, 'ipv6')   // benchmarking
+blocked.addSubnet('2001:10::', 28, 'ipv6')  // ORCHID, deprecated
+blocked.addSubnet('2001:20::', 28, 'ipv6')  // ORCHIDv2
+blocked.addSubnet('2001:db8::', 32, 'ipv6') // documentation
+blocked.addSubnet('3fff::', 20, 'ipv6')     // documentation
+blocked.addSubnet('5f00::', 16, 'ipv6')     // segment routing
 
 /**
  * node:net's BlockList is used rather than hand-rolled CIDR arithmetic, which

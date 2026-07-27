@@ -8,7 +8,7 @@ const response = (status: number, headers: Record<string, string> = {}): Fetched
   dispose: vi.fn(async () => { /* no-op */ })
 })
 
-type Attempted = { url: string, method: string, headers: Record<string, string>, data?: string }
+type Attempted = { url: string, method: string, headers: Record<string, string>, data?: Buffer }
 
 const makeRoute = (url: string, options: {
   navigation?: boolean
@@ -16,6 +16,7 @@ const makeRoute = (url: string, options: {
   method?: string
   headers?: Record<string, string>
   postData?: string | null
+  binaryBody?: Buffer
 } = {}) => {
   const responses = options.responses ?? [response(200)]
   let served = 0
@@ -28,7 +29,10 @@ const makeRoute = (url: string, options: {
       isNavigationRequest: () => options.navigation ?? true,
       method: () => options.method ?? 'GET',
       headers: () => options.headers ?? {},
-      postData: () => options.postData ?? null
+      postDataBuffer: () => options.binaryBody ??
+        (options.postData === undefined || options.postData === null
+          ? null
+          : Buffer.from(options.postData))
     }),
     abort: vi.fn(async (_errorCode: string) => { /* no-op */ }),
     fetch: vi.fn(async (attempt: Attempted & { maxRedirects: number }) => {
@@ -181,7 +185,7 @@ describe('makeRequestGuard', () => {
       await guard(route as unknown as RouteLike)
 
       expect(attempts[0]?.method).toBe('POST')
-      expect(attempts[0]?.data).toBe('name=value')
+      expect(attempts[0]?.data?.toString()).toBe('name=value')
       expect(attempts[1]?.method).toBe('GET')
       expect(attempts[1]?.data).toBeUndefined()
       // A content-length left on a bodyless GET is its own source of confusion.
@@ -218,7 +222,7 @@ describe('makeRequestGuard', () => {
         await guard(route as unknown as RouteLike)
 
         expect(attempts[1]?.method).toBe('POST')
-        expect(attempts[1]?.data).toBe('name=value')
+        expect(attempts[1]?.data?.toString()).toBe('name=value')
       }
     })
 
@@ -234,7 +238,7 @@ describe('makeRequestGuard', () => {
       await guard(route as unknown as RouteLike)
 
       expect(attempts[0]?.method).toBe('POST')
-      expect(attempts[0]?.data).toBe('{"a":1}')
+      expect(attempts[0]?.data?.toString()).toBe('{"a":1}')
       expect(attempts[0]?.headers['content-type']).toBe('application/json')
     })
   })
@@ -246,7 +250,7 @@ describe('makeRequestGuard', () => {
         isNavigationRequest: () => true,
         method: () => 'GET',
         headers: () => ({}),
-        postData: () => null
+        postDataBuffer: () => null
       }),
       abort: vi.fn(async (_code: string) => { /* no-op */ }),
       fetch: vi.fn(async () => { throw new Error(message) }),
@@ -399,6 +403,57 @@ describe('makeRequestGuard', () => {
 
       await expect(guard(route as unknown as RouteLike)).resolves.toBeUndefined()
       expect(route.abort).toHaveBeenCalledWith('blockedbyclient')
+    })
+  })
+
+  describe('preserving the browser-visible URL', () => {
+    it('redirects the browser to the final url instead of collapsing the chain', async () => {
+      // Fulfilling the final body against the original request copies status,
+      // headers and body onto the FIRST url - so Chromium keeps the document
+      // at the start address. Measured: /start -> /dir/page left the page at
+      // /start and resolved <img src="asset.png"> to /asset.png, a 404, while
+      // running the target's content under the start origin.
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route } = makeRoute('https://example.com/start', {
+        responses: [response(302, { location: '/dir/page' }), response(200)]
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(route.fulfill).toHaveBeenCalledWith({
+        status: 302,
+        headers: { location: 'https://example.com/dir/page' },
+        body: ''
+      })
+    })
+
+    it('serves the response directly when nothing redirected', async () => {
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const final = response(200)
+      const { route } = makeRoute('https://example.com/', { responses: [final] })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(route.fulfill).toHaveBeenCalledWith({ response: final })
+    })
+  })
+
+  describe('binary request bodies', () => {
+    it('replays the bytes it was given, not a UTF-8 round trip', async () => {
+      // postData() decodes as UTF-8, which mangles binary bodies and multipart
+      // uploads carrying arbitrary file bytes.
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe])
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route, attempts } = makeRoute('https://example.com/upload', {
+        navigation: false,
+        method: 'POST',
+        binaryBody: bytes
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(attempts[0]?.data).toEqual(bytes)
+      expect(Buffer.compare(attempts[0]?.data ?? Buffer.alloc(0), bytes)).toBe(0)
     })
   })
 })

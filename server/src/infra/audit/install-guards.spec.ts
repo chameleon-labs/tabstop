@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DISABLE_WEBRTC, installGuards, type GuardedContext } from './playwright-axe-auditor.js'
+import { DISABLE_UNINTERCEPTED_TRANSPORTS, installGuards, type GuardedContext } from './playwright-axe-auditor.js'
 import type { RouteLike } from './request-guard.js'
 
 /**
@@ -58,7 +58,7 @@ describe('installGuards', () => {
 
     await installGuards(context as unknown as GuardedContext, noopGuard)
 
-    expect(context.addInitScript).toHaveBeenCalledWith(DISABLE_WEBRTC)
+    expect(context.addInitScript).toHaveBeenCalledWith(DISABLE_UNINTERCEPTED_TRANSPORTS)
   })
 
   it('routes http requests through the guard it was given', async () => {

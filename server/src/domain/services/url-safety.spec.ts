@@ -28,7 +28,15 @@ describe('isBlockedAddress', () => {
       'ff02::1',            // v6 multicast
       '2002:7f00:1::',      // 6to4 wrapping 127.0.0.1
       '64:ff9b::7f00:1',    // NAT64 wrapping 127.0.0.1
-      '64:ff9b:1::a00:1'    // RFC 8215 local-use NAT64 wrapping 10.0.0.1
+      '64:ff9b:1::a00:1',   // RFC 8215 local-use NAT64 wrapping 10.0.0.1
+      '100::1',             // discard-only
+      '2001::1',            // Teredo - embeds an IPv4 address, like 6to4
+      '2001:2::1',          // benchmarking
+      '2001:10::1',         // ORCHID, deprecated
+      '2001:20::1',         // ORCHIDv2
+      '2001:db8::1',        // documentation
+      '3fff::1',            // documentation
+      '5f00::1'             // segment routing
     ]) {
       expect(isBlockedAddress(address)).toBe(true)
     }

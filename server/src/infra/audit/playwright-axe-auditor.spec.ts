@@ -299,10 +299,19 @@ describe('PlaywrightAxeAuditor URL safety', () => {
           globals.RTCPeerConnection = function () { /* attempt to restore */ }
           reinstated = typeof globals.RTCPeerConnection
         } catch { reinstated = 'threw' }
-        return { initial: typeof globals.RTCPeerConnection, reinstated }
+        return {
+          rtc: typeof globals.RTCPeerConnection,
+          // WebTransport rides QUIC and is intercepted by neither route nor
+          // routeWebSocket either, so it is the same hole by another name.
+          webTransport: typeof globals.WebTransport,
+          dataChannel: typeof globals.RTCDataChannel,
+          reinstated
+        }
       })
 
-      expect(probe.initial).toBe('undefined')
+      expect(probe.rtc).toBe('undefined')
+      expect(probe.webTransport).toBe('undefined')
+      expect(probe.dataChannel).toBe('undefined')
       // A page that could simply reassign it would have gained nothing from
       // the removal.
       expect(probe.reinstated).not.toBe('function')
@@ -324,6 +333,18 @@ describe('PlaywrightAxeAuditor URL safety', () => {
     await expect(sut.audit('data:text/html,<h1>hi</h1>', signal()))
       .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
   })
+
+  it('keeps the browser at the redirected URL, so relative assets still resolve', async () => {
+    // Collapsing the chain - fulfilling the final body against the original
+    // request - leaves the document at the START url. Measured: /start ->
+    // /dir/page kept the page at /start and resolved <img src="asset.png"> to
+    // /asset.png, a 404, while running the target's content under the start
+    // origin. Here the target pulls a RELATIVE script that injects an
+    // alt-less image, so the violation only appears if the base URL is right.
+    const result = await sut.audit(`${server.baseUrl}/redirect-to-dir`, signal())
+
+    expect(result.violations.map((violation) => violation.ruleId)).toContain('image-alt')
+  }, 30_000)
 
   it('still audits an ordinary page unchanged', async () => {
     // The control. The guard rewrites how every navigation is fetched, so

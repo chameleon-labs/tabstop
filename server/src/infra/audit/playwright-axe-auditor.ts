@@ -35,14 +35,25 @@ type EvaluatedResult = {
  * than by reading the object back and agreeing with itself.
  */
 /**
- * Removed before any page script runs. WebRTC is intercepted by neither
- * `route` nor `routeWebSocket`, needs no permission for a data channel, and
- * will happily send packets to whatever ICE candidate address a page supplies
- * - which is a direct path to an internal host past every check here.
- * Non-configurable so a page cannot put it back.
+ * Removed before any page script runs.
+ *
+ * WebRTC and WebTransport are intercepted by neither `route` nor
+ * `routeWebSocket`. A data channel needs no permission and will send packets
+ * to whatever ICE candidate address a page supplies; WebTransport opens QUIC
+ * to any host. Both are direct paths to an internal address past every check
+ * here. Non-configurable so a page cannot put them back.
+ *
+ * This covers pages and frames. Init scripts do not reach dedicated workers,
+ * so a worker could still construct either - closing that needs enforcement
+ * below the browser, recorded with the download gap on #16.
  */
-export const DISABLE_WEBRTC = (): void => {
-  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel']) {
+export const DISABLE_UNINTERCEPTED_TRANSPORTS = (): void => {
+  // WebTransport rides QUIC and is intercepted by neither route nor
+  // routeWebSocket either, so an https page could open one straight to a
+  // private endpoint on 443.
+  for (const name of [
+    'RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport'
+  ]) {
     Object.defineProperty(globalThis, name, {
       value: undefined, configurable: false, writable: false
     })
@@ -163,7 +174,7 @@ export const installGuards = async (
   // Playwright into request-guard.ts and losing the boundary that makes the
   // guard unit-testable at all. An adapter converting a vendor type into a
   // local port is exactly where a cast earns its place.
-  await context.addInitScript(DISABLE_WEBRTC)
+  await context.addInitScript(DISABLE_UNINTERCEPTED_TRANSPORTS)
   await context.route('**/*', (route) => guard(route as unknown as RouteLike))
   await context.routeWebSocket('**/*', (ws) => { ws.close() })
 }

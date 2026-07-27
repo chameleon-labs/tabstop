@@ -83,6 +83,25 @@ const WEBSOCKET_PAGE = `<!doctype html>
 </script>
 </main></body></html>`
 
+/**
+ * Lives under /dir/ and pulls in a RELATIVE script. If the document URL is
+ * wrong the browser resolves it against the wrong base, the script 404s, and
+ * the violation it injects never appears - which is what makes a redirect test
+ * able to tell a preserved URL from a collapsed one.
+ */
+const REDIRECT_TARGET_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Target</title></head>
+<body><main>
+  <h1>Redirect target</h1>
+  <script src="inject.js"></script>
+</main></body></html>`
+
+const INJECTED_SCRIPT = `
+  var img = document.createElement('img')
+  img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==')
+  document.querySelector('main').appendChild(img)
+`
+
 export type FixtureServer = {
   baseUrl: string
   close: () => Promise<void>
@@ -128,6 +147,24 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     if (request.url === '/private-subresource') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(PRIVATE_SUBRESOURCE_PAGE)
+      return
+    }
+
+    if (request.url === '/redirect-to-dir') {
+      response.writeHead(302, { location: '/dir/page' })
+      response.end()
+      return
+    }
+
+    if (request.url === '/dir/page') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(REDIRECT_TARGET_PAGE)
+      return
+    }
+
+    if (request.url === '/dir/inject.js') {
+      response.writeHead(200, { 'content-type': 'text/javascript' })
+      response.end(INJECTED_SCRIPT)
       return
     }
 
