@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import type { Kysely } from 'kysely'
 import { makeDatabase } from '../helpers/postgres-helper.js'
-import { PostgresAuditRepository } from './postgres-audit-repository.js'
+import { PostgresAuditRepository, claimLeaseFor } from './postgres-audit-repository.js'
 import type { Database } from '../database.js'
 
 describe('PostgresAuditRepository', () => {
@@ -282,5 +282,29 @@ describe('PostgresAuditRepository', () => {
     it('returns null for an id that does not exist', async () => {
       expect(await sut.loadById('999999999')).toBeNull()
     })
+  })
+
+})
+
+describe('claimLeaseFor', () => {
+  const MAX_JOB_TIMEOUT_MS = 600_000
+  const UNWIND_GRACE_MS = 15_000
+
+  it('outlasts the longest an attempt can possibly occupy', () => {
+    // The regression this pins: a flat ten-minute lease looked generous
+    // against the 45s default and was in fact SHORTER than the maximum the
+    // environment schema permits (600s) plus its unwind grace (15s) - so a
+    // valid configuration let a second worker reclaim a still-running audit.
+    for (const jobTimeoutMs of [45_000, 120_000, MAX_JOB_TIMEOUT_MS]) {
+      const longestPossibleAttempt = jobTimeoutMs + UNWIND_GRACE_MS
+
+      expect(claimLeaseFor(jobTimeoutMs, UNWIND_GRACE_MS))
+        .toBeGreaterThan(longestPossibleAttempt)
+    }
+  })
+
+  it('grows with the configured budget rather than staying fixed', () => {
+    expect(claimLeaseFor(600_000, UNWIND_GRACE_MS))
+      .toBeGreaterThan(claimLeaseFor(45_000, UNWIND_GRACE_MS))
   })
 })

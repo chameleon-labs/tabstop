@@ -176,18 +176,36 @@ describe('DbRunAudit', () => {
     await expect(sut.run(params())).rejects.toBe(original)
   })
 
-  it('does nothing when the audit could not be claimed', async () => {
-    // The claim is the only thing that decides this, because another delivery
-    // can finish the audit between the read above and the claim itself.
-    const { sut, auditStatus, violations, pageAuditor } = makeSut()
+  it('acknowledges an unclaimable audit that has already finished', async () => {
+    for (const status of ['done', 'failed'] as const) {
+      const { sut, loadAudit, auditStatus, violations, pageAuditor } = makeSut()
+      auditStatus.claimForRun.mockResolvedValueOnce(null)
+      loadAudit.loadById
+        .mockResolvedValueOnce(mockAuditModel())
+        .mockResolvedValueOnce({ ...mockAuditModel(), status })
+
+      await sut.run(params())
+
+      expect(pageAuditor.audit).not.toHaveBeenCalled()
+      expect(violations.replaceAll).not.toHaveBeenCalled()
+      expect(auditStatus.markDone).not.toHaveBeenCalled()
+      expect(auditStatus.markFailed).not.toHaveBeenCalled()
+    }
+  })
+
+  it('refuses to acknowledge an audit still held by a live claim', async () => {
+    // Acknowledging here loses the audit: the attempt holding the claim may
+    // still die without writing a terminal status - after runWithTimeout's
+    // bounded grace, or because its own release failed - and nothing would
+    // ever pick it up again. Failing keeps the job on the queue.
+    const { sut, loadAudit, auditStatus, pageAuditor } = makeSut()
     auditStatus.claimForRun.mockResolvedValueOnce(null)
+    loadAudit.loadById
+      .mockResolvedValueOnce(mockAuditModel())
+      .mockResolvedValueOnce({ ...mockAuditModel(), status: 'running' })
 
-    await sut.run(params())
-
+    await expect(sut.run(params())).rejects.toThrow('held by another attempt')
     expect(pageAuditor.audit).not.toHaveBeenCalled()
-    expect(violations.replaceAll).not.toHaveBeenCalled()
-    expect(auditStatus.markDone).not.toHaveBeenCalled()
-    expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
   it('runs an audit that was left in running by an earlier crash', async () => {

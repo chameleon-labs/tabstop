@@ -1,7 +1,10 @@
 import { DbRunAudit } from '../../../../data/usecases/run-audit/db-run-audit.js'
 import type { RunAudit } from '../../../../domain/usecases/run-audit.js'
 import { PlaywrightAxeAuditor } from '../../../../infra/audit/playwright-axe-auditor.js'
-import { PostgresAuditRepository } from '../../../../infra/db/postgres/audit/postgres-audit-repository.js'
+import {
+  PostgresAuditRepository, claimLeaseFor
+} from '../../../../infra/db/postgres/audit/postgres-audit-repository.js'
+import { JOB_UNWIND_GRACE_MS } from '../../../../infra/queue/run-with-timeout.js'
 import { PostgresViolationRepository } from '../../../../infra/db/postgres/violation/postgres-violation-repository.js'
 import { getDatabase } from '../../../config/database.js'
 import { env } from '../../../config/env.js'
@@ -27,7 +30,12 @@ export const closePageAuditor = async (): Promise<void> => {
 }
 
 export const makeRunAudit = (): RunAudit => {
-  const audits = new PostgresAuditRepository(getDatabase())
+  // Derived from the configured budget so that raising AUDIT_JOB_TIMEOUT_MS
+  // cannot leave the lease shorter than an attempt is allowed to run.
+  const audits = new PostgresAuditRepository(
+    getDatabase(),
+    claimLeaseFor(env.auditJobTimeoutMs, JOB_UNWIND_GRACE_MS)
+  )
   return new DbRunAudit(
     audits,
     audits,

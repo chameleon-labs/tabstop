@@ -5,8 +5,14 @@ export class JobTimeoutError extends Error {
   }
 }
 
-/** Ample for closing a browser context and finishing one status write. */
-const DEFAULT_UNWIND_GRACE_MS = 15_000
+/**
+ * Ample for closing a browser context and finishing one status write.
+ *
+ * Exported because anything that must outlast an attempt has to be derived
+ * from it: an attempt can occupy its job budget PLUS this grace, and a lease
+ * shorter than that sum would let a second worker reclaim work still running.
+ */
+export const JOB_UNWIND_GRACE_MS = 15_000
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -37,7 +43,7 @@ const delay = (ms: number): Promise<void> =>
 export const runWithTimeout = async <T>(
   timeoutMs: number,
   run: (signal: AbortSignal) => Promise<T>,
-  unwindGraceMs: number = DEFAULT_UNWIND_GRACE_MS
+  unwindGraceMs: number = JOB_UNWIND_GRACE_MS
 ): Promise<T> => {
   const controller = new AbortController()
   const cleanup = new AbortController()

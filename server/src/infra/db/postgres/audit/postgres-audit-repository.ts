@@ -29,11 +29,25 @@ import { toAuditModel } from './audit-mapper.js'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * How long a claim is honoured before another delivery may take the audit.
- * Comfortably above the job budget plus its unwind grace, so a slow-but-alive
- * attempt is never stolen from.
+ * Headroom on top of the longest an attempt can possibly occupy, so clock skew
+ * between the worker and the database cannot expire a live claim.
  */
-const DEFAULT_STALE_CLAIM_AFTER_MS = 10 * 60_000
+const CLAIM_SAFETY_MARGIN_MS = 60_000
+
+/**
+ * How long a claim is honoured before another delivery may take the audit.
+ *
+ * Derived, not chosen: an attempt occupies its job budget and may then unwind
+ * for the grace period on top, so the lease has to exceed that sum or a second
+ * worker can reclaim an audit the first is still running. A fixed ten minutes
+ * looked generous against the 45s default and was in fact SHORTER than the
+ * 600s maximum the environment schema permits plus its 15s grace.
+ */
+export const claimLeaseFor = (jobTimeoutMs: number, unwindGraceMs: number): number =>
+  jobTimeoutMs + unwindGraceMs + CLAIM_SAFETY_MARGIN_MS
+
+/** Safe for the largest job budget the environment schema allows. */
+const DEFAULT_STALE_CLAIM_AFTER_MS = claimLeaseFor(600_000, 15_000)
 
 export class PostgresAuditRepository implements
   AddAuditRepository,

@@ -53,7 +53,17 @@ export class DbRunAudit implements RunAudit {
     // same audit, and a plain update would then resurrect it into `running`
     // and overwrite the completed result with a second, later one.
     const claimedAt = await this.auditStatusRepository.claimForRun(auditId)
-    if (claimedAt === null) return
+    if (claimedAt === null) {
+      // Not claimable, for two very different reasons - and acknowledging both
+      // is wrong. A finished audit is genuinely nothing to do. One still held
+      // by a live claim is not: the attempt holding it may yet die without
+      // writing a terminal status, and if this job acknowledges now, nothing
+      // will ever pick the audit up again. Failing keeps it on the queue.
+      const current = await this.loadAuditByIdRepository.loadById(auditId)
+      if (current === null || current.status === 'done' || current.status === 'failed') return
+
+      throw new Error(`Audit ${auditId} is held by another attempt`)
+    }
 
     try {
       const result = await this.pageAuditor.audit(audit.url, signal)
