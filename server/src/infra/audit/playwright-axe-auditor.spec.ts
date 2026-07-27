@@ -1,10 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium } from 'playwright'
+import { chromium, type Page } from 'playwright'
 import { isBlockedAddress, type UrlPolicy } from '../../domain/services/url-safety.js'
 import { NodeDnsResolver } from '../net/node-dns-resolver.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { AUDIT_CONTEXT_OPTIONS, PlaywrightAxeAuditor } from './playwright-axe-auditor.js'
+import {
+  AUDIT_CONTEXT_OPTIONS, PlaywrightAxeAuditor, installGuards
+} from './playwright-axe-auditor.js'
+import { makeRequestGuard } from './request-guard.js'
+import { CoalescingDnsResolver } from '../net/coalescing-dns-resolver.js'
 import { startFixtureServer, type FixtureServer } from './test/fixture-server.js'
 
 const VENDORED_VERSION = readFileSync(
@@ -189,6 +193,83 @@ describe('PlaywrightAxeAuditor URL safety', () => {
       })
 
       expect(registrations).toBe(0)
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }, 60_000)
+
+  /**
+   * Waits for the page to reach a settled outcome rather than sleeping.
+   * A fixed delay made this assertion vacuous: the page was often still
+   * 'pending' when it was read, so "not open" held whether the socket was
+   * refused or merely slow - and the mutation check passed with the whole
+   * WebSocket registration deleted.
+   */
+  const socketOutcome = async (page: Page): Promise<string> => {
+    await page.waitForFunction(
+      () => (globalThis as unknown as { __socketOutcome: string }).__socketOutcome !== 'pending',
+      undefined,
+      { timeout: 10_000 }
+    )
+    return await page.evaluate(() =>
+      (globalThis as unknown as { __socketOutcome: string }).__socketOutcome)
+  }
+
+  it('refuses a WebSocket the page opens', async () => {
+    // Isolated from the HTTP guard on purpose. With the guard installed the
+    // socket closes either way, because fetching and fulfilling a navigation
+    // also breaks the upgrade handshake - so a combined test cannot attribute
+    // the block to anything, and passed with this registration deleted.
+    // Measured: routeWebSocket alone gives 'closed', a bare context 'open'.
+    //
+    // The incidental block is not something to rely on. It is a side effect of
+    // how navigations are served, and would disappear the moment that changed.
+    const browser = await chromium.launch()
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+    try {
+      await context.routeWebSocket('**/*', (ws) => { ws.close() })
+      const page = await context.newPage()
+      await page.goto(`${server.baseUrl}/websocket-page`, { waitUntil: 'domcontentloaded' })
+
+      expect(await socketOutcome(page)).toBe('closed')
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }, 60_000)
+
+  it('control: the same page opens a socket with no WebSocket guard', async () => {
+    // Without this the test above would pass just as happily against a broken
+    // fixture server, proving nothing.
+    const browser = await chromium.launch()
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+    try {
+      const page = await context.newPage()
+      await page.goto(`${server.baseUrl}/websocket-page`, { waitUntil: 'domcontentloaded' })
+
+      expect(await socketOutcome(page)).toBe('open')
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }, 60_000)
+
+  it('the audit context refuses sockets however it is wired', async () => {
+    // Integration, not attribution: this holds through routeWebSocket and, as
+    // it happens, through the navigation guard too. It documents the guarantee
+    // the auditor makes; the isolated test above is what pins the mechanism.
+    const browser = await chromium.launch()
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+    try {
+      await installGuards(
+        context,
+        makeRequestGuard(new CoalescingDnsResolver(new NodeDnsResolver()), allowingFixtureServer)
+      )
+      const page = await context.newPage()
+      await page.goto(`${server.baseUrl}/websocket-page`, { waitUntil: 'domcontentloaded' })
+
+      expect(await socketOutcome(page)).not.toBe('open')
     } finally {
       await context.close()
       await browser.close()

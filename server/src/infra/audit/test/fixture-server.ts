@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http'
+import { WebSocketServer } from 'ws'
 import type { AddressInfo } from 'node:net'
 
 /**
@@ -62,6 +63,26 @@ const SERVICE_WORKER_PAGE = `<!doctype html>
 </script>
 </main></body></html>`
 
+/**
+ * Opens a socket back to the fixture server and records what happened, so a
+ * spec can tell "refused" from "connected" rather than inferring it.
+ */
+const WEBSOCKET_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Socket</title></head>
+<body><main><h1>Opens a socket</h1><input type="text">
+<script>
+  window.__socketOutcome = 'pending'
+  var socket = new WebSocket(location.origin.replace('http', 'ws') + '/socket')
+  socket.onopen = function () { window.__socketOutcome = 'open' }
+  socket.onclose = function () {
+    if (window.__socketOutcome !== 'open') { window.__socketOutcome = 'closed' }
+  }
+  socket.onerror = function () {
+    if (window.__socketOutcome === 'pending') { window.__socketOutcome = 'error' }
+  }
+</script>
+</main></body></html>`
+
 export type FixtureServer = {
   baseUrl: string
   close: () => Promise<void>
@@ -110,6 +131,12 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
       return
     }
 
+    if (request.url === '/websocket-page') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(WEBSOCKET_PAGE)
+      return
+    }
+
     if (request.url === '/service-worker-page') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(SERVICE_WORKER_PAGE)
@@ -136,12 +163,18 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     response.end(VIOLATING_PAGE)
   })
 
+  // A real socket server, so "the page could not connect" means the guard
+  // refused it rather than there being nothing to connect to.
+  const sockets = new WebSocketServer({ server, path: '/socket' })
+  sockets.on('connection', (socket) => { socket.send('connected') })
+
   await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
   const address = server.address() as AddressInfo
 
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: async () => {
+      await new Promise<void>((resolve) => { sockets.close(() => { resolve() }) })
       // Requests to /slow are still open, so destroy rather than wait them out.
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
