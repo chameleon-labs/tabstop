@@ -22,8 +22,11 @@ describe('schema deletion semantics', () => {
   const makeFixture = async (): Promise<{
     pageId: string, previousAuditId: string, currentAuditId: string, anonymousAuditId: string
   }> => {
+    const user = await db.insertInto('users')
+      .values({ email: `${randomUUID()}@test.test`, password_digest: 'x' })
+      .returning('id').executeTakeFirstOrThrow()
     const site = await db.insertInto('sites')
-      .values({ domain: `${randomUUID()}.test` })
+      .values({ user_id: user.id, domain: `${randomUUID()}.test` })
       .returning('id').executeTakeFirstOrThrow()
 
     const page = await db.insertInto('pages')

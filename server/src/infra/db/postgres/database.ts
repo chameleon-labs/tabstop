@@ -21,9 +21,27 @@ type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>
  */
 type Json<T> = ColumnType<T, string | undefined, string>
 
+export interface UsersTable {
+  id: Generated<string>
+  /** Lowercased by the repository before every write and lookup. */
+  email: string
+  password_digest: string
+  /** Score points. Read by regression detection (#14). */
+  alert_threshold: Generated<number>
+  created_at: Generated<Date>
+}
+
+export interface SessionsTable {
+  /** The cookie value: 32 random bytes as hex. Not a uuid — the format is ours. */
+  id: string
+  user_id: string
+  created_at: Generated<Date>
+  expires_at: Date
+}
+
 export interface SitesTable {
   id: Generated<string>
-  user_id: Nullable<string>
+  user_id: string
   domain: string
   created_at: Generated<Date>
 }
@@ -72,6 +90,8 @@ export interface AlertEventsTable {
 }
 
 export interface Database {
+  users: UsersTable
+  sessions: SessionsTable
   sites: SitesTable
   pages: PagesTable
   audits: AuditsTable

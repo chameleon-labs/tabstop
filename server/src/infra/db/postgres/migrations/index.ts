@@ -1,5 +1,6 @@
 import type { Migration, MigrationProvider } from 'kysely/migration'
 import * as initialSchema from './001-initial-schema.js'
+import * as accounts from './002-accounts.js'
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -10,7 +11,8 @@ import * as initialSchema from './001-initial-schema.js'
  * removes the problem and cannot drift from what actually compiled.
  */
 export const migrations: Record<string, Migration> = {
-  '001-initial-schema': initialSchema
+  '001-initial-schema': initialSchema,
+  '002-accounts': accounts
 }
 
 export const staticMigrationProvider: MigrationProvider = {
