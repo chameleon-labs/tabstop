@@ -30,6 +30,9 @@ blocked.addSubnet('::', 128, 'ipv6')  // unspecified - reaches a local listener
 blocked.addSubnet('::1', 128, 'ipv6')
 blocked.addSubnet('fc00::', 7, 'ipv6')
 blocked.addSubnet('fe80::', 10, 'ipv6')
+// Deprecated by RFC 3879 but still routed inside legacy private networks, so
+// it is exactly the kind of address this policy exists to refuse.
+blocked.addSubnet('fec0::', 10, 'ipv6')
 blocked.addSubnet('ff00::', 8, 'ipv6') // multicast
 // 6to4 and NAT64 both embed an IPv4 address, so a v6 literal can address
 // 127.0.0.1 without ever looking like it. Verified: 2002:7f00:1:: was allowed.

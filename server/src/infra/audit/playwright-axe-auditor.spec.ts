@@ -276,6 +276,55 @@ describe('PlaywrightAxeAuditor URL safety', () => {
     }
   }, 60_000)
 
+  it('leaves an audited page no WebRTC to reach an internal host with', async () => {
+    // Neither route nor routeWebSocket intercepts WebRTC, a data channel needs
+    // no permission, and Chromium will send packets to whatever ICE candidate
+    // address the page supplies. Asserted in a real browser rather than
+    // against Node's globalThis, where making the property non-configurable
+    // cannot be undone afterwards.
+    const browser = await chromium.launch()
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+    try {
+      await installGuards(
+        context,
+        makeRequestGuard(new CoalescingDnsResolver(new NodeDnsResolver()), allowingFixtureServer)
+      )
+      const page = await context.newPage()
+      await page.goto(server.baseUrl, { waitUntil: 'domcontentloaded' })
+
+      const probe = await page.evaluate(() => {
+        const globals = globalThis as unknown as Record<string, unknown>
+        let reinstated = 'no'
+        try {
+          globals.RTCPeerConnection = function () { /* attempt to restore */ }
+          reinstated = typeof globals.RTCPeerConnection
+        } catch { reinstated = 'threw' }
+        return { initial: typeof globals.RTCPeerConnection, reinstated }
+      })
+
+      expect(probe.initial).toBe('undefined')
+      // A page that could simply reassign it would have gained nothing from
+      // the removal.
+      expect(probe.reinstated).not.toBe('function')
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }, 60_000)
+
+  it('refuses a file:// URL before it ever reaches the network guard', async () => {
+    // A route handler is a NETWORK boundary, and file: never produces an
+    // interceptable HTTP request - so without the pre-navigation check this
+    // would read the worker's own disk.
+    await expect(sut.audit('file:///etc/passwd', signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  })
+
+  it('refuses a data: URL the same way', async () => {
+    await expect(sut.audit('data:text/html,<h1>hi</h1>', signal()))
+      .rejects.toThrow(/net::ERR_BLOCKED_BY_CLIENT/)
+  })
+
   it('still audits an ordinary page unchanged', async () => {
     // The control. The guard rewrites how every navigation is fetched, so
     // proving normal auditing is untouched matters as much as the blocks.

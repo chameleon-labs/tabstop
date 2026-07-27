@@ -10,6 +10,13 @@ export const MAX_REDIRECTS = 5
 export type FetchedResponse = {
   status: () => number
   headers: () => Record<string, string>
+  /**
+   * Playwright retains every fetched body until this is called or the context
+   * is torn down. Since the guard now fetches every subresource as well as
+   * every navigation, a page serving large responses could otherwise pile them
+   * up in worker memory for the whole audit.
+   */
+  dispose: () => Promise<void>
 }
 
 /**
@@ -48,6 +55,13 @@ export type RouteLike = {
  */
 const METHOD_PRESERVING_REDIRECTS = new Set([307, 308])
 
+/**
+ * Only these are redirects. `fetch` follows exactly this set, and a 3xx is not
+ * automatically one: a 304 carrying a Location header would otherwise make the
+ * auditor issue a request Chromium itself would never make.
+ */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+
 type Attempt = { url: string, method: string, headers: Record<string, string>, data?: string }
 
 const followRedirect = (attempt: Attempt, status: number, url: string): Attempt => {
@@ -75,6 +89,19 @@ const abortCodeFor = (error: unknown): string => {
   if (/ECONNRESET/.test(message)) return 'connectionreset'
   if (/EHOSTUNREACH|ENETUNREACH/.test(message)) return 'addressunreachable'
   return 'connectionfailed'
+}
+
+/**
+ * Serve the body, then release Playwright's copy of it. fulfill() has already
+ * handed the bytes to the browser by the time this resolves, so disposing
+ * afterwards frees the Node-side buffer without affecting the page.
+ */
+const fulfilAndDispose = async (route: RouteLike, response: FetchedResponse): Promise<void> => {
+  try {
+    await route.fulfill({ response })
+  } finally {
+    await response.dispose()
+  }
 }
 
 export const makeRequestGuard = (
@@ -137,12 +164,27 @@ export const makeRequestGuard = (
       }
 
       const status = response.status()
-      if (status < 300 || status >= 400) return await route.fulfill({ response })
+      if (!REDIRECT_STATUSES.has(status)) return await fulfilAndDispose(route, response)
 
       const location = response.headers().location
-      if (location === undefined) return await route.fulfill({ response })
+      if (location === undefined) return await fulfilAndDispose(route, response)
 
-      attempt = followRedirect(attempt, status, new URL(location, attempt.url).toString())
+      // An intermediate hop's body is never served, so it is dead weight the
+      // moment its status and Location have been read.
+      await response.dispose()
+
+      let target: string
+      try {
+        target = new URL(location, attempt.url).toString()
+      } catch {
+        // A malformed Location thrown from here would escape the fetch
+        // handler above and leave the route unanswered, turning an invalid
+        // redirect into a full navigation timeout and three audit attempts
+        // rather than one prompt, classified failure.
+        return await route.abort('blockedbyclient')
+      }
+
+      attempt = followRedirect(attempt, status, target)
     }
 
     return await route.abort('blockedbyclient')

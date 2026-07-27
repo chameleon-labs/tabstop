@@ -1,11 +1,14 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { fileURLToPath } from 'node:url'
+import { isIP } from 'node:net'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
 import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
 import { CoalescingDnsResolver } from '../net/coalescing-dns-resolver.js'
 import { makeRequestGuard, type RouteLike } from './request-guard.js'
-import type { UrlPolicy } from '../../domain/services/url-safety.js'
+import {
+  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+} from '../../domain/services/url-safety.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -31,8 +34,28 @@ type EvaluatedResult = {
  * Exported so a spec can prove these hold by driving a real context, rather
  * than by reading the object back and agreeing with itself.
  */
+/**
+ * Removed before any page script runs. WebRTC is intercepted by neither
+ * `route` nor `routeWebSocket`, needs no permission for a data channel, and
+ * will happily send packets to whatever ICE candidate address a page supplies
+ * - which is a direct path to an internal host past every check here.
+ * Non-configurable so a page cannot put it back.
+ */
+export const DISABLE_WEBRTC = (): void => {
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel']) {
+    Object.defineProperty(globalThis, name, {
+      value: undefined, configurable: false, writable: false
+    })
+  }
+}
+
 export const AUDIT_CONTEXT_OPTIONS = {
   viewport: { width: 1280, height: 720 },
+  // Nothing is ever saved. This does NOT stop the request being issued -
+  // measured: a download reaches the server with this false, and with the
+  // download event cancelled - but it keeps hostile bytes off the worker's
+  // disk. See the residual recorded in DECISIONS.md and on #16.
+  acceptDownloads: false,
   // context.route does not reliably intercept requests made by a service
   // worker, and service workers are enabled by default - so an audited page
   // could register one and issue requests straight past the guard.
@@ -118,7 +141,7 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
  * stand-in would have to name `Route` exactly to be satisfied by a real
  * context - at which point restating it buys nothing and can drift.
  */
-export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket'>
+export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket' | 'addInitScript'>
 
 /**
  * Both interceptors, registered together because leaving either off is a hole
@@ -140,8 +163,30 @@ export const installGuards = async (
   // Playwright into request-guard.ts and losing the boundary that makes the
   // guard unit-testable at all. An adapter converting a vendor type into a
   // local port is exactly where a cast earns its place.
+  await context.addInitScript(DISABLE_WEBRTC)
   await context.route('**/*', (route) => guard(route as unknown as RouteLike))
   await context.routeWebSocket('**/*', (ws) => { ws.close() })
+}
+
+/**
+ * The same rules the route guard applies, run before the first navigation.
+ *
+ * The duplication is deliberate: the guard is a NETWORK boundary, and a scheme
+ * that never produces an interceptable HTTP request slips underneath it - a
+ * `file:///` audit could read the worker's own disk before the guard ever saw
+ * a request.
+ */
+const isNavigable = async (
+  url: string, resolver: DnsResolver, policy: UrlPolicy
+): Promise<boolean> => {
+  const parsed = parseAuditUrl(url, policy)
+  if (!parsed.safe) return false
+
+  const host = bareHostname(parsed.url)
+  if (isIP(host) !== 0) return !policy.isBlockedAddress(host)
+
+  const addresses = await resolver.resolve(host)
+  return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address))
 }
 
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
@@ -232,7 +277,10 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     // would mean validating an address once and trusting it for the rest of an
     // audit that can run for tens of seconds, which is long enough to flip DNS
     // underneath it.
-    const guard = makeRequestGuard(new CoalescingDnsResolver(this.dnsResolver), this.urlPolicy)
+    // Shared with the pre-navigation check below, so one host resolves once.
+    const guardResolver = new CoalescingDnsResolver(this.dnsResolver)
+    const policy = this.urlPolicy ?? DEFAULT_URL_POLICY
+    const guard = makeRequestGuard(guardResolver, policy)
     await installGuards(context, guard)
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
@@ -257,6 +305,15 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       // their rejections are swallowed rather than left to kill the process.
       page.on('dialog', (dialog) => { void dialog.dismiss().catch(() => undefined) })
       context.on('page', (popup) => { void popup.close().catch(() => undefined) })
+
+      // The submitted URL is checked BEFORE navigating, not only by the route
+      // guard. A route handler is a network boundary, and `file:` and `data:`
+      // are not guaranteed to produce an interceptable HTTP request at all -
+      // a file:/// audit could read the worker's own disk before the guard
+      // ever saw a request. This is the same policy, applied one layer up.
+      if (!await isNavigable(url, guardResolver, policy)) {
+        throw new Error(`net::ERR_BLOCKED_BY_CLIENT at ${url}`)
+      }
 
       await page.goto(url, {
         waitUntil: 'domcontentloaded',

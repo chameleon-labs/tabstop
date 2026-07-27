@@ -104,6 +104,9 @@ Auditing a user-supplied URL is an SSRF primitive, so the worker refuses private
 - **`domain/services/url-safety.ts` is pure** — no DNS, no network, no clock. That is what makes the range list cheap to test exhaustively, and exhaustive tests are the only thing that catches this class of bug.
 - **Redirects are followed by the guard, not the browser.** `context.route` fires only for the first hop, so a `302` to a private address would otherwise never be checked. `infra/audit/request-guard.ts` walks the chain with `route.fetch({ maxRedirects: 0 })`, validating each hop and capping at five.
 - **Every request is checked**, not just navigations — a page can embed a subresource pointing at an internal host. A blocked subresource refuses only itself, so the page still audits.
+- **The submitted URL is validated before navigating**, not only by the route guard: `file:` and `data:` need not produce an interceptable request at all.
+- **WebRTC is removed** before page scripts run. Neither interceptor sees it, and a data channel needs no permission.
+- **Downloads are a known gap.** `context.route` does not see them, and a download request reaches the network even with `acceptDownloads: false` — verified. Nothing is written to disk, but the request leaves. Closing it needs egress policy at the infrastructure level (#16).
 - **WebSockets are refused, not validated.** `context.route` does not see them, so a page could otherwise open a socket straight past every check. Nothing an audit needs arrives over one.
 - **Redirects follow browser method semantics** — 303, 301 and 302 demote to GET and drop the body; 307 and 308 preserve it. Replaying a POST at every hop would repeat side effects the server has already performed.
 - **Rejection messages never distinguish blocked from unreachable.** Everything becomes `That address can't be audited`. Anything more specific turns the audit endpoint into an internal port scanner.

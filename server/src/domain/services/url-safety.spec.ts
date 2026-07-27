@@ -24,6 +24,7 @@ describe('isBlockedAddress', () => {
       '198.18.0.1',         // benchmarking
       '224.0.0.1',          // multicast
       '240.0.0.1', '255.255.255.255',
+      'fec0::1',            // site-local: deprecated, still routed on legacy networks
       'ff02::1',            // v6 multicast
       '2002:7f00:1::',      // 6to4 wrapping 127.0.0.1
       '64:ff9b::7f00:1',    // NAT64 wrapping 127.0.0.1

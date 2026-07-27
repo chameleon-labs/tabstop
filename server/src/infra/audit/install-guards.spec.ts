@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { installGuards, type GuardedContext } from './playwright-axe-auditor.js'
+import { DISABLE_WEBRTC, installGuards, type GuardedContext } from './playwright-axe-auditor.js'
 import type { RouteLike } from './request-guard.js'
 
 /**
@@ -8,6 +8,7 @@ import type { RouteLike } from './request-guard.js'
  * a double keeps it out of anything that ships.
  */
 const makeContext = () => ({
+  addInitScript: vi.fn(async (_script: unknown) => { /* no-op */ }),
   route: vi.fn(async (_pattern: string, _handler: (route: unknown) => unknown) => { /* no-op */ }),
   routeWebSocket: vi.fn(
     async (_pattern: string, _handler: (ws: { close: () => void }) => void) => { /* no-op */ }
@@ -46,6 +47,18 @@ describe('installGuards', () => {
     handler(socket)
 
     expect(socket.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes WebRTC before any page script runs', async () => {
+    // WebRTC is intercepted by neither route nor routeWebSocket, needs no
+    // permission for a data channel, and will send packets to whatever ICE
+    // candidate address a page supplies - a direct path to an internal host
+    // past every check the guard performs.
+    const context = makeContext()
+
+    await installGuards(context as unknown as GuardedContext, noopGuard)
+
+    expect(context.addInitScript).toHaveBeenCalledWith(DISABLE_WEBRTC)
   })
 
   it('routes http requests through the guard it was given', async () => {

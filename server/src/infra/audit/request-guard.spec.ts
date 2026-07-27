@@ -4,7 +4,8 @@ import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
 
 const response = (status: number, headers: Record<string, string> = {}): FetchedResponse => ({
   status: () => status,
-  headers: () => headers
+  headers: () => headers,
+  dispose: vi.fn(async () => { /* no-op */ })
 })
 
 type Attempted = { url: string, method: string, headers: Record<string, string>, data?: string }
@@ -335,6 +336,69 @@ describe('makeRequestGuard', () => {
 
       expect(route.fulfill).toHaveBeenCalledTimes(1)
       expect(route.abort).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('memory', () => {
+    it('disposes an intermediate redirect response, whose body is never served', async () => {
+      // Playwright retains every fetched body until dispose() or teardown, and
+      // the guard now fetches every subresource as well as every navigation -
+      // so a page serving large responses could pile them up in worker memory
+      // for the whole audit.
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const intermediate = response(302, { location: 'https://example.com/b' })
+      const final = response(200)
+      const { route } = makeRoute('https://example.com/a', {
+        responses: [intermediate, final]
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(intermediate.dispose).toHaveBeenCalledTimes(1)
+    })
+
+    it('disposes the final response once it has been served', async () => {
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const final = response(200)
+      const { route } = makeRoute('https://example.com/a', { responses: [final] })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(route.fulfill).toHaveBeenCalledTimes(1)
+      expect(final.dispose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('statuses that are not redirects', () => {
+    it('does not follow a 304 that carries a Location header', async () => {
+      // fetch follows 301, 302, 303, 307 and 308 - and nothing else. Treating
+      // any 3xx as a redirect lets a server make the auditor issue a request
+      // Chromium itself would never make.
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route, fetched } = makeRoute('https://example.com/a', {
+        responses: [response(304, { location: 'http://169.254.169.254/' })]
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(fetched).toEqual(['https://example.com/a'])
+      expect(route.fulfill).toHaveBeenCalledTimes(1)
+      expect(route.abort).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('a malformed Location header', () => {
+    it('aborts deterministically rather than leaving the route unanswered', async () => {
+      // new URL() throwing here would escape the fetch handler entirely, so a
+      // hostile page could turn an invalid redirect into a full navigation
+      // timeout and three audit attempts instead of one classified failure.
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route } = makeRoute('https://example.com/a', {
+        responses: [response(302, { location: 'http://[not a url' })]
+      })
+
+      await expect(guard(route as unknown as RouteLike)).resolves.toBeUndefined()
+      expect(route.abort).toHaveBeenCalledWith('blockedbyclient')
     })
   })
 })
