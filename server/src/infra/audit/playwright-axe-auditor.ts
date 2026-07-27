@@ -44,6 +44,74 @@ export const AUDIT_CONTEXT_OPTIONS = {
   bypassCSP: true
 } as const
 
+/**
+ * Runs in the BROWSER: page.evaluate serialises this function, so it may not
+ * reference anything in this module. Exported and kept self-contained for that
+ * reason, and so it can be exercised directly in Node against a stand-in
+ * global rather than only through a real page.
+ *
+ * The globals are reached through a cast because this file is typechecked as
+ * part of a Node project - `lib` is ES2024, and adding "DOM" would make
+ * `document`, `window` and `localStorage` compile throughout the server, while
+ * a per-file `/// <reference lib="dom" />` leaks program-wide (verified). #38
+ * moves this into its own DOM-typed compilation unit and removes the cast.
+ *
+ * Until then the cast is at least CHECKED rather than merely asserted: the
+ * shape is verified before use, so an axe that is absent or has changed shape
+ * fails with a message the classifier maps to an engine failure instead of
+ * producing an undefined-property error somewhere downstream.
+ */
+export const runAxeInPage = async (): Promise<EvaluatedResult> => {
+  const browserGlobals = globalThis as unknown as {
+    document?: unknown
+    axe?: {
+      run?: (context: unknown, options: { resultTypes: string[] }) => Promise<unknown>
+    }
+  }
+
+  const axe = browserGlobals.axe
+  if (axe === undefined || typeof axe.run !== 'function') {
+    // Wording matters: the classifier matches this as a permanent engine
+    // failure, so the user is told the engine could not run rather than
+    // seeing three retries of an unrecognised error.
+    throw new Error('axe is not defined on the page')
+  }
+
+  const run = await axe.run(browserGlobals.document, { resultTypes: ['violations'] }) as {
+    testEngine?: { version?: unknown }
+    violations?: unknown
+  }
+
+  if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
+    throw new Error('axe returned an unrecognised result shape')
+  }
+
+  return {
+    axeVersion: run.testEngine.version,
+    violations: (run.violations as Array<{
+      id: string
+      impact: string | null
+      description: string
+      helpUrl: string
+      nodes: Array<{ target: Array<string | string[]>, html: string }>
+    }>).map((violation) => ({
+      ruleId: violation.id,
+      impact: violation.impact,
+      description: violation.description,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes.map((node) => ({
+        // axe does not always hand back a flat list of selectors: a node
+        // inside shadow DOM arrives as a NESTED array, verified as
+        // [["#host","img"]]. Flattening here keeps `string[]` true all the way
+        // down, and ' >>> ' is Playwright's own shadow-piercing notation so
+        // the result still reads as a selector path.
+        target: node.target.map((entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry),
+        html: node.html
+      }))
+    }))
+  }
+}
+
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
 
 /**
@@ -182,54 +250,13 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       // only the mapped violations is 621 bytes, because `passes` never
       // crosses the CDP boundary at all. It also means no axe type ever
       // exists in Node, so the protocol boundary is real rather than nominal.
-      const evaluated = await page.evaluate(async (): Promise<EvaluatedResult> => {
-        // This body executes in the browser, but it is TYPE-CHECKED as part of
-        // a Node project whose lib is ES2023. Adding "DOM" to the compiler
-        // options would fix the reference and quietly make `document`,
-        // `fetch` and `window` look available throughout the server, so the
-        // browser globals are reached through a local cast instead.
-        const browserGlobals = globalThis as unknown as {
-          document: unknown
-          axe: {
-            run: (context: unknown, options: { resultTypes: string[] }) => Promise<{
-              testEngine: { version: string }
-              violations: Array<{
-                id: string
-                impact: string | null
-                description: string
-                helpUrl: string
-                nodes: Array<{ target: Array<string | string[]>, html: string }>
-              }>
-            }>
-          }
-        }
-
-        const run = await browserGlobals.axe.run(
-          browserGlobals.document, { resultTypes: ['violations'] }
-        )
-
-        return {
-          axeVersion: run.testEngine.version,
-          violations: run.violations.map((violation) => ({
-            ruleId: violation.id,
-            impact: violation.impact,
-            description: violation.description,
-            helpUrl: violation.helpUrl,
-            nodes: violation.nodes.map((node) => ({
-              // axe does not always hand back a flat list of selectors: a
-              // node inside shadow DOM arrives as a NESTED array, verified as
-              // [["#host","img"]]. Flattening here keeps `string[]` true all
-              // the way down rather than storing a shape the type denies, and
-              // ' >>> ' is Playwright's own shadow-piercing notation, so the
-              // result still reads as a selector path.
-              target: node.target.map(
-                (entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry
-              ),
-              html: node.html
-            }))
-          }))
-        }
-      })
+      // Mapped INSIDE the browser. Measured on a fixture: the raw result
+      // serialises to 42,996 bytes and 41,922 with resultTypes - a 2.5%
+      // saving, not the "dramatic" one the issue assumed - while returning
+      // only the mapped violations is 621 bytes, because `passes` never
+      // crosses the CDP boundary at all. It also means no axe type ever
+      // exists in Node, so the protocol boundary is real rather than nominal.
+      const evaluated = await page.evaluate(runAxeInPage)
 
       return {
         violations: evaluated.violations.map((violation) => ({

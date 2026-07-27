@@ -36,6 +36,10 @@ Review then found four ways the guard was narrower than the rule it was enforcin
 
 **Service workers were left enabled.** `context.route` does not reliably intercept what a service worker requests, so an audited page could register one and issue requests straight past the guard. Blocked at the context, and pinned by a spec that drives a real context rather than reading the options object back and agreeing with itself.
 
+One tooling note, because it constrains anything that runs in the page. Two functions execute in the browser via `page.evaluate` while being typechecked as part of a Node project, so `document` and the injected `axe` global do not exist to the compiler. Adding `"DOM"` to `lib` would make `document`, `window` and `localStorage` compile throughout the server, and a per-file `/// <reference lib="dom" />` **does not scope per file** — verified: a second file in the same program picked it up with no directive of its own. The only real isolation is a separate compilation unit, which is #38.
+
+Until then the cast stays but is **checked rather than asserted**: the browser body is a self-contained exported function that verifies the engine is present and that its result still has the shape expected, throwing messages the classifier already maps to a permanent engine failure. Being self-contained is also what lets it be driven directly in Node against a stand-in global — the only way to reach those branches, since a real page always has axe injected by the time it runs. `target` and `lib` moved to ES2024, which Node 24 fully provides.
+
 Still deferred: gate 1, the submission-time check, which belongs in #9's `request-audit` usecase and has no home until that exists. It is not redundant once this gate exists — it turns an obviously bad URL into an immediate `400` rather than a queued job, a browser launch and a failed audit thirty seconds later.
 
 ## 2026-07-27 — the audit worker: navigate once, audit anyway, and say so
