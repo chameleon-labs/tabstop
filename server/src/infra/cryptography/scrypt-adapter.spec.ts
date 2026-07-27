@@ -13,7 +13,7 @@ describe('ScryptAdapter', () => {
       const digest = await makeSut().hash('correct horse battery staple')
 
       expect(digest).not.toContain('correct horse')
-      expect(digest.startsWith(`scrypt$${COST}$8$1$`)).toBe(true)
+      expect(digest.startsWith(`scrypt$${COST}$8$3$`)).toBe(true)
     })
 
     it('salts, so the same password hashes differently every time', async () => {
@@ -38,6 +38,24 @@ describe('ScryptAdapter', () => {
       const oldDigest = await makeSut(8192).hash('legacy password')
 
       expect(await makeSut(COST).compare('legacy password', oldDigest)).toBe(true)
+    })
+
+    it('verifies a digest written at the old parallelisation of 1', async () => {
+      // The parallelisation moved from 1 to 3 to meet OWASP's 2^15/8/3
+      // configuration. Digests written before that carry p=1 and must keep
+      // verifying - which is exactly what the self-describing format is for.
+      const sut = makeSut()
+      const legacy = `scrypt$${COST}$8$1$${'a'.repeat(24)}$`
+
+      // built by hand at p=1, then verified through the current adapter
+      const { scryptSync } = await import('node:crypto')
+      const salt = Buffer.from('a'.repeat(24), 'base64')
+      const key = scryptSync('legacy password', salt, 64, {
+        N: COST, r: 8, p: 1, maxmem: 256 * 1024 * 1024
+      })
+
+      expect(await sut.compare('legacy password', legacy + key.toString('base64'))).toBe(true)
+      expect(await sut.compare('wrong password', legacy + key.toString('base64'))).toBe(false)
     })
 
     it('returns false for structurally malformed digests instead of throwing', async () => {

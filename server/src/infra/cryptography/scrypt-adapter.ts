@@ -13,7 +13,23 @@ const scryptAsync = promisify(scrypt) as (
 const KEY_LENGTH = 64
 const SALT_LENGTH = 16
 const BLOCK_SIZE = 8
-const PARALLELISATION = 1
+
+/**
+ * OWASP's scrypt guidance is a set of equivalent-defence configurations, not a
+ * single N: 2^17/8/1, 2^16/8/2, 2^15/8/3, 2^14/8/5, 2^13/8/10. At N=2^15 the
+ * sanctioned parallelisation is 3, and p=1 there does roughly a third of the
+ * work the standard asks for.
+ *
+ * 2^15/8/3 is chosen over the headline 2^17/8/1 deliberately. scrypt's memory
+ * is 128 * r * N and does NOT depend on p, so 2^17 costs 128 MB per hash -
+ * around 512 MB across Node's default four-thread pool under concurrent
+ * logins, on an instance unlikely to have it. Until rate limiting lands (#8),
+ * that would trade a cracking-resistance gap for a live memory-exhaustion
+ * vector. Raising p buys the same CPU work at an unchanged 32 MB footprint.
+ *
+ * Measured: 2^15/8/1 = 86ms, 2^15/8/3 = 236ms, 2^17/8/1 = 321ms at 128 MB.
+ */
+const PARALLELISATION = 3
 
 /**
  * Node's default maxmem rejects any cost above N=16384 with `Invalid scrypt
