@@ -50,6 +50,11 @@ export class PlaywrightAxeAuditor implements PageAuditor {
   }
 
   async audit (url: string, signal: AbortSignal): Promise<AuditPageResult> {
+    // An already-aborted signal fires no 'abort' event, so the listener added
+    // below would never run and the audit would proceed as though it still had
+    // budget - launching a browser for work nobody is waiting for.
+    signal.throwIfAborted()
+
     const startedAt = Date.now()
     const browser = await this.getBrowser()
 

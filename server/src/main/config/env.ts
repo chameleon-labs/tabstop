@@ -8,6 +8,11 @@ export type Env = {
   sessionCookieSecure: boolean
   scryptCost: number
   sessionTtlDays: number
+  auditConcurrency: number
+  auditJobTimeoutMs: number
+  auditNavigationTimeoutMs: number
+  auditSettleBudgetMs: number
+  auditFallbackSettleMs: number
 }
 
 const DEFAULT_PORT = 3000
@@ -28,6 +33,19 @@ const DEFAULT_SESSION_TTL_DAYS = 30
  * than merely being an odd setting.
  */
 const MAX_SESSION_TTL_DAYS = 400
+
+const DEFAULT_AUDIT_CONCURRENCY = 1
+/**
+ * Chromium is roughly 300-500MB per context, so the safe default is one audit
+ * at a time. #8 owns raising it once #16 has sized the worker instance.
+ */
+const MAX_AUDIT_CONCURRENCY = 16
+const DEFAULT_AUDIT_JOB_TIMEOUT_MS = 45_000
+const DEFAULT_AUDIT_NAVIGATION_TIMEOUT_MS = 20_000
+const DEFAULT_AUDIT_SETTLE_BUDGET_MS = 10_000
+const DEFAULT_AUDIT_FALLBACK_SETTLE_MS = 1_000
+/** Ten minutes. Beyond this a stuck audit is a bug, not a slow page. */
+const MAX_AUDIT_TIMEOUT_MS = 600_000
 
 const required = (source: NodeJS.ProcessEnv, name: string): string => {
   const value = source[name]
@@ -137,6 +155,26 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     scryptCost: scryptCostOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),
     sessionTtlDays: positiveIntegerOr(
       source.SESSION_TTL_DAYS, DEFAULT_SESSION_TTL_DAYS, 'SESSION_TTL_DAYS', MAX_SESSION_TTL_DAYS
+    ),
+    auditConcurrency: positiveIntegerOr(
+      source.AUDIT_CONCURRENCY, DEFAULT_AUDIT_CONCURRENCY, 'AUDIT_CONCURRENCY',
+      MAX_AUDIT_CONCURRENCY
+    ),
+    auditJobTimeoutMs: positiveIntegerOr(
+      source.AUDIT_JOB_TIMEOUT_MS, DEFAULT_AUDIT_JOB_TIMEOUT_MS, 'AUDIT_JOB_TIMEOUT_MS',
+      MAX_AUDIT_TIMEOUT_MS
+    ),
+    auditNavigationTimeoutMs: positiveIntegerOr(
+      source.AUDIT_NAVIGATION_TIMEOUT_MS, DEFAULT_AUDIT_NAVIGATION_TIMEOUT_MS,
+      'AUDIT_NAVIGATION_TIMEOUT_MS', MAX_AUDIT_TIMEOUT_MS
+    ),
+    auditSettleBudgetMs: positiveIntegerOr(
+      source.AUDIT_SETTLE_BUDGET_MS, DEFAULT_AUDIT_SETTLE_BUDGET_MS, 'AUDIT_SETTLE_BUDGET_MS',
+      MAX_AUDIT_TIMEOUT_MS
+    ),
+    auditFallbackSettleMs: positiveIntegerOr(
+      source.AUDIT_FALLBACK_SETTLE_MS, DEFAULT_AUDIT_FALLBACK_SETTLE_MS,
+      'AUDIT_FALLBACK_SETTLE_MS', MAX_AUDIT_TIMEOUT_MS
     )
   }
 }

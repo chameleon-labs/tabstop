@@ -1,0 +1,124 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
+import type { Kysely } from 'kysely'
+import { DbRunAudit } from './db-run-audit.js'
+import { PermanentAuditError } from '../../../domain/errors/permanent-audit-error.js'
+import { PlaywrightAxeAuditor } from '../../../infra/audit/playwright-axe-auditor.js'
+import { startFixtureServer, type FixtureServer } from '../../../infra/audit/test/fixture-server.js'
+import { makeDatabase } from '../../../infra/db/postgres/helpers/postgres-helper.js'
+import type { Database } from '../../../infra/db/postgres/database.js'
+import { PostgresAuditRepository } from '../../../infra/db/postgres/audit/postgres-audit-repository.js'
+import {
+  PostgresViolationRepository
+} from '../../../infra/db/postgres/violation/postgres-violation-repository.js'
+
+/**
+ * The acceptance criterion for #5, with nothing faked below the queue: a real
+ * audit row, a real browser, a real page, and a real database. The unit specs
+ * cover the branches; this proves the pieces actually fit together.
+ */
+describe('run-audit end to end', () => {
+  let db: Kysely<Database>
+  let server: FixtureServer
+  let auditor: PlaywrightAxeAuditor
+  let sut: DbRunAudit
+
+  beforeAll(async () => {
+    const url = process.env.DATABASE_URL
+    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
+    db = makeDatabase(url)
+    server = await startFixtureServer()
+    auditor = new PlaywrightAxeAuditor({
+      navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500
+    })
+    const audits = new PostgresAuditRepository(db)
+    sut = new DbRunAudit(audits, audits, new PostgresViolationRepository(db), auditor)
+  }, 60_000)
+
+  afterAll(async () => {
+    await auditor.close()
+    await server.close()
+    await db.destroy()
+  })
+
+  const queueAudit = async (url: string): Promise<string> => {
+    const row = await db.insertInto('audits')
+      .values({ page_id: null, url, status: 'queued' })
+      .returning('id').executeTakeFirstOrThrow()
+    return row.id
+  }
+
+  const load = async (id: string) =>
+    await db.selectFrom('audits').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
+
+  const params = (auditId: string, isFinalAttempt = false) => ({
+    auditId, signal: new AbortController().signal, isFinalAttempt
+  })
+
+  it('takes a queued audit to done, with violations and counts stored', async () => {
+    const auditId = await queueAudit(server.baseUrl)
+
+    await sut.run(params(auditId))
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('done')
+    expect(audit.settled).toBe(true)
+    expect(audit.axe_version).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(audit.duration_ms).toBeGreaterThan(0)
+    expect(audit.completed_at).toBeInstanceOf(Date)
+    // Scoring is #6; this worker never writes one.
+    expect(audit.score).toBeNull()
+
+    const violations = await db.selectFrom('violations').selectAll()
+      .where('audit_id', '=', auditId).execute()
+    const ruleIds = violations.map((violation) => violation.rule_id)
+    expect(ruleIds).toContain('image-alt')
+    expect(ruleIds).toContain('label')
+
+    // jsonb reorders keys, so compare structurally rather than as JSON text.
+    const counts = audit.counts_by_impact
+    expect(Object.keys(counts).sort()).toEqual(['critical', 'minor', 'moderate', 'serious'])
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
+    const nodeTotal = violations.reduce((sum, violation) => sum + violation.nodes.length, 0)
+    expect(total).toBe(nodeTotal)
+
+    // nodes survive the jsonb round trip as objects, not a Postgres array literal
+    expect(violations[0]?.nodes[0]).toEqual({
+      target: expect.any(Array), html: expect.any(String)
+    })
+  }, 60_000)
+
+  it('completes a page that never settles, flagged rather than failed', async () => {
+    const auditId = await queueAudit(`${server.baseUrl}/never-idle`)
+
+    await sut.run(params(auditId))
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('done')
+    expect(audit.settled).toBe(false)
+  }, 60_000)
+
+  it('fails a dead address permanently, with a message a user can act on', async () => {
+    const auditId = await queueAudit('http://127.0.0.1:45999/')
+
+    await expect(sut.run(params(auditId))).rejects.toThrow(PermanentAuditError)
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('failed')
+    expect(audit.error).toBe('Nothing responded at that address')
+    expect(audit.completed_at).toBeInstanceOf(Date)
+  }, 60_000)
+
+  it('leaves an audit running when a transient failure still has attempts left', async () => {
+    // A row that flapped to `failed` here would tell the user their audit had
+    // finished while the queue was still retrying it.
+    const auditId = await queueAudit(server.baseUrl)
+    const aborted = new AbortController()
+    aborted.abort()
+
+    await expect(sut.run({ auditId, signal: aborted.signal, isFinalAttempt: false }))
+      .rejects.toThrow()
+
+    expect((await load(auditId)).status).toBe('running')
+  }, 60_000)
+})
