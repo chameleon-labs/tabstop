@@ -72,8 +72,8 @@ export class DbRunAudit implements RunAudit {
       // were committed but before the audit was marked done, and `violations`
       // has no uniqueness constraint to catch a second insert of the same
       // rules. Replacing makes the write safe to repeat.
-      await this.replaceViolationsRepository.replaceAll(auditId, result.violations)
-      await this.auditStatusRepository.markDone(auditId, {
+      await this.replaceViolationsRepository.replaceAll(auditId, claimedAt, result.violations)
+      await this.auditStatusRepository.markDone(auditId, claimedAt, {
         countsByImpact: countByImpact(result.violations),
         axeVersion: result.axeVersion,
         durationMs: result.durationMs,
@@ -86,7 +86,7 @@ export class DbRunAudit implements RunAudit {
       // the row flaps failed -> running -> failed in front of the user while
       // the queue is still working on it.
       if (failure.permanent || isFinalAttempt) {
-        await this.auditStatusRepository.markFailed(auditId, failure.message)
+        await this.auditStatusRepository.markFailed(auditId, claimedAt, failure.message)
       } else {
         // Retryable, and no terminal status was written - so the claim has to
         // go back. Holding it would leave the row `running` with a live lease

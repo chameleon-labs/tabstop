@@ -21,9 +21,18 @@ describe('PostgresViolationRepository', () => {
     await db.destroy()
   })
 
+  // Writes are fenced on the claim, so a fixture audit has to be one this
+  // attempt actually owns: `running`, with a claim token these calls can quote.
+  const CLAIM = new Date('2026-07-27T10:00:00Z')
+
   const makeAudit = async (): Promise<string> => {
     const audit = await db.insertInto('audits')
-      .values({ page_id: null, url: `https://${randomUUID()}.test/x`, status: 'done' })
+      .values({
+        page_id: null,
+        url: `https://${randomUUID()}.test/x`,
+        status: 'running',
+        claimed_at: CLAIM
+      })
       .returning('id').executeTakeFirstOrThrow()
     return audit.id
   }
@@ -39,7 +48,7 @@ describe('PostgresViolationRepository', () => {
   it('stores and returns a violation', async () => {
     const auditId = await makeAudit()
 
-    await sut.replaceAll(auditId, [contrast])
+    await sut.replaceAll(auditId, CLAIM, [contrast])
     const loaded = await sut.loadByAuditId(auditId)
 
     expect(loaded).toHaveLength(1)
@@ -55,7 +64,7 @@ describe('PostgresViolationRepository', () => {
   it('round-trips the jsonb nodes intact', async () => {
     const auditId = await makeAudit()
 
-    await sut.replaceAll(auditId, [contrast])
+    await sut.replaceAll(auditId, CLAIM, [contrast])
     const loaded = await sut.loadByAuditId(auditId)
 
     // Structural comparison: jsonb reorders object keys, so comparing
@@ -66,7 +75,7 @@ describe('PostgresViolationRepository', () => {
   it('stores several violations at once', async () => {
     const auditId = await makeAudit()
 
-    await sut.replaceAll(auditId, [
+    await sut.replaceAll(auditId, CLAIM, [
       contrast,
       {
         ruleId: 'image-alt',
@@ -84,7 +93,7 @@ describe('PostgresViolationRepository', () => {
   it('accepts an empty list, because a clean page is the success case', async () => {
     const auditId = await makeAudit()
 
-    await expect(sut.replaceAll(auditId, [])).resolves.toBeUndefined()
+    await expect(sut.replaceAll(auditId, CLAIM, [])).resolves.toBeUndefined()
     expect(await sut.loadByAuditId(auditId)).toEqual([])
   })
 
@@ -106,15 +115,15 @@ describe('PostgresViolationRepository', () => {
       nodes: [{ target: ['img'], html: '<img>' }]
     }
 
-    await sut.replaceAll(auditId, [violation])
-    await sut.replaceAll(auditId, [violation])
+    await sut.replaceAll(auditId, CLAIM, [violation])
+    await sut.replaceAll(auditId, CLAIM, [violation])
 
     expect(await sut.loadByAuditId(auditId)).toHaveLength(1)
   })
 
   it('clears an audit\'s violations when the page comes back clean', async () => {
     const auditId = await makeAudit()
-    await sut.replaceAll(auditId, [{
+    await sut.replaceAll(auditId, CLAIM, [{
       ruleId: 'label',
       impact: 'critical' as const,
       description: 'Form elements must have labels',
@@ -122,7 +131,7 @@ describe('PostgresViolationRepository', () => {
       nodes: [{ target: ['input'], html: '<input>' }]
     }])
 
-    await sut.replaceAll(auditId, [])
+    await sut.replaceAll(auditId, CLAIM, [])
 
     expect(await sut.loadByAuditId(auditId)).toEqual([])
   })
@@ -141,9 +150,9 @@ describe('PostgresViolationRepository', () => {
     }
 
     await Promise.all([
-      sut.replaceAll(auditId, [violation]),
-      sut.replaceAll(auditId, [violation]),
-      sut.replaceAll(auditId, [violation])
+      sut.replaceAll(auditId, CLAIM, [violation]),
+      sut.replaceAll(auditId, CLAIM, [violation]),
+      sut.replaceAll(auditId, CLAIM, [violation])
     ])
 
     expect(await sut.loadByAuditId(auditId)).toHaveLength(1)
@@ -153,7 +162,7 @@ describe('PostgresViolationRepository', () => {
     // Dropping it would mark an audit done while omitting a real finding.
     const auditId = await makeAudit()
 
-    await sut.replaceAll(auditId, [{
+    await sut.replaceAll(auditId, CLAIM, [{
       ruleId: 'some-rule-without-impact',
       impact: null,
       description: 'A rule whose checks carry no severity',
@@ -164,5 +173,28 @@ describe('PostgresViolationRepository', () => {
     const stored = await sut.loadByAuditId(auditId)
     expect(stored).toHaveLength(1)
     expect(stored[0]?.impact).toBeNull()
+  })
+
+  it('ignores a write from an attempt that no longer owns the audit', async () => {
+    // An attempt that paused past its lease can resume after another worker
+    // claimed and finished the audit. Without the ownership check inside the
+    // lock, it would replace the new owner's violations with its own stale set.
+    const auditId = await makeAudit()
+    await sut.replaceAll(auditId, CLAIM, [contrast])
+
+    const supersededClaim = new Date('2026-07-27T09:00:00Z')
+    await sut.replaceAll(auditId, supersededClaim, [])
+
+    expect(await sut.loadByAuditId(auditId)).toHaveLength(1)
+  })
+
+  it('ignores a write once the audit is no longer running', async () => {
+    const auditId = await makeAudit()
+    await sut.replaceAll(auditId, CLAIM, [contrast])
+    await db.updateTable('audits').set({ status: 'done' }).where('id', '=', auditId).execute()
+
+    await sut.replaceAll(auditId, CLAIM, [])
+
+    expect(await sut.loadByAuditId(auditId)).toHaveLength(1)
   })
 })

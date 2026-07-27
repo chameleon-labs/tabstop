@@ -14,7 +14,9 @@ export class PostgresViolationRepository
 implements ReplaceViolationsRepository, LoadViolationsByAuditIdRepository {
   constructor (private readonly db: Kysely<Database>) {}
 
-  async replaceAll (auditId: string, violations: AddViolationParams[]): Promise<void> {
+  async replaceAll (
+    auditId: string, claimedAt: Date, violations: AddViolationParams[]
+  ): Promise<void> {
     // Delete and insert in one transaction, so a retry can never see a
     // half-replaced set and can never double-insert. Both statements are on
     // this table, so the transaction is local to this repository - no
@@ -25,8 +27,17 @@ implements ReplaceViolationsRepository, LoadViolationsByAuditIdRepository {
       // concurrent attempts both delete zero rows and both insert, duplicating
       // everything. Taking the audit row makes replacements for the same audit
       // queue behind each other.
-      await trx.selectFrom('audits').select('id')
-        .where('id', '=', auditId).forUpdate().execute()
+      const owned = await trx.selectFrom('audits').select('id')
+        .where('id', '=', auditId)
+        // Ownership is checked WHILE holding the lock, not before taking it:
+        // an attempt that paused past its lease can resume here after another
+        // worker claimed and finished the audit, and would otherwise replace
+        // the new owner's violations with its own stale set.
+        .where('status', '=', 'running')
+        .where('claimed_at', '=', claimedAt)
+        .forUpdate().executeTakeFirst()
+
+      if (owned === undefined) return
 
       await trx.deleteFrom('violations').where('audit_id', '=', auditId).execute()
 

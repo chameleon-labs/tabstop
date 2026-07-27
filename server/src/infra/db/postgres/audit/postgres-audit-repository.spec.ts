@@ -106,6 +106,15 @@ describe('PostgresAuditRepository', () => {
       return audit.id
     }
 
+    // Terminal writes are fenced on the claim, so a test that finishes an
+    // audit has to claim it first, exactly as the worker does.
+    const makeClaimedAudit = async (): Promise<{ id: string, claimedAt: Date }> => {
+      const id = await makeQueuedAudit()
+      const claimedAt = await sut.claimForRun(id)
+      if (claimedAt === null) throw new Error('fixture failed to claim')
+      return { id, claimedAt }
+    }
+
     const load = async (id: string) =>
       await db.selectFrom('audits').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
 
@@ -156,14 +165,14 @@ describe('PostgresAuditRepository', () => {
       // reading the row and claiming it. A plain update would put a completed
       // audit back into `running` and let a later run overwrite its result.
       for (const finish of ['done', 'failed'] as const) {
-        const id = await makeQueuedAudit()
+        const { id, claimedAt } = await makeClaimedAudit()
         if (finish === 'done') {
-          await sut.markDone(id, {
+          await sut.markDone(id, claimedAt, {
             countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
             axeVersion: '4.12.1', durationMs: 1, settled: true
           })
         } else {
-          await sut.markFailed(id, 'Could not resolve that domain')
+          await sut.markFailed(id, claimedAt, 'Could not resolve that domain')
         }
 
         expect(await sut.claimForRun(id)).toBeNull()
@@ -172,8 +181,8 @@ describe('PostgresAuditRepository', () => {
     })
 
     it('refuses every concurrent delivery once the audit has finished', async () => {
-      const id = await makeQueuedAudit()
-      await sut.markDone(id, {
+      const { id, claimedAt } = await makeClaimedAudit()
+      await sut.markDone(id, claimedAt, {
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1', durationMs: 1, settled: true
       })
@@ -183,6 +192,28 @@ describe('PostgresAuditRepository', () => {
       ])
 
       expect(claims).toEqual([null, null, null])
+    })
+
+    it('ignores a terminal write from an attempt that lost its claim', async () => {
+      // A paused attempt can resume after another worker reclaimed and finished
+      // the audit. Unfenced, markDone would overwrite the new owner's result
+      // and markFailed would turn a success into a failure.
+      const { id, claimedAt } = await makeClaimedAudit()
+      await db.updateTable('audits')
+        .set({ claimed_at: new Date(Date.now() - 60 * 60_000) })
+        .where('id', '=', id).execute()
+      const newOwner = await sut.claimForRun(id)
+      if (newOwner === null) throw new Error('fixture failed to reclaim')
+      await sut.markDone(id, newOwner, {
+        countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+        axeVersion: '4.12.1', durationMs: 1, settled: true
+      })
+
+      await sut.markFailed(id, claimedAt, 'stale attempt reporting failure')
+
+      const row = await load(id)
+      expect(row.status).toBe('done')
+      expect(row.error).toBeNull()
     })
 
     it('lets the next attempt claim once the previous one released', async () => {
@@ -214,10 +245,8 @@ describe('PostgresAuditRepository', () => {
     })
 
     it('refuses to drag a finished audit back to queued', async () => {
-      const id = await makeQueuedAudit()
-      const claimedAt = await sut.claimForRun(id)
-      if (claimedAt === null) throw new Error('fixture failed to claim')
-      await sut.markFailed(id, 'Could not resolve that domain')
+      const { id, claimedAt } = await makeClaimedAudit()
+      await sut.markFailed(id, claimedAt, 'Could not resolve that domain')
 
       await sut.releaseClaim(id, claimedAt)
 
@@ -225,9 +254,9 @@ describe('PostgresAuditRepository', () => {
     })
 
     it('marks an audit done with counts, version, duration and settled', async () => {
-      const id = await makeQueuedAudit()
+      const { id, claimedAt } = await makeClaimedAudit()
 
-      await sut.markDone(id, {
+      await sut.markDone(id, claimedAt, {
         countsByImpact: { minor: 1, moderate: 0, serious: 2, critical: 3 },
         axeVersion: '4.12.1',
         durationMs: 1234,
@@ -247,9 +276,9 @@ describe('PostgresAuditRepository', () => {
     })
 
     it('writes all four impact keys, which the check constraint requires', async () => {
-      const id = await makeQueuedAudit()
+      const { id, claimedAt } = await makeClaimedAudit()
 
-      await sut.markDone(id, {
+      await sut.markDone(id, claimedAt, {
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1',
         durationMs: 10,
@@ -261,9 +290,9 @@ describe('PostgresAuditRepository', () => {
     })
 
     it('marks an audit failed with a readable message and a completion time', async () => {
-      const id = await makeQueuedAudit()
+      const { id, claimedAt } = await makeClaimedAudit()
 
-      await sut.markFailed(id, 'Could not resolve that domain')
+      await sut.markFailed(id, claimedAt, 'Could not resolve that domain')
 
       const row = await load(id)
       expect(row.status).toBe('failed')

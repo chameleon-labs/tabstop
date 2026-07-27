@@ -142,7 +142,7 @@ export class PostgresAuditRepository implements
       .execute()
   }
 
-  async markDone (auditId: string, result: MarkDoneParams): Promise<void> {
+  async markDone (auditId: string, claimedAt: Date, result: MarkDoneParams): Promise<void> {
     await this.db
       .updateTable('audits')
       .set({
@@ -157,14 +157,22 @@ export class PostgresAuditRepository implements
         completed_at: new Date()
       })
       .where('id', '=', auditId)
+      // Fenced: an attempt that lost its claim must not overwrite the result
+      // of the worker that reclaimed the audit.
+      .where('status', '=', 'running')
+      .where('claimed_at', '=', claimedAt)
       .execute()
   }
 
-  async markFailed (auditId: string, error: string): Promise<void> {
+  async markFailed (auditId: string, claimedAt: Date, error: string): Promise<void> {
     await this.db
       .updateTable('audits')
       .set({ status: 'failed', error, completed_at: new Date() })
       .where('id', '=', auditId)
+      // Same fence: a resumed final attempt must not turn another worker's
+      // successful audit into a failure.
+      .where('status', '=', 'running')
+      .where('claimed_at', '=', claimedAt)
       .execute()
   }
 }

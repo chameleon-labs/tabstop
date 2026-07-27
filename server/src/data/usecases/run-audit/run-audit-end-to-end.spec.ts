@@ -99,7 +99,9 @@ describe('run-audit end to end', () => {
     const first = await violations.loadByAuditId(auditId)
 
     // Re-run the persistence exactly as a redelivered attempt would.
-    await violations.replaceAll(auditId, first.map((violation) => ({
+    const claimedAt = (await load(auditId)).claimed_at
+    if (claimedAt === null) throw new Error('expected the audit to carry a claim')
+    await violations.replaceAll(auditId, claimedAt, first.map((violation) => ({
       ruleId: violation.ruleId,
       impact: violation.impact,
       description: violation.description,

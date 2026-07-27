@@ -30,8 +30,8 @@ describe('DbRunAudit', () => {
     await sut.run(params())
 
     expect(auditStatus.claimForRun).toHaveBeenCalledWith('audit-1')
-    expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', expect.any(Array))
-    expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', {
+    expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), expect.any(Array))
+    expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), {
       // counted per NODE, not per rule: two alt-less images are two problems
       countsByImpact: { minor: 0, moderate: 0, serious: 1, critical: 2 },
       axeVersion: '4.12.1',
@@ -60,7 +60,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone.mock.calls[0]?.[1].countsByImpact)
+    expect(auditStatus.markDone.mock.calls[0]?.[2].countsByImpact)
       .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 0 })
   })
 
@@ -91,10 +91,10 @@ describe('DbRunAudit', () => {
     await sut.run(params())
 
     // Both are stored...
-    expect(violations.replaceAll.mock.calls[0]?.[1]).toHaveLength(2)
+    expect(violations.replaceAll.mock.calls[0]?.[2]).toHaveLength(2)
     // ...but only the one with a severity is counted. Inventing a bucket for
     // the other would corrupt the comparison regression detection makes.
-    expect(auditStatus.markDone.mock.calls[0]?.[1].countsByImpact)
+    expect(auditStatus.markDone.mock.calls[0]?.[2].countsByImpact)
       .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 1 })
   })
 
@@ -106,7 +106,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone.mock.calls[0]?.[1].settled).toBe(false)
+    expect(auditStatus.markDone.mock.calls[0]?.[2].settled).toBe(false)
     expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
@@ -117,7 +117,7 @@ describe('DbRunAudit', () => {
     )
 
     await expect(sut.run(params())).rejects.toThrow(PermanentAuditError)
-    expect(auditStatus.markFailed).toHaveBeenCalledWith('audit-1', 'Could not resolve that domain')
+    expect(auditStatus.markFailed).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), 'Could not resolve that domain')
   })
 
   it('does not mark failed for a transient failure while attempts remain', async () => {
@@ -163,7 +163,7 @@ describe('DbRunAudit', () => {
 
     await expect(sut.run(params({ isFinalAttempt: true }))).rejects.toThrow('some transient blip')
     expect(auditStatus.markFailed)
-      .toHaveBeenCalledWith('audit-1', 'Something went wrong running this audit')
+      .toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), 'Something went wrong running this audit')
     // Terminal, so there is nothing to hand back.
     expect(auditStatus.releaseClaim).not.toHaveBeenCalled()
   })
