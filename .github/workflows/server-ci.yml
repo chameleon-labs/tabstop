@@ -25,6 +25,26 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: 'server/pnpm-lock.yaml'
       - run: pnpm install --frozen-lockfile
+
+      # The audit worker drives real Chromium, so CI needs the browser. Cached
+      # on the resolved Playwright version: the browser build is tied to it, so
+      # a version bump must miss the cache rather than reuse a stale binary.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - run: pnpm exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      - run: pnpm exec playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+
       - run: pnpm typecheck
-      - run: pnpm test
+      # Build BEFORE test: a spec asserts the vendored axe engine reached
+      # dist/, which tsc does not copy on its own. Testing first would make
+      # that assertion vacuous.
       - run: pnpm build
+      - run: pnpm test

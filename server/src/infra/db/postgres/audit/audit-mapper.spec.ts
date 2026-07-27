@@ -17,6 +17,8 @@ const makeRow = (overrides: Partial<Selectable<AuditsTable>> = {}): Selectable<A
   error: null,
   created_at: new Date('2026-07-26T10:00:00Z'),
   completed_at: new Date('2026-07-26T10:00:30Z'),
+  settled: true,
+  claimed_at: null,
   ...overrides
 })
 
@@ -36,7 +38,8 @@ describe('toAuditModel', () => {
       durationMs: 1234,
       error: null,
       createdAt: new Date('2026-07-26T10:00:00Z'),
-      completedAt: new Date('2026-07-26T10:00:30Z')
+      completedAt: new Date('2026-07-26T10:00:30Z'),
+      settled: true
     })
   })
 

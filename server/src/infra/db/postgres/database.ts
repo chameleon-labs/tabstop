@@ -67,13 +67,18 @@ export interface AuditsTable {
   error: Nullable<string>
   created_at: Generated<Date>
   completed_at: Nullable<Date>
+  /** False when the page never reached network idle and was audited anyway. */
+  settled: Generated<boolean>
+  /** When the current attempt claimed this audit. Null before any attempt. */
+  claimed_at: Nullable<Date>
 }
 
 export interface ViolationsTable {
   id: Generated<string>
   audit_id: string
   rule_id: string
-  impact: Impact
+  /** Null when axe reports a violation whose checks carry no severity. */
+  impact: Nullable<Impact>
   description: string
   help_url: string
   nodes: Json<ViolationNode[]>

@@ -6,6 +6,12 @@ import { JobTimeoutError, runWithTimeout } from './run-with-timeout.js'
 // out a delay that proves nothing.
 const hangs = async (): Promise<never> => await new Promise(() => { /* never settles */ })
 
+// A handler that ignores its abort signal makes runWithTimeout wait out the
+// unwind grace before reporting, which is the point of the grace but would
+// otherwise add its full default to the suite. Specs using `hangs` pass a
+// short one explicitly.
+const SHORT_GRACE_MS = 50
+
 describe('runWithTimeout', () => {
   it('resolves with the handler result when it finishes in time', async () => {
     const result = await runWithTimeout(1000, async () => 'done')
@@ -15,7 +21,7 @@ describe('runWithTimeout', () => {
 
   it('rejects with JobTimeoutError when the handler runs over budget', async () => {
     await expect(
-      runWithTimeout(20, hangs)
+      runWithTimeout(20, hangs, SHORT_GRACE_MS)
     ).rejects.toBeInstanceOf(JobTimeoutError)
   })
 
@@ -30,7 +36,7 @@ describe('runWithTimeout', () => {
           signal.addEventListener('abort', () => { resolve() }, { once: true })
         })
         observed = signal.aborted
-      })
+      }, SHORT_GRACE_MS)
     ).rejects.toBeInstanceOf(JobTimeoutError)
 
     await vi.waitFor(() => { expect(observed).toBe(true) }, { timeout: 5000 })
@@ -50,5 +56,53 @@ describe('runWithTimeout', () => {
     })
 
     expect(observed).toBe(false)
+  })
+
+  it('waits for the handler to finish unwinding before reporting the timeout', async () => {
+    // Settling the moment the signal fires would let BullMQ start the next
+    // attempt while this one is still writing - a late write from the
+    // abandoned attempt then lands on top of the retry.
+    const order: string[] = []
+
+    const failure = await runWithTimeout(20, async (signal) => {
+      await new Promise<void>((resolve) => {
+        signal.addEventListener('abort', () => {
+          setTimeout(() => { order.push('handler unwound'); resolve() }, 40)
+        }, { once: true })
+      })
+      throw new Error('aborted')
+    }, 5_000).catch((error: unknown) => error)
+
+    order.push('timeout reported')
+
+    expect(failure).toBeInstanceOf(JobTimeoutError)
+    expect(order).toEqual(['handler unwound', 'timeout reported'])
+  })
+
+  it('gives up on a handler that ignores its signal, rather than stalling', async () => {
+    const started = Date.now()
+
+    const failure = await runWithTimeout(
+      20,
+      hangs,
+      SHORT_GRACE_MS
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(JobTimeoutError)
+    // Bounded by the grace, not by the handler.
+    expect(Date.now() - started).toBeLessThan(1_000)
+  })
+
+  it('reports the timeout even when the handler rejects with its own error', async () => {
+    // The abandoned attempt's own "context closed" noise must not replace the
+    // reason the job actually ended.
+    const failure = await runWithTimeout(20, async (signal) => {
+      await new Promise<void>((resolve) => {
+        signal.addEventListener('abort', () => { resolve() }, { once: true })
+      })
+      throw new Error('browser context was closed')
+    }, 5_000).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(JobTimeoutError)
   })
 })

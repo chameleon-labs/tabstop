@@ -104,6 +104,42 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...validSource, SESSION_TTL_DAYS: '-1' })).toThrow('SESSION_TTL_DAYS')
   })
 
+  it('defaults the audit budgets, and caps concurrency', () => {
+    const parsed = parseEnv(validSource)
+    // Chromium is 300-500MB per context, so one at a time is the safe default.
+    expect(parsed.auditConcurrency).toBe(1)
+    expect(parsed.auditJobTimeoutMs).toBe(45_000)
+    expect(parsed.auditNavigationTimeoutMs).toBe(20_000)
+    expect(parsed.auditSettleBudgetMs).toBe(10_000)
+    expect(parsed.auditFallbackSettleMs).toBe(1_000)
+
+    expect(parseEnv({ ...validSource, AUDIT_CONCURRENCY: '4' }).auditConcurrency).toBe(4)
+    expect(() => parseEnv({ ...validSource, AUDIT_CONCURRENCY: '64' })).toThrow('AUDIT_CONCURRENCY')
+    expect(() => parseEnv({ ...validSource, AUDIT_JOB_TIMEOUT_MS: '0' }))
+      .toThrow('AUDIT_JOB_TIMEOUT_MS')
+  })
+
+  it('rejects navigation budgets that the job timeout can never reach', () => {
+    // Each budget passes its own check, but they are nested: the job timeout
+    // aborts first, so a 600s navigation budget under the 45s default is dead
+    // configuration - along with the specific error message mapped to it.
+    expect(() => parseEnv({ ...validSource, AUDIT_NAVIGATION_TIMEOUT_MS: '600000' }))
+      .toThrow('AUDIT_JOB_TIMEOUT_MS must leave room')
+
+    expect(() => parseEnv({ ...validSource, AUDIT_SETTLE_BUDGET_MS: '40000' }))
+      .toThrow('AUDIT_JOB_TIMEOUT_MS must leave room')
+  })
+
+  it('accepts navigation budgets that fit inside the job timeout', () => {
+    // The defaults must themselves satisfy the invariant, or the process could
+    // not boot at all: 20s + 10s + 1s + 10s headroom = 41s under a 45s budget.
+    expect(parseEnv(validSource).auditNavigationTimeoutMs).toBe(20_000)
+
+    expect(parseEnv({
+      ...validSource, AUDIT_JOB_TIMEOUT_MS: '600000', AUDIT_NAVIGATION_TIMEOUT_MS: '500000'
+    }).auditNavigationTimeoutMs).toBe(500_000)
+  })
+
   it('rejects a session ttl beyond what a cookie can express', () => {
     // Browsers cap cookie expiry at 400 days, so a longer session would be
     // clamped in the browser while the row kept the longer expiry. And at
