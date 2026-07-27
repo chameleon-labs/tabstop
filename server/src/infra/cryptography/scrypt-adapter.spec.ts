@@ -69,6 +69,28 @@ describe('ScryptAdapter', () => {
       }
     })
 
+    it('rejects a truncated digest rather than comparing only the bytes it kept', async () => {
+      // Deriving at the STORED key length made a truncated digest fail OPEN:
+      // a one-byte key compares one byte, so roughly 1 in 256 arbitrary
+      // passwords was accepted. Measured at 3 of 1500 before the length check.
+      const sut = makeSut()
+      const digest = await sut.hash('the real password')
+      const [scheme, n, r, p, salt, key] = digest.split('$')
+      const truncate = (bytes: number): string =>
+        [scheme, n, r, p, salt, Buffer.from(key ?? '', 'base64')
+          .subarray(0, bytes).toString('base64')].join('$')
+
+      for (const bytes of [1, 2, 8, 32, 63]) {
+        expect(await sut.compare('the real password', truncate(bytes))).toBe(false)
+        for (let attempt = 0; attempt < 40; attempt++) {
+          expect(await sut.compare(`wrong-${attempt}`, truncate(bytes))).toBe(false)
+        }
+      }
+
+      // and the untruncated digest still verifies
+      expect(await sut.compare('the real password', digest)).toBe(true)
+    })
+
     it('returns false for a digest whose parameters scrypt itself rejects', async () => {
       // These parse cleanly and pass a naive Number.isInteger check, then make
       // Node throw synchronously - ERR_CRYPTO_INVALID_SCRYPT_PARAMS for a cost

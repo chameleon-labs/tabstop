@@ -36,6 +36,36 @@ const requiredBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
 }
 
 /**
+ * A browser's `Origin` header is scheme + host + port and nothing else, so the
+ * configured value has to be exactly that: `*` is invalid on a credentialed
+ * request, and a trailing slash or path can never equal an Origin. Either would
+ * boot cleanly and then fail every authenticated browser request - the failure
+ * this fail-fast rule exists to move to startup.
+ */
+const requiredOrigin = (source: NodeJS.ProcessEnv, name: string): string => {
+  const value = required(source, name)
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`${name} must be an absolute http(s) origin, but was "${value}"`)
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${name} must use http or https, but was "${value}"`)
+  }
+  if (parsed.origin !== value) {
+    throw new Error(
+      `${name} must be exactly an origin, with no path or trailing slash - ` +
+      `expected "${parsed.origin}" but was "${value}"`
+    )
+  }
+
+  return parsed.origin
+}
+
+/**
  * Unset means "use the default". Set means the operator had an intention, so an
  * unusable value is a configuration error and must not be silently replaced by
  * the default - that is how a deliberate change becomes a no-op nobody notices.
@@ -83,8 +113,7 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     port: hasValidPort ? parsedPort : DEFAULT_PORT,
     databaseUrl: required(source, 'DATABASE_URL'),
     redisUrl: required(source, 'REDIS_URL'),
-    // Exact origin: `*` is invalid on credentialed requests.
-    frontendOrigin: required(source, 'FRONTEND_ORIGIN'),
+    frontendOrigin: requiredOrigin(source, 'FRONTEND_ORIGIN'),
     sessionCookieSecure: requiredBoolean(source, 'SESSION_COOKIE_SECURE'),
     // A tuning knob, not a correctness knob: CI lowers it, production must not.
     scryptCost: scryptCostOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),

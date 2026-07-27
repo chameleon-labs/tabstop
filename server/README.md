@@ -103,13 +103,14 @@ Specs share one database and run in parallel, so they create `randomUUID()`-suff
 
 ## Auth
 
-Sessions are an opaque id — 32 random bytes as hex — in an `httpOnly`, `SameSite=Lax`, host-only cookie named `sid`, backed by the `sessions` table. Logout deletes the row, so revocation is real rather than a client-side cookie clear.
+Sessions are an opaque id — 32 random bytes as hex — in an `httpOnly`, `SameSite=Lax`, host-only cookie backed by the `sessions` table. The cookie is named **`__Host-sid`** wherever `SESSION_COOKIE_SECURE=true`, falling back to `sid` over plain http where the prefix is invalid — so production and local development differ, which matters when debugging. Logout deletes the row, so revocation is real rather than a client-side cookie clear.
 
 Four things to know before touching it:
 
 - **Express 5 writes cookies but cannot read them.** `res.cookie()` is core; `req.cookies` does not exist, because core ships no parser. `main/adapters/cookies.ts` parses the header instead — the session id is hex, so percent-decoding never arises.
 - **Controllers never touch Express.** An `HttpResponse` may carry `cookies: CookieDirective[]` describing what to set or clear; `adaptRoute` applies it and owns `httpOnly`, `sameSite`, `secure` and `path`, so a controller cannot weaken them and there is one place to audit.
 - **`adaptRoute` merges `res.locals` last**, after body, params and query. With it first, a client posts `{"userId": ...}` and impersonates. A spec pins the ordering; reversing the spread fails it.
+- **State-changing requests are origin-checked.** `SameSite=Lax` blocks a cross-*site* form POST, but the app and API share a registrable domain by design, so a sibling host is same-site and its POST would carry the cookie. `sameOrigin` rejects a mismatched `Origin` on POST/PUT/PATCH/DELETE; an absent `Origin` is allowed, since browsers always send it on those methods.
 - **The frontend and API must share a registrable domain** (`app.example.com` and `api.example.com`). `SameSite=Lax` otherwise makes the session a third-party cookie, which Safari blocks outright — login appears to succeed and nothing is ever authenticated. Clients must also send `credentials: 'include'` on every request, and read auth state from `GET /api/me` rather than from storage, since `httpOnly` means JavaScript can never see the cookie.
 
 Passwords use `node:crypto` scrypt with a self-describing digest (`scrypt$N$r$p$salt$key`), so `SCRYPT_COST` can rise later without invalidating stored passwords. The suite lowers the cost — at the production setting each hash is ~89ms and would dominate the run.

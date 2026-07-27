@@ -165,6 +165,44 @@ describe('account routes', () => {
     })
   })
 
+  describe('CSRF', () => {
+    it('rejects a state-changing request from another origin', async () => {
+      // SameSite=Lax does not help here: this design puts the app and the API
+      // under one registrable domain, so a page on a sibling host is same-site
+      // and its form POST would carry the session cookie.
+      const signup = await request(app).post('/api/signup')
+        .send({ email: newEmail(), password }).expect(201)
+      const cookie = firstSetCookie(signup)
+
+      const forced = await request(app).post('/api/logout')
+        .set('Cookie', cookie)
+        .set('Origin', 'https://evil.tabstop.dev')
+
+      expect(forced.status).toBe(403)
+
+      // and the session was NOT revoked
+      await request(app).get('/api/me').set('Cookie', cookie).expect(200)
+    })
+
+    it('allows a state-changing request from the configured frontend origin', async () => {
+      const signup = await request(app).post('/api/signup')
+        .send({ email: newEmail(), password }).expect(201)
+
+      await request(app).post('/api/logout')
+        .set('Cookie', firstSetCookie(signup))
+        .set('Origin', 'http://localhost:5173')
+        .expect(204)
+    })
+
+    it('allows a request with no Origin at all, which no browser CSRF can be', async () => {
+      await request(app).post('/api/logout').expect(204)
+    })
+
+    it('does not interfere with reads', async () => {
+      await request(app).get('/api/me').set('Origin', 'https://evil.tabstop.dev').expect(401)
+    })
+  })
+
   describe('caching', () => {
     it('marks authenticated responses no-store', async () => {
       // GET /api/me returns per-user data. A 200 with no Cache-Control is

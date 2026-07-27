@@ -103,7 +103,11 @@ export class ScryptAdapter implements Hasher, HashComparer {
 
     const parameters = { N: Number(n), r: Number(r), p: Number(p) }
     const expected = Buffer.from(keyBase64, 'base64')
-    if (expected.length === 0) return false
+    // Must be EXACTLY the length this adapter writes, not merely non-empty.
+    // The derivation below uses the stored length, so a truncated digest would
+    // compare only that many bytes: a one-byte key accepts an arbitrary
+    // password with probability 1/256. Measured at 3 in 1500 before this check.
+    if (expected.length !== KEY_LENGTH) return false
 
     // Parameter validity is left to scrypt itself rather than re-checked here.
     // Node validates synchronously and throws - for a cost that is not a power
@@ -117,7 +121,7 @@ export class ScryptAdapter implements Hasher, HashComparer {
       // digest written with different parameters would throw instead of
       // returning false.
       const actual = await scryptAsync(
-        plaintext, Buffer.from(saltBase64, 'base64'), expected.length,
+        plaintext, Buffer.from(saltBase64, 'base64'), KEY_LENGTH,
         { ...parameters, maxmem: MAX_MEMORY }
       )
 

@@ -59,6 +59,22 @@ describe('parseEnv', () => {
     expect(() => parseEnv(rest)).toThrow('FRONTEND_ORIGIN')
   })
 
+  it('rejects a FRONTEND_ORIGIN that is not exactly an origin', () => {
+    // Each of these boots cleanly under a mere non-empty check and then fails
+    // every authenticated browser request.
+    for (const bad of ['*', 'http://localhost:5173/', 'http://localhost:5173/app',
+      'localhost:5173', 'ftp://localhost:5173', 'not a url']) {
+      expect(() => parseEnv({ ...validSource, FRONTEND_ORIGIN: bad })).toThrow('FRONTEND_ORIGIN')
+    }
+  })
+
+  it('accepts a canonical origin, with or without a port', () => {
+    expect(parseEnv({ ...validSource, FRONTEND_ORIGIN: 'https://app.tabstop.dev' }).frontendOrigin)
+      .toBe('https://app.tabstop.dev')
+    expect(parseEnv({ ...validSource, FRONTEND_ORIGIN: 'http://localhost:5173' }).frontendOrigin)
+      .toBe('http://localhost:5173')
+  })
+
   it('throws when SESSION_COOKIE_SECURE is missing', () => {
     const { SESSION_COOKIE_SECURE, ...rest } = validSource
     expect(() => parseEnv(rest)).toThrow('SESSION_COOKIE_SECURE')
