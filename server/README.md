@@ -21,7 +21,7 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Stack
 
-Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · zod · Vitest + Supertest + Testcontainers · pnpm.
+Express 5 · TypeScript 7 · Kysely + Postgres · BullMQ + Redis · zod · Playwright + axe-core · Vitest + Supertest + Testcontainers · pnpm.
 
 Deliberately excluded to keep this minimal, same reasoning as the template: no `dotenv`, no `cors` package, no `cookie-parser`, no ESLint (`typescript-eslint` doesn't support TS 7 yet), and no password-hashing or JWT library — `node:crypto` covers both.
 
@@ -79,6 +79,19 @@ await q.add('ping', { requestedAt: new Date().toISOString() })
 await q.close()
 "
 ```
+
+## Audit worker
+
+The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations. `pnpm dev:worker` consumes both `ping` and `audit`.
+
+- **axe-core is vendored, not imported at runtime.** `src/infra/audit/vendor/axe.min.js` is checked in; refresh it with `pnpm vendor:axe`, which also rewrites the sibling `VERSION` file. The reported `axe_version` comes from `testEngine.version` in the run itself, so it can never disagree with the file that executed.
+- **`pnpm build` copies that file explicitly.** `tsc` compiles `.ts` and ignores everything else, so without `scripts/copy-vendor.mjs` the engine never reaches `dist/` — and it fails only in production. A spec asserts the built file exists, and CI builds before testing.
+- **Playwright is imported in exactly one file**, `infra/audit/playwright-axe-auditor.ts`. Everything above it works against the `PageAuditor` protocol, which is why the whole status machine is testable in milliseconds with no browser.
+- **`bypassCSP: true` is load-bearing** — a well-configured Content-Security-Policy otherwise blocks the injected engine.
+- **A page that never reaches network idle is still audited**, with `audits.settled` set to false. Treat a score with `settled = false` as provisional.
+- Running the browser tests needs `pnpm exec playwright install chromium` once.
+
+Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300–500MB per context), `AUDIT_JOB_TIMEOUT_MS` (45s), `AUDIT_NAVIGATION_TIMEOUT_MS` (20s), `AUDIT_SETTLE_BUDGET_MS` (10s), `AUDIT_FALLBACK_SETTLE_MS` (1s).
 
 ## Schema
 

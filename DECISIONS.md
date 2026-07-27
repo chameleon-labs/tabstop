@@ -6,6 +6,26 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-27 — the audit worker: navigate once, audit anyway, and say so
+
+The engine. A BullMQ job takes an audit id, drives Chromium via Playwright, injects vendored axe-core, and records what it found. Four decisions, three of them made by measuring rather than reading.
+
+**A page that never goes idle is audited anyway, and the audit says so.** Analytics beacons, polling and live chat keep the network busy forever, so `networkidle` never fires on a meaningful share of real sites. Failing those audits would make the product look broken on pages that are fine; auditing them silently would be worse, because a clean score from a half-rendered SPA is a lie that reads exactly like success. So `audits` gains a `settled` column: false means the page never finished loading and the result should not be trusted as a complete picture. Rejected: `networkidle` or fail (fails good sites), and `domcontentloaded` always (under-renders client-side apps, which are the pages most likely to have the problems tabstop exists to find).
+
+**One navigation, not two.** The obvious implementation waits for `networkidle` and, on timeout, navigates again with `domcontentloaded`. That loads the page twice — doubling the cost of exactly the slow pages that triggered it, doubling the request load on someone else's site, and risking a different second render from A/B tests or one-shot banners. Navigating once with `domcontentloaded` and then awaiting the `networkidle` load state separately gets the same outcome for one page load.
+
+**Failures are classified, because retrying is not free.** The queue defaults to three attempts with exponential backoff. Applied naively that is wrong twice over: a domain that will never resolve burns three slots of a capped worker pool for the same certain failure, and the audit row flaps `failed → running → failed` in front of the user. A pure `classifyAuditError` decides — DNS failure, refused connection, blocked port, bad certificate, a CSP that blocks the engine and a navigation timeout are permanent and fail immediately; a browser crash or a database blip is retried, and the row is only written `failed` once attempts are exhausted. Anything unrecognised is treated as transient on purpose: a new failure mode is more likely infrastructure than a permanent property of someone's page, and the cost of guessing wrong is three attempts rather than a permanent failure the user cannot retry.
+
+The queue's vocabulary stops at the composition root. The usecase raises a domain `PermanentAuditError`, and only the worker adapter knows to translate that into BullMQ's `UnrecoverableError` and to supply `isFinalAttempt` from `job.attemptsMade`. That is what keeps the whole status machine testable with no queue at all.
+
+**The payload optimisation the issue proposed does almost nothing; the one that matters is different.** Measured on a fixture page: a raw `axe.run()` serialises to 42,996 bytes, and adding `resultTypes: ['violations']` gives 41,922 — a 2.5% saving, not the "dramatic" reduction assumed. `passes` still comes back as 17 full rule entries; the option only trims their node arrays. Mapping the violations **inside `page.evaluate`** and returning just those is 621 bytes, a 67x reduction, because `passes` never crosses the CDP boundary. It also means no axe result type ever exists in Node, so the `PageAuditor` boundary is real rather than nominal — a node carries `target` and `html`, and axe's `any`/`all`/`none`/`failureSummary` are discarded in the browser.
+
+Two things that only surfaced by running it. **`bypassCSP: true` is load-bearing**: without it `addScriptTag` throws "Executing inline script violates the following Content Security Policy", so we would fail on exactly the sites most likely to have been built carefully. And **timeouts must be identified by `error.name`, not by class**: Playwright's bundling makes the timeout's `constructor.name` `TimeoutError2` while `error.name` stays `TimeoutError`, so an `instanceof` check silently never matches and every timeout would be retried three times before failing.
+
+Also decided: Chromium launches lazily and is reused for the process's lifetime while a fresh **context** is created per audit — the context is the isolation boundary, and launching per job costs about a second plus heavy memory churn. `AUDIT_CONCURRENCY` defaults to 1 because Chromium is 300–500MB per context; #8 owns raising it once #16 has sized the instance. The audit job runs in the existing worker process as a second BullMQ `Worker` rather than a new deploy unit, and that process now connects to Postgres, which the ping-only worker never needed.
+
+Finally, the vendored `axe.min.js` needs an explicit copy step in `pnpm build`: `tsc` compiles `.ts` and ignores everything else, so the engine would never reach `dist/` — a failure that appears only in production. A spec asserts the built file exists, and CI builds before testing so that assertion is not vacuous.
+
 ## 2026-07-26 — accounts: an opaque session cookie, stdlib scrypt, and a domain we now have to own
 
 Signup, login, logout and `GET /api/me`, plus the `sites.user_id` foreign key #4 deferred. Three decisions, and one obligation they create for deploy.
