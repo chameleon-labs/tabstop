@@ -35,6 +35,10 @@ blocked.addSubnet('ff00::', 8, 'ipv6') // multicast
 // 127.0.0.1 without ever looking like it. Verified: 2002:7f00:1:: was allowed.
 blocked.addSubnet('2002::', 16, 'ipv6')
 blocked.addSubnet('64:ff9b::', 96, 'ipv6')
+// RFC 8215's local-use prefix translates just as well, and a configured
+// translator routes 64:ff9b:1::a00:1 to 10.0.0.1. Verified as allowed before
+// this line existed.
+blocked.addSubnet('64:ff9b:1::', 48, 'ipv6')
 
 /**
  * node:net's BlockList is used rather than hand-rolled CIDR arithmetic, which

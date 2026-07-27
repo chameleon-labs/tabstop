@@ -1,4 +1,4 @@
-import { chromium, type Browser } from 'playwright'
+import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
@@ -112,6 +112,38 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
   }
 }
 
+/**
+ * Just the two methods this needs, taken from Playwright's own type rather
+ * than restated: a handler parameter is contravariant, so any hand-written
+ * stand-in would have to name `Route` exactly to be satisfied by a real
+ * context - at which point restating it buys nothing and can drift.
+ */
+export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket'>
+
+/**
+ * Both interceptors, registered together because leaving either off is a hole
+ * rather than a degradation.
+ *
+ * `context.route` does not see WebSockets at all, so without the second
+ * registration a page could open `ws://10.0.0.5/` and reach straight past
+ * every check the first one performs. Nothing an accessibility audit needs
+ * arrives over a socket, so they are refused outright rather than validated -
+ * there is no useful "safe WebSocket" case to preserve here.
+ */
+export const installGuards = async (
+  context: GuardedContext,
+  guard: (route: RouteLike) => Promise<void>
+): Promise<void> => {
+  // The one place Playwright's Route is translated into the guard's own
+  // contract. It cannot be structural: Route.fulfill takes Playwright's
+  // APIResponse, so satisfying RouteLike structurally would mean importing
+  // Playwright into request-guard.ts and losing the boundary that makes the
+  // guard unit-testable at all. An adapter converting a vendor type into a
+  // local port is exactly where a cast earns its place.
+  await context.route('**/*', (route) => guard(route as unknown as RouteLike))
+  await context.routeWebSocket('**/*', (ws) => { ws.close() })
+}
+
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
 
 /**
@@ -201,7 +233,7 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     // audit that can run for tens of seconds, which is long enough to flip DNS
     // underneath it.
     const guard = makeRequestGuard(new CoalescingDnsResolver(this.dnsResolver), this.urlPolicy)
-    await context.route('**/*', (route) => guard(route as unknown as RouteLike))
+    await installGuards(context, guard)
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
     // otherwise the work carries on unattended with a live Chromium behind it.

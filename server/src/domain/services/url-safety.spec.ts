@@ -26,7 +26,8 @@ describe('isBlockedAddress', () => {
       '240.0.0.1', '255.255.255.255',
       'ff02::1',            // v6 multicast
       '2002:7f00:1::',      // 6to4 wrapping 127.0.0.1
-      '64:ff9b::7f00:1'     // NAT64 wrapping 127.0.0.1
+      '64:ff9b::7f00:1',    // NAT64 wrapping 127.0.0.1
+      '64:ff9b:1::a00:1'    // RFC 8215 local-use NAT64 wrapping 10.0.0.1
     ]) {
       expect(isBlockedAddress(address)).toBe(true)
     }

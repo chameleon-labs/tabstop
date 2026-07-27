@@ -7,25 +7,38 @@ const response = (status: number, headers: Record<string, string> = {}): Fetched
   headers: () => headers
 })
 
+type Attempted = { url: string, method: string, headers: Record<string, string>, data?: string }
+
 const makeRoute = (url: string, options: {
   navigation?: boolean
   responses?: FetchedResponse[]
+  method?: string
+  headers?: Record<string, string>
+  postData?: string | null
 } = {}) => {
   const responses = options.responses ?? [response(200)]
   let served = 0
   const fetched: string[] = []
+  const attempts: Attempted[] = []
 
   const route = {
-    request: () => ({ url: () => url, isNavigationRequest: () => options.navigation ?? true }),
+    request: () => ({
+      url: () => url,
+      isNavigationRequest: () => options.navigation ?? true,
+      method: () => options.method ?? 'GET',
+      headers: () => options.headers ?? {},
+      postData: () => options.postData ?? null
+    }),
     abort: vi.fn(async (_errorCode: string) => { /* no-op */ }),
-    fetch: vi.fn(async ({ url: fetchUrl }: { url: string, maxRedirects: number }) => {
-      fetched.push(fetchUrl)
+    fetch: vi.fn(async (attempt: Attempted & { maxRedirects: number }) => {
+      fetched.push(attempt.url)
+      attempts.push(attempt)
       return responses[Math.min(served++, responses.length - 1)] as FetchedResponse
     }),
     fulfill: vi.fn(async (_options: { response: FetchedResponse }) => { /* no-op */ }),
     continue: vi.fn(async () => { /* no-op */ })
   }
-  return { route, fetched }
+  return { route, fetched, attempts }
 }
 
 const resolverFor = (map: Record<string, string[]>): DnsResolver => ({
@@ -152,9 +165,88 @@ describe('makeRequestGuard', () => {
     })
   })
 
+  describe('redirect semantics', () => {
+    it('demotes a POST to GET and drops its body on a 303', async () => {
+      // Replaying the POST would repeat a side effect the server has already
+      // performed, and send a body to an endpoint that never expected one.
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route, attempts } = makeRoute('https://example.com/submit', {
+        method: 'POST',
+        postData: 'name=value',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': '10' },
+        responses: [response(303, { location: '/done' }), response(200)]
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(attempts[0]?.method).toBe('POST')
+      expect(attempts[0]?.data).toBe('name=value')
+      expect(attempts[1]?.method).toBe('GET')
+      expect(attempts[1]?.data).toBeUndefined()
+      // A content-length left on a bodyless GET is its own source of confusion.
+      expect(attempts[1]?.headers['content-type']).toBeUndefined()
+      expect(attempts[1]?.headers['content-length']).toBeUndefined()
+    })
+
+    it('demotes a POST to GET on 301 and 302, as every browser does', async () => {
+      for (const status of [301, 302]) {
+        const guard = makeRequestGuard(resolverFor(PUBLIC))
+        const { route, attempts } = makeRoute('https://example.com/submit', {
+          method: 'POST',
+          postData: 'name=value',
+          responses: [response(status, { location: '/done' }), response(200)]
+        })
+
+        await guard(route as unknown as RouteLike)
+
+        expect(attempts[1]?.method).toBe('GET')
+        expect(attempts[1]?.data).toBeUndefined()
+      }
+    })
+
+    it('preserves the method and body on 307 and 308', async () => {
+      // Those two status codes exist precisely to say "do it again, the same".
+      for (const status of [307, 308]) {
+        const guard = makeRequestGuard(resolverFor(PUBLIC))
+        const { route, attempts } = makeRoute('https://example.com/submit', {
+          method: 'POST',
+          postData: 'name=value',
+          responses: [response(status, { location: '/elsewhere' }), response(200)]
+        })
+
+        await guard(route as unknown as RouteLike)
+
+        expect(attempts[1]?.method).toBe('POST')
+        expect(attempts[1]?.data).toBe('name=value')
+      }
+    })
+
+    it('carries the original method through when there is no redirect', async () => {
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route, attempts } = makeRoute('https://example.com/api', {
+        navigation: false,
+        method: 'POST',
+        postData: '{"a":1}',
+        headers: { 'content-type': 'application/json' }
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(attempts[0]?.method).toBe('POST')
+      expect(attempts[0]?.data).toBe('{"a":1}')
+      expect(attempts[0]?.headers['content-type']).toBe('application/json')
+    })
+  })
+
   describe('when the fetch itself fails', () => {
     const rejectingRoute = (message: string) => ({
-      request: () => ({ url: () => 'https://example.com/', isNavigationRequest: () => true }),
+      request: () => ({
+        url: () => 'https://example.com/',
+        isNavigationRequest: () => true,
+        method: () => 'GET',
+        headers: () => ({}),
+        postData: () => null
+      }),
       abort: vi.fn(async (_code: string) => { /* no-op */ }),
       fetch: vi.fn(async () => { throw new Error(message) }),
       fulfill: vi.fn(async () => { /* no-op */ }),

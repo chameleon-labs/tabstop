@@ -18,11 +18,45 @@ export type FetchedResponse = {
  * guard unit-testable against a fake.
  */
 export type RouteLike = {
-  request: () => { url: () => string, isNavigationRequest: () => boolean }
+  request: () => {
+    url: () => string
+    isNavigationRequest: () => boolean
+    method: () => string
+    headers: () => Record<string, string>
+    postData: () => string | null
+  }
   abort: (errorCode: string) => Promise<void>
-  fetch: (options: { url: string, maxRedirects: number }) => Promise<FetchedResponse>
+  fetch: (options: {
+    url: string
+    method: string
+    headers: Record<string, string>
+    maxRedirects: number
+    data?: string
+  }) => Promise<FetchedResponse>
   fulfill: (options: { response: FetchedResponse }) => Promise<void>
   continue: () => Promise<void>
+}
+
+/**
+ * A redirect is not simply "the same request at a new URL".
+ *
+ * 303 always demotes to GET, and 301/302 do so universally in practice - every
+ * browser has done it for decades. 307 and 308 exist precisely to preserve the
+ * method. Replaying the original POST at every hop, which is what reusing the
+ * request wholesale does, means repeating a side effect the server already
+ * performed and sending a body to an endpoint that never expected one.
+ */
+const METHOD_PRESERVING_REDIRECTS = new Set([307, 308])
+
+type Attempt = { url: string, method: string, headers: Record<string, string>, data?: string }
+
+const followRedirect = (attempt: Attempt, status: number, url: string): Attempt => {
+  if (METHOD_PRESERVING_REDIRECTS.has(status)) return { ...attempt, url }
+
+  // Demoted to GET, so the body goes and the headers describing it go with it -
+  // a content-length left on a bodyless GET is its own source of confusion.
+  const { 'content-type': _type, 'content-length': _length, ...headers } = attempt.headers
+  return { url, method: 'GET', headers }
 }
 
 /**
@@ -84,14 +118,20 @@ export const makeRequestGuard = (
     // private response in the page. Walking the chain by hand is what makes
     // every hop checkable, and it makes the cap countable too, which
     // page.goto does not otherwise expose.
-    let url = request.url()
+    const body = request.postData()
+    let attempt: Attempt = {
+      url: request.url(),
+      method: request.method(),
+      headers: request.headers(),
+      ...(body === null ? {} : { data: body })
+    }
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      if (!await isSafe(url)) return await route.abort('blockedbyclient')
+      if (!await isSafe(attempt.url)) return await route.abort('blockedbyclient')
 
       let response: FetchedResponse
       try {
-        response = await route.fetch({ url, maxRedirects: 0 })
+        response = await route.fetch({ ...attempt, maxRedirects: 0 })
       } catch (error) {
         return await route.abort(abortCodeFor(error))
       }
@@ -102,7 +142,7 @@ export const makeRequestGuard = (
       const location = response.headers().location
       if (location === undefined) return await route.fulfill({ response })
 
-      url = new URL(location, url).toString()
+      attempt = followRedirect(attempt, status, new URL(location, attempt.url).toString())
     }
 
     return await route.abort('blockedbyclient')
