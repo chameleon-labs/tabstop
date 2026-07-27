@@ -97,6 +97,16 @@ The `audit` queue runs accessibility audits: navigate with Chromium, inject vend
 
   `--with-deps` also installs the OS libraries Chromium needs, which a slim container image will not have. This is a deploy requirement (#16), not just a test-setup step. `playwright` is a runtime **dependency** for the same reason: a `pnpm install --prod` that omitted it would fail the worker at module load, before it could consume a single job.
 
+### URL safety
+
+Auditing a user-supplied URL is an SSRF primitive, so the worker refuses private and reserved addresses, non-http schemes, and any port other than 80 or 443.
+
+- **`domain/services/url-safety.ts` is pure** — no DNS, no network, no clock. That is what makes the range list cheap to test exhaustively, and exhaustive tests are the only thing that catches this class of bug.
+- **Redirects are followed by the guard, not the browser.** `context.route` fires only for the first hop, so a `302` to a private address would otherwise never be checked. `infra/audit/request-guard.ts` walks the chain with `route.fetch({ maxRedirects: 0 })`, validating each hop and capping at five.
+- **Every request is checked**, not just navigations — a page can embed a subresource pointing at an internal host. A blocked subresource refuses only itself, so the page still audits.
+- **Rejection messages never distinguish blocked from unreachable.** Everything becomes `That address can't be audited`. Anything more specific turns the audit endpoint into an internal port scanner.
+- The submission-time gate arrives with #9, in its `request-audit` usecase.
+
 Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300–500MB per context), `AUDIT_JOB_TIMEOUT_MS` (45s), `AUDIT_NAVIGATION_TIMEOUT_MS` (20s), `AUDIT_SETTLE_BUDGET_MS` (10s), `AUDIT_FALLBACK_SETTLE_MS` (1s).
 
 ## Schema

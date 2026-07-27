@@ -213,6 +213,20 @@ describe('run-audit end to end', () => {
     ).not.toHaveLength(0)
   }, 60_000)
 
+  it('records a blocked address as a failed audit with a non-leaking message', async () => {
+    const auditId = await queueAudit('http://169.254.169.254/latest/meta-data/')
+
+    await expect(sut.run(params(auditId))).rejects.toThrow(PermanentAuditError)
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('failed')
+    expect(audit.error).toBe("That address can't be audited")
+    // The message must not reveal whether anything is listening there. A
+    // response that distinguished "blocked" from "unreachable" would turn this
+    // endpoint into an internal port scanner.
+    expect(audit.error).not.toMatch(/refused|timed out|resolve|blocked|private|internal|169\.254/i)
+  }, 60_000)
+
   it('keeps a permanently failed audit terminal rather than releasing it', async () => {
     const auditId = await queueAudit('http://127.0.0.1:45999/')
 

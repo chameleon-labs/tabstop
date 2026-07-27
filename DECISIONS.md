@@ -6,6 +6,28 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-27 — URL safety: the redirect check the issue described does not fire
+
+"Audit any URL" hands anonymous users a server-side request forgery primitive, so this lands **before** #9 opens that path. The endpoint should never exist in an unsafe form, rather than exist and be fixed afterwards.
+
+**The mechanism #7 specified does not work.** It proposes intercepting navigation with `context.route` and aborting on a blocked address, and calls that "the one that matters" precisely because Playwright follows redirects internally. Verified against real Chromium: the route handler fires **only for the first hop**. A `302` to a private address is followed by the browser, surfaces as a `request` event carrying `redirectedFrom`, and is never offered to the handler — so `page.goto` resolves at the private URL with its content in the page. The redirect check, the entire reason that gate exists, was absent from the design describing it.
+
+What works is **taking redirect-following away from the browser**: inside the handler, walk the chain with `route.fetch({ maxRedirects: 0 })`, validate every hop, and `fulfill` only the final response. That also makes the hop cap countable, which `page.goto` does not otherwise expose. The cost is real and worth naming: navigation responses are fetched through Playwright's API rather than by the browser directly.
+
+Owning the fetch means owning its failures too — a lesson the existing tests taught immediately. A refused connection thrown inside the handler leaves the route unanswered, so `page.goto` runs to its full timeout and a fast, accurate "Nothing responded at that address" becomes a slow, wrong "The page took too long to load". Fetch failures are now translated back into matching Playwright abort codes so the original `net::ERR_*` reaches the classifier.
+
+**Every request is checked, not only navigations.** A page can embed `<img src="http://169.254.169.254/latest/meta-data/">` and the worker would fetch it from inside the network. Nothing reaches the user either way — axe reads the DOM, not image bytes — so this is about side effects rather than disclosure, but a GET that changes state still fires. A blocked subresource refuses only itself, leaving a page that innocently references an unreachable internal host still auditable.
+
+Two smaller findings. **`node:net`'s `BlockList` fails open on non-addresses**: `check('not-an-ip')` returns `false`, so relying on it alone would allow anything unparseable. It does correctly catch `::ffff:127.0.0.1`, the IPv4-mapped bypass, which was the thing most worth verifying. And **ports are allowlisted to 80 and 443** — a non-standard port on a public audit tool is a strong signal of an internal service, and Chromium's own unsafe-port list is not a boundary we control.
+
+**DNS rebinding is bounded rather than eliminated.** Resolve-and-pin is the robust answer and is awkward through Playwright, so validation happens inside the navigation path instead. With the guard now running on every request and its resolver cache scoped to a single audit, the window between checking an address and fetching it is milliseconds rather than the process's lifetime. That is a genuine tradeoff, recorded here as one.
+
+Rejections surface as a `failed` audit carrying **`That address can't be audited`** — identical whatever the reason. A message distinguishing "blocked" from "unreachable" would turn the audit endpoint into an internal port scanner.
+
+One testing note worth keeping, because it looks like a shortcut and is not. The fixture server necessarily listens on loopback and an ephemeral port, both of which the real policy refuses. So the *policy* and the *mechanism* are tested separately: every range and port rule is covered by pure specs with no network at all, while the integration specs relax exactly those two conditions and leave every other range enforced. Neither set can be satisfied by weakening the other.
+
+Still deferred: gate 1, the submission-time check, which belongs in #9's `request-audit` usecase and has no home until that exists. It is not redundant once this gate exists — it turns an obviously bad URL into an immediate `400` rather than a queued job, a browser launch and a failed audit thirty seconds later.
+
 ## 2026-07-27 — the audit worker: navigate once, audit anyway, and say so
 
 The engine. A BullMQ job takes an audit id, drives Chromium via Playwright, injects vendored axe-core, and records what it found. Four decisions, three of them made by measuring rather than reading.
