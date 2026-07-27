@@ -17,4 +17,6 @@ export type AuditModel = {
   error: string | null
   createdAt: Date
   completedAt: Date | null
+  /** False when the page never finished loading and was audited anyway. */
+  settled: boolean
 }

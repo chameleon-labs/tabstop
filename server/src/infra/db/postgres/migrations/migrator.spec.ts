@@ -39,7 +39,7 @@ describe('runMigrations', () => {
       select name from kysely_migration order by name
     `.execute(db)
 
-    expect(result.rows.map(row => row.name)).toEqual(['001-initial-schema', '002-accounts'])
+    expect(result.rows.map(row => row.name)).toEqual(['001-initial-schema', '002-accounts', '003-audit-settled'])
   })
 
   it('returns no results when every migration is already applied', async () => {

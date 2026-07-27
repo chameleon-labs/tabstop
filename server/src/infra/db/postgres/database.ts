@@ -67,6 +67,8 @@ export interface AuditsTable {
   error: Nullable<string>
   created_at: Generated<Date>
   completed_at: Nullable<Date>
+  /** False when the page never reached network idle and was audited anyway. */
+  settled: Generated<boolean>
 }
 
 export interface ViolationsTable {

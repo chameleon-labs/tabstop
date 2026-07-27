@@ -30,5 +30,6 @@ export const toAuditModel = (row: Selectable<AuditsTable>): AuditModel => ({
   durationMs: row.duration_ms,
   error: row.error,
   createdAt: row.created_at,
-  completedAt: row.completed_at
+  completedAt: row.completed_at,
+  settled: row.settled
 })
