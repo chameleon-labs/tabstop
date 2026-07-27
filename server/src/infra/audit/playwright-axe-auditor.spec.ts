@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { chromium } from 'playwright'
 import { isBlockedAddress, type UrlPolicy } from '../../domain/services/url-safety.js'
 import { NodeDnsResolver } from '../net/node-dns-resolver.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { PlaywrightAxeAuditor } from './playwright-axe-auditor.js'
+import { AUDIT_CONTEXT_OPTIONS, PlaywrightAxeAuditor } from './playwright-axe-auditor.js'
 import { startFixtureServer, type FixtureServer } from './test/fixture-server.js'
 
 const VENDORED_VERSION = readFileSync(
@@ -163,6 +164,36 @@ describe('PlaywrightAxeAuditor URL safety', () => {
     expect(result.violations.map((violation) => violation.ruleId)).toContain('label')
     expect(result.settled).toBe(true)
   }, 30_000)
+
+  it('refuses to let an audited page register a service worker', async () => {
+    // Requests a service worker makes are not reliably intercepted by
+    // context.route, so a page allowed to register one could issue requests
+    // straight past the guard. Driven through a real context rather than by
+    // reading the options object back, which would only agree with itself.
+    const browser = await chromium.launch()
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
+    try {
+      const page = await context.newPage()
+      await page.goto(`${server.baseUrl}/service-worker-page`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(500)
+
+      const registrations = await page.evaluate(async () => {
+        // Reached through a cast for the same reason the adapter does it: this
+        // body runs in the browser but is typechecked in a Node project whose
+        // lib is ES2023, and adding "DOM" would make browser globals look
+        // available throughout the server.
+        const browserGlobals = globalThis as unknown as {
+          navigator: { serviceWorker: { getRegistrations: () => Promise<unknown[]> } }
+        }
+        return (await browserGlobals.navigator.serviceWorker.getRegistrations()).length
+      })
+
+      expect(registrations).toBe(0)
+    } finally {
+      await context.close()
+      await browser.close()
+    }
+  }, 60_000)
 
   it('still audits an ordinary page unchanged', async () => {
     // The control. The guard rewrites how every navigation is fetched, so

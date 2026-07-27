@@ -66,14 +66,17 @@ export const makeRequestGuard = (
   return async (route: RouteLike): Promise<void> => {
     const request = route.request()
 
-    // Subresources are checked but never walked, and a blocked one refuses
-    // only itself: a page that innocently references an unreachable internal
-    // host stays auditable rather than failing outright.
-    if (!request.isNavigationRequest()) {
-      if (await isSafe(request.url())) return await route.continue()
-      return await route.abort('blockedbyclient')
-    }
-
+    // Every request is walked, subresources included. Handing a subresource to
+    // route.continue() after one check reintroduces exactly the bypass this
+    // guard exists to close: Chromium follows its 30x internally and the
+    // handler is never called for the target, so <img src="http://public/r">
+    // redirecting to a metadata address would sail through.
+    //
+    // Navigations and subresources differ only in blast radius, which is a
+    // property of what aborting DOES here, not of what gets checked: refusing
+    // a navigation fails the audit, refusing a subresource leaves the page
+    // auditable without it.
+    //
     // Redirect-following is taken away from the browser deliberately.
     // Verified: context.route fires only for the FIRST hop, so a 302 to a
     // private address is followed internally and never offered here - the

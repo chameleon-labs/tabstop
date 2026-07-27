@@ -193,14 +193,14 @@ describe('makeRequestGuard', () => {
   })
 
   describe('subresources', () => {
-    it('lets an ordinary public subresource through', async () => {
+    it('serves an ordinary public subresource', async () => {
       const guard = makeRequestGuard(resolverFor(PUBLIC))
       const { route } = makeRoute('https://example.com/logo.png', { navigation: false })
 
       await guard(route as unknown as RouteLike)
 
-      expect(route.continue).toHaveBeenCalledTimes(1)
-      expect(route.fetch).not.toHaveBeenCalled()
+      expect(route.fulfill).toHaveBeenCalledTimes(1)
+      expect(route.abort).not.toHaveBeenCalled()
     })
 
     it('blocks a subresource pointed at a private address', async () => {
@@ -215,13 +215,34 @@ describe('makeRequestGuard', () => {
       expect(route.continue).not.toHaveBeenCalled()
     })
 
-    it('refuses only itself, never walking a redirect chain', async () => {
+    it('walks a subresource redirect instead of handing it to the browser', async () => {
+      // The same bypass as the navigation case, one level down: continue() on
+      // a public subresource lets Chromium follow its 30x internally, and the
+      // handler is never called for the target - so an attacker-controlled
+      // image URL could redirect to a metadata address unchecked.
       const guard = makeRequestGuard(resolverFor(PUBLIC))
-      const { route } = makeRoute('http://10.0.0.5/x.png', { navigation: false })
+      const { route } = makeRoute('https://example.com/tracker.png', {
+        navigation: false,
+        responses: [response(302, { location: 'http://169.254.169.254/latest/meta-data/' })]
+      })
 
       await guard(route as unknown as RouteLike)
 
-      expect(route.fetch).not.toHaveBeenCalled()
+      expect(route.abort).toHaveBeenCalledWith('blockedbyclient')
+      expect(route.fulfill).not.toHaveBeenCalled()
+    })
+
+    it('fulfils an ordinary subresource redirect chain', async () => {
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+      const { route } = makeRoute('https://example.com/a.png', {
+        navigation: false,
+        responses: [response(302, { location: 'https://example.com/b.png' }), response(200)]
+      })
+
+      await guard(route as unknown as RouteLike)
+
+      expect(route.fulfill).toHaveBeenCalledTimes(1)
+      expect(route.abort).not.toHaveBeenCalled()
     })
   })
 })

@@ -12,6 +12,26 @@ describe('isBlockedAddress', () => {
     }
   })
 
+  it('blocks the reserved ranges beyond the obvious private ones', () => {
+    // Each of these was verified ALLOWED before being added, and each is
+    // reachable: an unspecified address hits a local listener, and 6to4 and
+    // NAT64 both embed an IPv4 address so a v6 literal can address 127.0.0.1
+    // without ever looking like it.
+    for (const address of [
+      '::',                 // unspecified
+      '100.64.0.1',         // carrier-grade NAT
+      '192.0.0.1',          // IETF protocol assignments
+      '198.18.0.1',         // benchmarking
+      '224.0.0.1',          // multicast
+      '240.0.0.1', '255.255.255.255',
+      'ff02::1',            // v6 multicast
+      '2002:7f00:1::',      // 6to4 wrapping 127.0.0.1
+      '64:ff9b::7f00:1'     // NAT64 wrapping 127.0.0.1
+    ]) {
+      expect(isBlockedAddress(address)).toBe(true)
+    }
+  })
+
   it('allows ordinary public addresses', () => {
     for (const address of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700::1111']) {
       expect(isBlockedAddress(address)).toBe(false)

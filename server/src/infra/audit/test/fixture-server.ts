@@ -51,6 +51,17 @@ const PRIVATE_SUBRESOURCE_PAGE = `<!doctype html>
   <img src="http://10.0.0.5/tracker.png" alt="">
 </main></body></html>`
 
+/** Registers a service worker, whose requests context.route cannot intercept. */
+const SERVICE_WORKER_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Worker</title></head>
+<body><main><h1>Registers a worker</h1><input type="text">
+<script>
+  navigator.serviceWorker.register('/sw.js')
+    .then(function () { window.__swRegistered = true })
+    .catch(function () { window.__swRegistered = false })
+</script>
+</main></body></html>`
+
 export type FixtureServer = {
   baseUrl: string
   close: () => Promise<void>
@@ -96,6 +107,18 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     if (request.url === '/private-subresource') {
       response.writeHead(200, { 'content-type': 'text/html' })
       response.end(PRIVATE_SUBRESOURCE_PAGE)
+      return
+    }
+
+    if (request.url === '/service-worker-page') {
+      response.writeHead(200, { 'content-type': 'text/html' })
+      response.end(SERVICE_WORKER_PAGE)
+      return
+    }
+
+    if (request.url === '/sw.js') {
+      response.writeHead(200, { 'content-type': 'text/javascript' })
+      response.end('self.addEventListener("fetch", function () {})')
       return
     }
 

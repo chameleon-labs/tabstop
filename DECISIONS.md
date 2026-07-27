@@ -26,6 +26,16 @@ Rejections surface as a `failed` audit carrying **`That address can't be audited
 
 One testing note worth keeping, because it looks like a shortcut and is not. The fixture server necessarily listens on loopback and an ephemeral port, both of which the real policy refuses. So the *policy* and the *mechanism* are tested separately: every range and port rule is covered by pure specs with no network at all, while the integration specs relax exactly those two conditions and leave every other range enforced. Neither set can be satisfied by weakening the other.
 
+Review then found four ways the guard was narrower than the rule it was enforcing, and the shape is worth naming: each was the right idea applied to some of its cases and not the rest.
+
+**Subresources were checked once and handed to the browser**, which reintroduced the exact bypass this whole design exists to close — Chromium follows a subresource's 30x internally too, so `<img src="http://public/redirect">` landing on a metadata address sailed through. Every request is now walked; navigations and subresources differ only in what aborting *does*, not in what gets checked.
+
+**The resolver cached completed answers for the whole audit**, so an address was validated once and trusted for tens of seconds. That is long enough to answer publicly, flip DNS, and have a later request approved against the stale public answer while Chromium resolves the private one — and it directly contradicted the "milliseconds" bound claimed above. It now coalesces only lookups genuinely in flight together and evicts on settlement, which keeps the saving that matters (a page pulling twenty subresources from five hosts still costs five lookups) without holding anything.
+
+**The blocklist covered the ranges the issue listed and stopped there.** Verified as allowed before being added: `::` (unspecified, reaches a local listener), `100.64.0.0/10`, `192.0.0.0/24`, `198.18.0.0/15`, `224.0.0.0/4`, `240.0.0.0/4`, and — the subtle ones — `2002::/16` and `64:ff9b::/96`, since 6to4 and NAT64 both embed an IPv4 address, so a v6 literal can address `127.0.0.1` without ever looking like it.
+
+**Service workers were left enabled.** `context.route` does not reliably intercept what a service worker requests, so an audited page could register one and issue requests straight past the guard. Blocked at the context, and pinned by a spec that drives a real context rather than reading the options object back and agreeing with itself.
+
 Still deferred: gate 1, the submission-time check, which belongs in #9's `request-audit` usecase and has no home until that exists. It is not redundant once this gate exists — it turns an obviously bad URL into an immediate `400` rather than a queued job, a browser launch and a failed audit thirty seconds later.
 
 ## 2026-07-27 — the audit worker: navigate once, audit anyway, and say so

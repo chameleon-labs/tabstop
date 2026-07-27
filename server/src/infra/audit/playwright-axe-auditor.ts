@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
 import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
-import { CachingDnsResolver } from '../net/caching-dns-resolver.js'
+import { CoalescingDnsResolver } from '../net/coalescing-dns-resolver.js'
 import { makeRequestGuard, type RouteLike } from './request-guard.js'
 import type { UrlPolicy } from '../../domain/services/url-safety.js'
 
@@ -26,6 +26,23 @@ type EvaluatedResult = {
     nodes: Array<{ target: string[], html: string }>
   }>
 }
+
+/**
+ * Exported so a spec can prove these hold by driving a real context, rather
+ * than by reading the object back and agreeing with itself.
+ */
+export const AUDIT_CONTEXT_OPTIONS = {
+  viewport: { width: 1280, height: 720 },
+  // context.route does not reliably intercept requests made by a service
+  // worker, and service workers are enabled by default - so an audited page
+  // could register one and issue requests straight past the guard.
+  serviceWorkers: 'block',
+  // Load-bearing. A well-configured Content-Security-Policy blocks the
+  // injected engine, so without this we fail on exactly the sites most likely
+  // to have been built carefully. Verified: addScriptTag throws "Executing
+  // inline script violates the following Content Security Policy" when false.
+  bypassCSP: true
+} as const
 
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
 
@@ -102,15 +119,7 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     const startedAt = Date.now()
     const browser = await this.getBrowser()
 
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      // Load-bearing. A well-configured Content-Security-Policy blocks the
-      // injected engine, so without this we fail on exactly the sites most
-      // likely to have been built carefully. Verified: addScriptTag throws
-      // "Executing inline script violates the following Content Security
-      // Policy" when this is false.
-      bypassCSP: true
-    })
+    const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
 
     // Every request the page makes is checked, not only the navigation: a page
     // can embed <img src="http://169.254.169.254/..."> and the worker would
@@ -118,10 +127,12 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     // axe reads the DOM, not image bytes - so this is about side effects
     // rather than disclosure, but a GET that changes state still fires.
     //
-    // The resolver is wrapped per AUDIT, so its cache dies with the audit
-    // rather than pinning a resolution for the process's lifetime. That is
-    // what keeps the DNS rebinding window to milliseconds.
-    const guard = makeRequestGuard(new CachingDnsResolver(this.dnsResolver), this.urlPolicy)
+    // The resolver is wrapped per AUDIT and coalesces only lookups that are
+    // in flight together - it never holds a completed answer. Caching one
+    // would mean validating an address once and trusting it for the rest of an
+    // audit that can run for tens of seconds, which is long enough to flip DNS
+    // underneath it.
+    const guard = makeRequestGuard(new CoalescingDnsResolver(this.dnsResolver), this.urlPolicy)
     await context.route('**/*', (route) => guard(route as unknown as RouteLike))
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
