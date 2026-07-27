@@ -104,6 +104,21 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...validSource, SESSION_TTL_DAYS: '-1' })).toThrow('SESSION_TTL_DAYS')
   })
 
+  it('rejects a session ttl beyond what a cookie can express', () => {
+    // Browsers cap cookie expiry at 400 days, so a longer session would be
+    // clamped in the browser while the row kept the longer expiry. And at
+    // ~99,979,338 days the arithmetic leaves Date's range entirely, producing
+    // an Invalid Date that node-postgres serialises as "0NaN-NaN-NaN..." -
+    // which Postgres rejects, failing every signup and login.
+    expect(() => parseEnv({ ...validSource, SESSION_TTL_DAYS: '401' })).toThrow('SESSION_TTL_DAYS')
+    expect(() => parseEnv({ ...validSource, SESSION_TTL_DAYS: '100000000' }))
+      .toThrow('SESSION_TTL_DAYS')
+  })
+
+  it('accepts a session ttl up to the browser cookie cap', () => {
+    expect(parseEnv({ ...validSource, SESSION_TTL_DAYS: '400' }).sessionTtlDays).toBe(400)
+  })
+
   it('rejects a scrypt cost that is a positive integer but not a usable one', () => {
     // 20000 is an integer above zero and still makes every hash throw
     // ERR_CRYPTO_INVALID_SCRYPT_PARAMS: N must be a power of two.

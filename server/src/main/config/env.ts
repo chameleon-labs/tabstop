@@ -14,6 +14,21 @@ const DEFAULT_PORT = 3000
 const DEFAULT_SCRYPT_COST = 32768
 const DEFAULT_SESSION_TTL_DAYS = 30
 
+/**
+ * Browsers cap cookie expiry at 400 days (RFC 6265bis; Chrome 104+ enforces
+ * it), so a longer session cannot be honoured by the cookie anyway - the
+ * browser would silently clamp it while the row kept the longer expiry,
+ * reintroducing exactly the cookie/row divergence that taking expiresAt from
+ * the persisted session exists to prevent.
+ *
+ * It also keeps the arithmetic inside Date's range. `Date.now() + days * 86400000`
+ * overflows at about 99,979,338 days, and node-postgres serialises the
+ * resulting Invalid Date as "0NaN-NaN-NaNTNaN:NaN:NaN.NaN+NaN:NaN", which
+ * Postgres rejects - so an absurd TTL would 500 every signup and login rather
+ * than merely being an odd setting.
+ */
+const MAX_SESSION_TTL_DAYS = 400
+
 const required = (source: NodeJS.ProcessEnv, name: string): string => {
   const value = source[name]
   if (value === undefined || value === '') {
@@ -71,12 +86,15 @@ const requiredOrigin = (source: NodeJS.ProcessEnv, name: string): string => {
  * the default - that is how a deliberate change becomes a no-op nobody notices.
  */
 const positiveIntegerOr = (
-  raw: string | undefined, fallback: number, name: string
+  raw: string | undefined, fallback: number, name: string, maximum = Number.MAX_SAFE_INTEGER
 ): number => {
   if (raw === undefined || raw === '') return fallback
   const parsed = Number(raw)
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error(`${name} must be a positive integer, but was "${raw}"`)
+  }
+  if (parsed > maximum) {
+    throw new Error(`${name} must be at most ${maximum}, but was "${raw}"`)
   }
   return parsed
 }
@@ -118,7 +136,7 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     // A tuning knob, not a correctness knob: CI lowers it, production must not.
     scryptCost: scryptCostOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),
     sessionTtlDays: positiveIntegerOr(
-      source.SESSION_TTL_DAYS, DEFAULT_SESSION_TTL_DAYS, 'SESSION_TTL_DAYS'
+      source.SESSION_TTL_DAYS, DEFAULT_SESSION_TTL_DAYS, 'SESSION_TTL_DAYS', MAX_SESSION_TTL_DAYS
     )
   }
 }
