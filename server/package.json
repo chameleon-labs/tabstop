@@ -10,13 +10,14 @@
   "scripts": {
     "dev": "tsx watch --env-file=.env src/main/server.ts",
     "dev:worker": "tsx watch --env-file=.env src/main/worker.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-vendor.mjs",
     "start": "node --env-file=.env dist/main/server.js",
     "start:worker": "node --env-file=.env dist/main/worker.js",
     "migrate": "tsx --env-file=.env src/main/scripts/migrate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "vendor:axe": "node scripts/vendor-axe.mjs"
   },
   "dependencies": {
     "bullmq": "^5.81.2",
