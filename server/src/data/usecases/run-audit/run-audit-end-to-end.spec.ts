@@ -22,6 +22,7 @@ describe('run-audit end to end', () => {
   let server: FixtureServer
   let auditor: PlaywrightAxeAuditor
   let sut: DbRunAudit
+  let violations: PostgresViolationRepository
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL
@@ -32,7 +33,8 @@ describe('run-audit end to end', () => {
       navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500
     })
     const audits = new PostgresAuditRepository(db)
-    sut = new DbRunAudit(audits, audits, new PostgresViolationRepository(db), auditor)
+    violations = new PostgresViolationRepository(db)
+    sut = new DbRunAudit(audits, audits, violations, auditor)
   }, 60_000)
 
   afterAll(async () => {
@@ -86,6 +88,40 @@ describe('run-audit end to end', () => {
     expect(violations[0]?.nodes[0]).toEqual({
       target: expect.any(Array), html: expect.any(String)
     })
+  }, 60_000)
+
+  it('replaces violations rather than appending them when a job is redelivered', async () => {
+    // A queue redelivers after a lost acknowledgement. Without a replace, the
+    // same rules would be inserted twice and every count derived from them
+    // would be inflated - `violations` has no uniqueness constraint to catch it.
+    const auditId = await queueAudit(server.baseUrl)
+    await sut.run(params(auditId))
+    const first = await violations.loadByAuditId(auditId)
+
+    // Re-run the persistence exactly as a redelivered attempt would.
+    await violations.replaceAll(auditId, first.map((violation) => ({
+      ruleId: violation.ruleId,
+      impact: violation.impact,
+      description: violation.description,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes
+    })))
+
+    const second = await violations.loadByAuditId(auditId)
+    expect(second).toHaveLength(first.length)
+    expect(second.map((v) => v.ruleId).sort()).toEqual(first.map((v) => v.ruleId).sort())
+  }, 60_000)
+
+  it('leaves a finished audit untouched when the queue redelivers it', async () => {
+    const auditId = await queueAudit(server.baseUrl)
+    await sut.run(params(auditId))
+    const finished = await load(auditId)
+
+    await sut.run(params(auditId))
+
+    const after = await load(auditId)
+    expect(after.completed_at).toEqual(finished.completed_at)
+    expect(after.duration_ms).toBe(finished.duration_ms)
   }, 60_000)
 
   it('completes a page that never settles, flagged rather than failed', async () => {

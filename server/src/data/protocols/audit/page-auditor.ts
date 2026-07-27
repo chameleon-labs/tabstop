@@ -1,4 +1,4 @@
-import type { AddViolationParams } from '../db/violation/add-violations-repository.js'
+import type { AddViolationParams } from '../db/violation/violation-params.js'
 
 export type AuditPageResult = {
   /** Already in the repository's shape - no engine type crosses this boundary. */

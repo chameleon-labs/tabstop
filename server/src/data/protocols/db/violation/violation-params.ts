@@ -8,7 +8,3 @@ export type AddViolationParams = {
   helpUrl: string
   nodes: ViolationNode[]
 }
-
-export interface AddViolationsRepository {
-  addMany: (auditId: string, violations: AddViolationParams[]) => Promise<void>
-}

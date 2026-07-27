@@ -76,7 +76,7 @@ describe('PlaywrightAxeAuditor', () => {
   it('closes the context on the failure path, not just the happy one', async () => {
     await expect(sut.audit('http://127.0.0.1:45999', signal())).rejects.toThrow()
 
-    expect(sut.contextCount()).toBe(0)
+    expect(await sut.contextCount()).toBe(0)
   })
 
   it('surfaces navigation failures with the net:: code the classifier matches on', async () => {

@@ -2,7 +2,7 @@ import { chromium, type Browser } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
-import type { AddViolationParams } from '../../data/protocols/db/violation/add-violations-repository.js'
+import type { AddViolationParams } from '../../data/protocols/db/violation/violation-params.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -35,7 +35,14 @@ const isImpact = (value: string | null): value is Impact =>
  * shape.
  */
 export class PlaywrightAxeAuditor implements PageAuditor {
-  private browser: Browser | null = null
+  /**
+   * The in-flight launch, not the browser. Caching the resolved browser with
+   * `??=` re-reads the field only AFTER awaiting, so concurrent first audits
+   * all see null and each launches its own Chromium - measured at three
+   * launches for three callers, orphaning two. Caching the promise makes the
+   * second caller await the first launch instead of starting another.
+   */
+  private launching: Promise<Browser> | null = null
 
   constructor (private readonly budgets: AuditBudgets) {}
 
@@ -45,8 +52,25 @@ export class PlaywrightAxeAuditor implements PageAuditor {
    * boundary, and that is what has to be fresh.
    */
   private async getBrowser (): Promise<Browser> {
-    this.browser ??= await chromium.launch()
-    return this.browser
+    const pending = this.launching
+    if (pending !== null) {
+      const browser = await pending
+      // A crashed browser stays cached otherwise, and every retry of the
+      // deliberately-transient "browser crashed" failure would call
+      // newContext() on the same dead object - so the retry could never
+      // succeed, which defeats the point of classifying it as retryable.
+      if (browser.isConnected()) return browser
+      if (this.launching === pending) this.launching = null
+    }
+
+    this.launching ??= chromium.launch().catch((error: unknown) => {
+      // A failed launch must not stay cached as a rejected promise, or every
+      // later audit re-throws it for the life of the process.
+      this.launching = null
+      throw error
+    })
+
+    return await this.launching
   }
 
   async audit (url: string, signal: AbortSignal): Promise<AuditPageResult> {
@@ -74,6 +98,12 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     signal.addEventListener('abort', abort, { once: true })
 
     try {
+      // Launching Chromium and opening a context take real time, and an abort
+      // during that window has already fired - so the listener just registered
+      // will never run. Without this re-check the audit would run to
+      // completion for a job whose budget expired before it began.
+      signal.throwIfAborted()
+
       const page = await context.newPage()
       // An alert() blocks navigation until something answers it.
       page.on('dialog', (dialog) => { void dialog.dismiss() })
@@ -162,12 +192,21 @@ export class PlaywrightAxeAuditor implements PageAuditor {
 
   /** Closes the shared browser. Called on worker shutdown. */
   async close (): Promise<void> {
-    await this.browser?.close()
-    this.browser = null
+    const pending = this.launching
+    this.launching = null
+    if (pending === null) return
+
+    // Await the in-flight launch rather than ignoring it: a browser that
+    // finishes launching after shutdown began would otherwise outlive the
+    // process's intent to stop.
+    const browser = await pending.catch(() => null)
+    if (browser !== null && browser.isConnected()) await browser.close()
   }
 
   /** Test seam: lets a spec assert contexts were torn down. */
-  contextCount (): number {
-    return this.browser?.contexts().length ?? 0
+  async contextCount (): Promise<number> {
+    if (this.launching === null) return 0
+    const browser = await this.launching.catch(() => null)
+    return browser?.contexts().length ?? 0
   }
 }

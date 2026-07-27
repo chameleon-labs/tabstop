@@ -89,7 +89,13 @@ The `audit` queue runs accessibility audits: navigate with Chromium, inject vend
 - **Playwright is imported in exactly one file**, `infra/audit/playwright-axe-auditor.ts`. Everything above it works against the `PageAuditor` protocol, which is why the whole status machine is testable in milliseconds with no browser.
 - **`bypassCSP: true` is load-bearing** — a well-configured Content-Security-Policy otherwise blocks the injected engine.
 - **A page that never reaches network idle is still audited**, with `audits.settled` set to false. Treat a score with `settled = false` as provisional.
-- Running the browser tests needs `pnpm exec playwright install chromium` once.
+- **Chromium must be installed wherever the worker runs — production included.** Installing the npm package does not provide a browser binary, so a fresh worker host fails at `chromium.launch()` until:
+
+  ```bash
+  pnpm exec playwright install --with-deps chromium
+  ```
+
+  `--with-deps` also installs the OS libraries Chromium needs, which a slim container image will not have. This is a deploy requirement (#16), not just a test-setup step. `playwright` is a runtime **dependency** for the same reason: a `pnpm install --prod` that omitted it would fail the worker at module load, before it could consume a single job.
 
 Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300–500MB per context), `AUDIT_JOB_TIMEOUT_MS` (45s), `AUDIT_NAVIGATION_TIMEOUT_MS` (20s), `AUDIT_SETTLE_BUDGET_MS` (10s), `AUDIT_FALLBACK_SETTLE_MS` (1s).
 

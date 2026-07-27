@@ -3,14 +3,14 @@ import { DbRunAudit } from './db-run-audit.js'
 import { PermanentAuditError } from '../../../domain/errors/permanent-audit-error.js'
 import type { RunAuditParams } from '../../../domain/usecases/run-audit.js'
 import {
-  mockAddViolationsRepository, mockAuditStatusRepository,
-  mockLoadAuditByIdRepository, mockPageAuditor
+  mockAuditStatusRepository,
+  mockAuditModel, mockLoadAuditByIdRepository, mockPageAuditor, mockReplaceViolationsRepository
 } from '../../test/index.js'
 
 const makeSut = () => {
   const loadAudit = mockLoadAuditByIdRepository()
   const auditStatus = mockAuditStatusRepository()
-  const violations = mockAddViolationsRepository()
+  const violations = mockReplaceViolationsRepository()
   const pageAuditor = mockPageAuditor()
   const sut = new DbRunAudit(loadAudit, auditStatus, violations, pageAuditor)
   return { sut, loadAudit, auditStatus, violations, pageAuditor }
@@ -30,7 +30,7 @@ describe('DbRunAudit', () => {
     await sut.run(params())
 
     expect(auditStatus.markRunning).toHaveBeenCalledWith('audit-1')
-    expect(violations.addMany).toHaveBeenCalledWith('audit-1', expect.any(Array))
+    expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', expect.any(Array))
     expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', {
       // counted per NODE, not per rule: two alt-less images are two problems
       countsByImpact: { minor: 0, moderate: 0, serious: 1, critical: 2 },
@@ -111,6 +111,31 @@ describe('DbRunAudit', () => {
     pageAuditor.audit.mockRejectedValueOnce(original)
 
     await expect(sut.run(params())).rejects.toBe(original)
+  })
+
+  it('skips an audit that already reached a terminal state', async () => {
+    // The queue redelivers after a lost acknowledgement. Re-running a finished
+    // audit would overwrite a completed result with a second, differently-timed
+    // one - and re-insert its violations.
+    for (const status of ['done', 'failed'] as const) {
+      const { sut, loadAudit, auditStatus, violations, pageAuditor } = makeSut()
+      loadAudit.loadById.mockResolvedValueOnce({ ...mockAuditModel(), status })
+
+      await sut.run(params())
+
+      expect(pageAuditor.audit).not.toHaveBeenCalled()
+      expect(auditStatus.markRunning).not.toHaveBeenCalled()
+      expect(violations.replaceAll).not.toHaveBeenCalled()
+    }
+  })
+
+  it('runs an audit that was left in running by an earlier crash', async () => {
+    const { sut, loadAudit, auditStatus } = makeSut()
+    loadAudit.loadById.mockResolvedValueOnce({ ...mockAuditModel(), status: 'running' })
+
+    await sut.run(params())
+
+    expect(auditStatus.markDone).toHaveBeenCalled()
   })
 
   it('treats a missing audit as permanent without marking anything running', async () => {

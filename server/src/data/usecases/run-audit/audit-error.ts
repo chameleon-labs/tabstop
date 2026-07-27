@@ -31,7 +31,10 @@ export const classifyAuditError = (error: unknown): AuditFailure => {
   // timeout's constructor.name is "TimeoutError2" while error.name is
   // "TimeoutError", so a constructor check would silently never match.
   if (error.name === 'TimeoutError') {
-    return { permanent: true, message: 'Page took longer than 20s to load' }
+    // Deliberately duration-neutral: the navigation budget is configurable, so
+    // naming a number here would be a lie under any non-default setting, and
+    // the classifier has no business knowing the configuration.
+    return { permanent: true, message: 'The page took too long to load' }
   }
 
   for (const [pattern, message] of PERMANENT_PATTERNS) {

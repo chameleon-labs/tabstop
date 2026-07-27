@@ -8,9 +8,10 @@ import type {
 import type { MarkDoneRepository } from '../../protocols/db/audit/mark-done-repository.js'
 import type { MarkFailedRepository } from '../../protocols/db/audit/mark-failed-repository.js'
 import type { MarkRunningRepository } from '../../protocols/db/audit/mark-running-repository.js'
+import type { AddViolationParams } from '../../protocols/db/violation/violation-params.js'
 import type {
-  AddViolationParams, AddViolationsRepository
-} from '../../protocols/db/violation/add-violations-repository.js'
+  ReplaceViolationsRepository
+} from '../../protocols/db/violation/replace-violations-repository.js'
 import { classifyAuditError } from './audit-error.js'
 
 /**
@@ -32,7 +33,7 @@ export class DbRunAudit implements RunAudit {
   constructor (
     private readonly loadAuditByIdRepository: LoadAuditByIdRepository,
     private readonly auditStatusRepository: AuditStatusRepository,
-    private readonly addViolationsRepository: AddViolationsRepository,
+    private readonly replaceViolationsRepository: ReplaceViolationsRepository,
     private readonly pageAuditor: PageAuditor
   ) {}
 
@@ -41,12 +42,22 @@ export class DbRunAudit implements RunAudit {
     // Retrying cannot conjure the row back, so this is permanent by definition.
     if (audit === null) throw new PermanentAuditError(`Audit ${auditId} no longer exists`)
 
+    // A queue redelivers - after a lost acknowledgement, or a process that
+    // died between finishing the work and reporting it. Re-running a finished
+    // audit would overwrite a completed result with a second, differently-timed
+    // one, so an audit that already reached a terminal state is left alone.
+    if (audit.status === 'done' || audit.status === 'failed') return
+
     await this.auditStatusRepository.markRunning(auditId)
 
     try {
       const result = await this.pageAuditor.audit(audit.url, signal)
 
-      await this.addViolationsRepository.addMany(auditId, result.violations)
+      // Replace rather than append: the queue can redeliver after violations
+      // were committed but before the audit was marked done, and `violations`
+      // has no uniqueness constraint to catch a second insert of the same
+      // rules. Replacing makes the write safe to repeat.
+      await this.replaceViolationsRepository.replaceAll(auditId, result.violations)
       await this.auditStatusRepository.markDone(auditId, {
         countsByImpact: countByImpact(result.violations),
         axeVersion: result.axeVersion,

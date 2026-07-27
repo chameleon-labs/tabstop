@@ -7,7 +7,9 @@ import type {
 import type { MarkDoneRepository } from '../protocols/db/audit/mark-done-repository.js'
 import type { MarkFailedRepository } from '../protocols/db/audit/mark-failed-repository.js'
 import type { MarkRunningRepository } from '../protocols/db/audit/mark-running-repository.js'
-import type { AddViolationsRepository } from '../protocols/db/violation/add-violations-repository.js'
+import type {
+  ReplaceViolationsRepository
+} from '../protocols/db/violation/replace-violations-repository.js'
 
 export const mockAuditModel = (): AuditModel => ({
   id: 'audit-1',
@@ -57,8 +59,8 @@ export const mockAuditStatusRepository = () => ({
   markFailed: vi.fn<MarkFailedRepository['markFailed']>(async () => { /* no-op */ })
 })
 
-export const mockAddViolationsRepository = () => ({
-  addMany: vi.fn<AddViolationsRepository['addMany']>(async () => { /* no-op */ })
+export const mockReplaceViolationsRepository = () => ({
+  replaceAll: vi.fn<ReplaceViolationsRepository['replaceAll']>(async () => { /* no-op */ })
 })
 
 export const mockPageAuditor = () => ({

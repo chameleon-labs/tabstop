@@ -8,7 +8,7 @@ describe('classifyAuditError', () => {
   const cases: Array<[string, unknown, boolean, string]> = [
     ['a navigation timeout',
       named('TimeoutError', 'page.goto: Timeout 20000ms exceeded.'),
-      true, 'Page took longer than 20s to load'],
+      true, 'The page took too long to load'],
     ['a domain that does not resolve',
       new Error('page.goto: net::ERR_NAME_NOT_RESOLVED at http://nope.invalid/'),
       true, 'Could not resolve that domain'],

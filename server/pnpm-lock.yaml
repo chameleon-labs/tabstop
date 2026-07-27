@@ -20,6 +20,9 @@ importers:
       pg:
         specifier: ^8.22.0
         version: 8.22.0
+      playwright:
+        specifier: ^1.62.0
+        version: 1.62.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -45,9 +48,6 @@ importers:
       axe-core:
         specifier: ^4.12.1
         version: 4.12.1
-      playwright:
-        specifier: ^1.62.0
-        version: 1.62.0
       supertest:
         specifier: ^7.2.2
         version: 7.2.2
