@@ -9,7 +9,8 @@ export type ViolationModel = {
   id: string
   auditId: string
   ruleId: string
-  impact: Impact
+  /** Null when axe reports no severity; such violations are stored but uncounted. */
+  impact: Impact | null
   description: string
   helpUrl: string
   nodes: ViolationNode[]

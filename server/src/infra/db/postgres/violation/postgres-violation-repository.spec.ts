@@ -126,4 +126,43 @@ describe('PostgresViolationRepository', () => {
 
     expect(await sut.loadByAuditId(auditId)).toEqual([])
   })
+
+  it('serialises concurrent replacements instead of duplicating them', async () => {
+    // The transaction alone makes one replacement atomic but does not order
+    // two: under READ COMMITTED both would delete zero rows and both insert.
+    // The audit row lock is what makes this safe.
+    const auditId = await makeAudit()
+    const violation = {
+      ruleId: 'image-alt',
+      impact: 'critical' as const,
+      description: 'Images must have alternate text',
+      helpUrl: 'https://dequeuniversity.com/rules/axe/4.12/image-alt',
+      nodes: [{ target: ['img'], html: '<img>' }]
+    }
+
+    await Promise.all([
+      sut.replaceAll(auditId, [violation]),
+      sut.replaceAll(auditId, [violation]),
+      sut.replaceAll(auditId, [violation])
+    ])
+
+    expect(await sut.loadByAuditId(auditId)).toHaveLength(1)
+  })
+
+  it('stores a violation axe gave no severity, rather than discarding it', async () => {
+    // Dropping it would mark an audit done while omitting a real finding.
+    const auditId = await makeAudit()
+
+    await sut.replaceAll(auditId, [{
+      ruleId: 'some-rule-without-impact',
+      impact: null,
+      description: 'A rule whose checks carry no severity',
+      helpUrl: 'https://dequeuniversity.com/rules/axe/4.12/x',
+      nodes: [{ target: ['div'], html: '<div>' }]
+    }])
+
+    const stored = await sut.loadByAuditId(auditId)
+    expect(stored).toHaveLength(1)
+    expect(stored[0]?.impact).toBeNull()
+  })
 })

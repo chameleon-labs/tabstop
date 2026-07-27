@@ -19,7 +19,10 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/net::ERR_UNSAFE_PORT/, "That port can't be audited"],
   [/net::ERR_CERT_/, "That site's security certificate could not be verified"],
   [
-    /addScriptTag|Content Security Policy|axe is not defined/,
+    // page.evaluate covers the engine throwing while it runs, which Playwright
+    // reports as "page.evaluate: ..." and which no other pattern here matches.
+    // Retrying cannot help: the same page would break the engine again.
+    /addScriptTag|page\.evaluate|Content Security Policy|axe is not defined/,
     'Could not run the accessibility engine on this page'
   ]
 ]

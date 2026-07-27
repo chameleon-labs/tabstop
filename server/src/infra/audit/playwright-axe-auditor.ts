@@ -2,7 +2,6 @@ import { chromium, type Browser } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
-import type { AddViolationParams } from '../../data/protocols/db/violation/violation-params.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -26,8 +25,15 @@ type EvaluatedResult = {
 
 const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical']
 
-const isImpact = (value: string | null): value is Impact =>
-  value !== null && IMPACTS.includes(value)
+/**
+ * axe reports `impact: null` for a violation whose failing checks carry no
+ * severity, and could in principle report a value we do not model. Neither is
+ * a reason to discard a real finding - marking an audit `done` while dropping
+ * violations would be a lie - so an unrecognised severity becomes null and the
+ * violation is stored uncounted.
+ */
+const toImpact = (value: string | null): Impact | null =>
+  value !== null && IMPACTS.includes(value) ? value as Impact : null
 
 /**
  * The only file in the codebase that imports Playwright, and the only place an
@@ -172,14 +178,10 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       })
 
       return {
-        // axe's impact is nullable. A violation without one is dropped rather
-        // than guessed at: `violations.impact` is NOT NULL with a check
-        // constraint, and inventing a severity would corrupt the counts that
-        // regression detection compares.
-        violations: evaluated.violations.filter(
-          (violation): violation is AddViolationParams & { impact: Impact } =>
-            isImpact(violation.impact)
-        ),
+        violations: evaluated.violations.map((violation) => ({
+          ...violation,
+          impact: toImpact(violation.impact)
+        })),
         axeVersion: evaluated.axeVersion,
         durationMs: Date.now() - startedAt,
         settled

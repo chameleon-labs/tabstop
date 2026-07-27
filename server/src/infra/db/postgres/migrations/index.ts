@@ -2,6 +2,7 @@ import type { Migration, MigrationProvider } from 'kysely/migration'
 import * as initialSchema from './001-initial-schema.js'
 import * as accounts from './002-accounts.js'
 import * as auditSettled from './003-audit-settled.js'
+import * as violationImpactNullable from './004-violation-impact-nullable.js'
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -14,7 +15,8 @@ import * as auditSettled from './003-audit-settled.js'
 export const migrations: Record<string, Migration> = {
   '001-initial-schema': initialSchema,
   '002-accounts': accounts,
-  '003-audit-settled': auditSettled
+  '003-audit-settled': auditSettled,
+  '004-violation-impact-nullable': violationImpactNullable
 }
 
 export const staticMigrationProvider: MigrationProvider = {

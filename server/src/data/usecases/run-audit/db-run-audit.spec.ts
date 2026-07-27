@@ -64,6 +64,40 @@ describe('DbRunAudit', () => {
       .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 0 })
   })
 
+  it('persists a violation with no severity but leaves it out of the counts', async () => {
+    const { sut, auditStatus, violations, pageAuditor } = makeSut()
+    pageAuditor.audit.mockResolvedValueOnce({
+      violations: [
+        {
+          ruleId: 'no-impact-rule',
+          impact: null,
+          description: 'No severity',
+          helpUrl: 'https://example.test/rule',
+          nodes: [{ target: ['div'], html: '<div>' }]
+        },
+        {
+          ruleId: 'image-alt',
+          impact: 'critical',
+          description: 'Images must have alternate text',
+          helpUrl: 'https://example.test/image-alt',
+          nodes: [{ target: ['img'], html: '<img>' }]
+        }
+      ],
+      axeVersion: '4.12.1',
+      durationMs: 10,
+      settled: true
+    })
+
+    await sut.run(params())
+
+    // Both are stored...
+    expect(violations.replaceAll.mock.calls[0]?.[1]).toHaveLength(2)
+    // ...but only the one with a severity is counted. Inventing a bucket for
+    // the other would corrupt the comparison regression detection makes.
+    expect(auditStatus.markDone.mock.calls[0]?.[1].countsByImpact)
+      .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 1 })
+  })
+
   it('records an unsettled page as done rather than failed', async () => {
     const { sut, auditStatus, pageAuditor } = makeSut()
     pageAuditor.audit.mockResolvedValueOnce({

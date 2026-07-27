@@ -75,7 +75,8 @@ export interface ViolationsTable {
   id: Generated<string>
   audit_id: string
   rule_id: string
-  impact: Impact
+  /** Null when axe reports a violation whose checks carry no severity. */
+  impact: Nullable<Impact>
   description: string
   help_url: string
   nodes: Json<ViolationNode[]>

@@ -21,6 +21,10 @@ import { classifyAuditError } from './audit-error.js'
 const countByImpact = (violations: AddViolationParams[]): CountsByImpact => {
   const counts: CountsByImpact = { minor: 0, moderate: 0, serious: 0, critical: 0 }
   for (const violation of violations) {
+    // A violation axe gave no severity is still persisted; it simply has no
+    // bucket to be counted in, and inventing one would corrupt the comparison
+    // regression detection makes between audits.
+    if (violation.impact === null) continue
     counts[violation.impact] += violation.nodes.length
   }
   return counts

@@ -20,6 +20,14 @@ implements ReplaceViolationsRepository, LoadViolationsByAuditIdRepository {
     // this table, so the transaction is local to this repository - no
     // cross-repository unit of work is needed.
     await this.db.transaction().execute(async (trx) => {
+      // Lock the parent audit first. The transaction alone makes ONE
+      // replacement atomic but does not serialise two: under READ COMMITTED,
+      // concurrent attempts both delete zero rows and both insert, duplicating
+      // everything. Taking the audit row makes replacements for the same audit
+      // queue behind each other.
+      await trx.selectFrom('audits').select('id')
+        .where('id', '=', auditId).forUpdate().execute()
+
       await trx.deleteFrom('violations').where('audit_id', '=', auditId).execute()
 
       // Kysely throws on an empty VALUES list, and a clean page is the most
