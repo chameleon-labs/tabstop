@@ -23,6 +23,7 @@ describe('run-audit end to end', () => {
   let auditor: PlaywrightAxeAuditor
   let sut: DbRunAudit
   let violations: PostgresViolationRepository
+  let audits: PostgresAuditRepository
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL
@@ -32,7 +33,7 @@ describe('run-audit end to end', () => {
     auditor = new PlaywrightAxeAuditor({
       navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500
     })
-    const audits = new PostgresAuditRepository(db)
+    audits = new PostgresAuditRepository(db)
     violations = new PostgresViolationRepository(db)
     sut = new DbRunAudit(audits, audits, violations, auditor)
   }, 60_000)
@@ -90,28 +91,46 @@ describe('run-audit end to end', () => {
     })
   }, 60_000)
 
-  it('replaces violations rather than appending them when a job is redelivered', async () => {
-    // A queue redelivers after a lost acknowledgement. Without a replace, the
-    // same rules would be inserted twice and every count derived from them
-    // would be inflated - `violations` has no uniqueness constraint to catch it.
+  it('replaces the violations a crashed attempt left behind, rather than appending', async () => {
+    // The interruption this reproduces: an attempt commits violations and then
+    // dies before writing a terminal status. The retry must REPLACE what it
+    // left, not add to it - `violations` has no uniqueness constraint, so an
+    // append would double every rule and inflate every count derived from them.
+    //
+    // Asserting after a completed run instead would prove nothing: the audit
+    // would be `done`, and the ownership fence makes any further write a
+    // no-op, so the assertion would hold even with replacement broken.
     const auditId = await queueAudit(server.baseUrl)
+
+    // Attempt 1: claims, commits violations, then dies before markDone.
+    const firstClaim = await audits.claimForRun(auditId)
+    if (firstClaim === null) throw new Error('fixture failed to claim')
+    await violations.replaceAll(auditId, firstClaim, [{
+      ruleId: 'left-behind-by-the-crashed-attempt',
+      impact: 'serious',
+      description: 'Committed before the worker died',
+      helpUrl: 'https://example.test/stale',
+      nodes: [{ target: ['#stale'], html: '<div id="stale">' }]
+    }])
+    await audits.releaseClaim(auditId, firstClaim)
+
+    // Attempt 2: the queue's retry, running the audit to completion.
     await sut.run(params(auditId))
-    const first = await violations.loadByAuditId(auditId)
 
-    // Re-run the persistence exactly as a redelivered attempt would.
-    const claimedAt = (await load(auditId)).claimed_at
-    if (claimedAt === null) throw new Error('expected the audit to carry a claim')
-    await violations.replaceAll(auditId, claimedAt, first.map((violation) => ({
-      ruleId: violation.ruleId,
-      impact: violation.impact,
-      description: violation.description,
-      helpUrl: violation.helpUrl,
-      nodes: violation.nodes
-    })))
+    const stored = await violations.loadByAuditId(auditId)
+    const ruleIds = stored.map((violation) => violation.ruleId)
 
-    const second = await violations.loadByAuditId(auditId)
-    expect(second).toHaveLength(first.length)
-    expect(second.map((v) => v.ruleId).sort()).toEqual(first.map((v) => v.ruleId).sort())
+    // The crashed attempt's row is gone, not sitting alongside the new ones.
+    expect(ruleIds).not.toContain('left-behind-by-the-crashed-attempt')
+    expect(ruleIds).toContain('image-alt')
+    // And nothing is duplicated.
+    expect(new Set(ruleIds).size).toBe(ruleIds.length)
+
+    const audit = await load(auditId)
+    expect(audit.status).toBe('done')
+    const counted = Object.values(audit.counts_by_impact).reduce((sum, n) => sum + n, 0)
+    const nodeTotal = stored.reduce((sum, violation) => sum + violation.nodes.length, 0)
+    expect(counted).toBe(nodeTotal)
   }, 60_000)
 
   it('leaves a finished audit untouched when the queue redelivers it', async () => {
