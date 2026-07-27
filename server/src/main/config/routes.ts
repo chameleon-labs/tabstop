@@ -1,4 +1,5 @@
 import { Router, type Express } from 'express'
+import setupAccountRoutes from '../routes/account-routes.js'
 import setupHealthCheckRoutes from '../routes/health-check-routes.js'
 
 export const setupRoutes = (app: Express): void => {
@@ -6,4 +7,5 @@ export const setupRoutes = (app: Express): void => {
   app.use('/api', router)
 
   setupHealthCheckRoutes(router)
+  setupAccountRoutes(router)
 }
