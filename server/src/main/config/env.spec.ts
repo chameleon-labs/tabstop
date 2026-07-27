@@ -3,7 +3,9 @@ import { parseEnv } from './env.js'
 
 const validSource = {
   DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
-  REDIS_URL: 'redis://localhost:6379'
+  REDIS_URL: 'redis://localhost:6379',
+  FRONTEND_ORIGIN: 'http://localhost:5173',
+  SESSION_COOKIE_SECURE: 'false'
 }
 
 describe('parseEnv', () => {
@@ -50,6 +52,34 @@ describe('parseEnv', () => {
 
   it('throws when REDIS_URL is missing', () => {
     expect(() => parseEnv({ DATABASE_URL: 'postgres://x' })).toThrow('REDIS_URL')
+  })
+
+  it('throws when FRONTEND_ORIGIN is missing', () => {
+    const { FRONTEND_ORIGIN, ...rest } = validSource
+    expect(() => parseEnv(rest)).toThrow('FRONTEND_ORIGIN')
+  })
+
+  it('throws when SESSION_COOKIE_SECURE is missing', () => {
+    const { SESSION_COOKIE_SECURE, ...rest } = validSource
+    expect(() => parseEnv(rest)).toThrow('SESSION_COOKIE_SECURE')
+  })
+
+  it('rejects a SESSION_COOKIE_SECURE that is neither true nor false', () => {
+    expect(() => parseEnv({ ...validSource, SESSION_COOKIE_SECURE: 'yes' }))
+      .toThrow('SESSION_COOKIE_SECURE must be "true" or "false"')
+  })
+
+  it('parses SESSION_COOKIE_SECURE as a boolean', () => {
+    expect(parseEnv({ ...validSource, SESSION_COOKIE_SECURE: 'true' }).sessionCookieSecure).toBe(true)
+    expect(parseEnv({ ...validSource, SESSION_COOKIE_SECURE: 'false' }).sessionCookieSecure).toBe(false)
+  })
+
+  it('defaults the scrypt cost and session ttl, ignoring nonsense', () => {
+    expect(parseEnv(validSource).scryptCost).toBe(32768)
+    expect(parseEnv(validSource).sessionTtlDays).toBe(30)
+    expect(parseEnv({ ...validSource, SCRYPT_COST: 'nonsense' }).scryptCost).toBe(32768)
+    expect(parseEnv({ ...validSource, SCRYPT_COST: '0' }).scryptCost).toBe(32768)
+    expect(parseEnv({ ...validSource, SCRYPT_COST: '16384' }).scryptCost).toBe(16384)
   })
 
   it('throws when REDIS_URL is empty', () => {
