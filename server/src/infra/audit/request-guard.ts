@@ -1,6 +1,8 @@
 import { isIP } from 'node:net'
 import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
-import { bareHostname, isBlockedAddress, parseAuditUrl } from '../../domain/services/url-safety.js'
+import {
+  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+} from '../../domain/services/url-safety.js'
 
 /** Chromium's own default is 20; five is ample for a page worth auditing. */
 export const MAX_REDIRECTS = 5
@@ -23,20 +25,41 @@ export type RouteLike = {
   continue: () => Promise<void>
 }
 
-export const makeRequestGuard = (resolver: DnsResolver) => {
+/**
+ * Taking over the fetch means taking over its failures too. A connection
+ * refused inside the handler would otherwise escape as an unhandled route
+ * error: the navigation is never answered, `page.goto` runs to its full
+ * timeout, and a fast, accurate "Nothing responded at that address" becomes a
+ * slow, wrong "The page took too long to load". Aborting with the matching
+ * code puts the original net::ERR_* back in front of the classifier.
+ */
+const abortCodeFor = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/ECONNREFUSED/.test(message)) return 'connectionrefused'
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(message)) return 'namenotresolved'
+  if (/ETIMEDOUT|timeout/i.test(message)) return 'timedout'
+  if (/ECONNRESET/.test(message)) return 'connectionreset'
+  if (/EHOSTUNREACH|ENETUNREACH/.test(message)) return 'addressunreachable'
+  return 'connectionfailed'
+}
+
+export const makeRequestGuard = (
+  resolver: DnsResolver,
+  policy: UrlPolicy = DEFAULT_URL_POLICY
+) => {
   const isAddressSafe = async (url: URL): Promise<boolean> => {
     const host = bareHostname(url)
-    if (isIP(host) !== 0) return !isBlockedAddress(host)
+    if (isIP(host) !== 0) return !policy.isBlockedAddress(host)
 
     const addresses = await resolver.resolve(host)
     // Empty means resolution failed: fail closed. And EVERY address has to be
     // safe - a host answering with one public and one private address is a
     // rebinding attempt, not a coincidence.
-    return addresses.length > 0 && addresses.every((address) => !isBlockedAddress(address))
+    return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address))
   }
 
   const isSafe = async (raw: string): Promise<boolean> => {
-    const parsed = parseAuditUrl(raw)
+    const parsed = parseAuditUrl(raw, policy)
     return parsed.safe && await isAddressSafe(parsed.url)
   }
 
@@ -63,7 +86,13 @@ export const makeRequestGuard = (resolver: DnsResolver) => {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       if (!await isSafe(url)) return await route.abort('blockedbyclient')
 
-      const response = await route.fetch({ url, maxRedirects: 0 })
+      let response: FetchedResponse
+      try {
+        response = await route.fetch({ url, maxRedirects: 0 })
+      } catch (error) {
+        return await route.abort(abortCodeFor(error))
+      }
+
       const status = response.status()
       if (status < 300 || status >= 400) return await route.fulfill({ response })
 

@@ -152,6 +152,46 @@ describe('makeRequestGuard', () => {
     })
   })
 
+  describe('when the fetch itself fails', () => {
+    const rejectingRoute = (message: string) => ({
+      request: () => ({ url: () => 'https://example.com/', isNavigationRequest: () => true }),
+      abort: vi.fn(async (_code: string) => { /* no-op */ }),
+      fetch: vi.fn(async () => { throw new Error(message) }),
+      fulfill: vi.fn(async () => { /* no-op */ }),
+      continue: vi.fn(async () => { /* no-op */ })
+    })
+
+    it('translates the failure into the matching abort code', async () => {
+      // Taking over the fetch means taking over its failures. Left to escape,
+      // the route is never answered, page.goto runs to its full timeout, and a
+      // fast "Nothing responded at that address" becomes a slow, wrong "The
+      // page took too long to load".
+      const cases: Array<[string, string]> = [
+        ['connect ECONNREFUSED 127.0.0.1:45999', 'connectionrefused'],
+        ['getaddrinfo ENOTFOUND nope.invalid', 'namenotresolved'],
+        ['socket hang up ECONNRESET', 'connectionreset'],
+        ['connect EHOSTUNREACH 10.0.0.5', 'addressunreachable'],
+        ['something nobody predicted', 'connectionfailed']
+      ]
+
+      for (const [message, expected] of cases) {
+        const guard = makeRequestGuard(resolverFor(PUBLIC))
+        const route = rejectingRoute(message)
+
+        await guard(route as unknown as RouteLike)
+
+        expect(route.abort).toHaveBeenCalledWith(expected)
+      }
+    })
+
+    it('never lets a fetch failure escape the guard', async () => {
+      const guard = makeRequestGuard(resolverFor(PUBLIC))
+
+      await expect(guard(rejectingRoute('connect ECONNREFUSED') as unknown as RouteLike))
+        .resolves.toBeUndefined()
+    })
+  })
+
   describe('subresources', () => {
     it('lets an ordinary public subresource through', async () => {
       const guard = makeRequestGuard(resolverFor(PUBLIC))

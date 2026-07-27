@@ -2,6 +2,10 @@ import { chromium, type Browser } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
+import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
+import { CachingDnsResolver } from '../net/caching-dns-resolver.js'
+import { makeRequestGuard, type RouteLike } from './request-guard.js'
+import type { UrlPolicy } from '../../domain/services/url-safety.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -50,7 +54,17 @@ export class PlaywrightAxeAuditor implements PageAuditor {
    */
   private launching: Promise<Browser> | null = null
 
-  constructor (private readonly budgets: AuditBudgets) {}
+  constructor (
+    private readonly budgets: AuditBudgets,
+    private readonly dnsResolver: DnsResolver,
+    /**
+     * Overridden only by integration tests, which must serve fixtures from
+     * loopback on an ephemeral port - both of which the real policy refuses,
+     * and rightly so. They relax exactly those two and leave every other range
+     * enforced, so the blocking those specs assert is real policy at work.
+     */
+    private readonly urlPolicy?: UrlPolicy
+  ) {}
 
   /**
    * Launched lazily and reused for the process's lifetime. Launching per job
@@ -97,6 +111,18 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       // Policy" when this is false.
       bypassCSP: true
     })
+
+    // Every request the page makes is checked, not only the navigation: a page
+    // can embed <img src="http://169.254.169.254/..."> and the worker would
+    // fetch it from inside the network. Nothing reaches the user either way -
+    // axe reads the DOM, not image bytes - so this is about side effects
+    // rather than disclosure, but a GET that changes state still fires.
+    //
+    // The resolver is wrapped per AUDIT, so its cache dies with the audit
+    // rather than pinning a resolution for the process's lifetime. That is
+    // what keeps the DNS rebinding window to milliseconds.
+    const guard = makeRequestGuard(new CachingDnsResolver(this.dnsResolver), this.urlPolicy)
+    await context.route('**/*', (route) => guard(route as unknown as RouteLike))
 
     // A timed-out job must kill the browser, not merely stop awaiting it -
     // otherwise the work carries on unattended with a live Chromium behind it.

@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { isBlockedAddress, type UrlPolicy } from '../../domain/services/url-safety.js'
+import { NodeDnsResolver } from '../net/node-dns-resolver.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PlaywrightAxeAuditor } from './playwright-axe-auditor.js'
@@ -10,13 +12,26 @@ const VENDORED_VERSION = readFileSync(
 
 const BUDGETS = { navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500 }
 
+/**
+ * The production policy with exactly two holes, both forced by the fixture
+ * server: it listens on loopback and on an ephemeral port. Every other range -
+ * 10/8, 169.254/16 and the rest - stays genuinely enforced, so the blocking
+ * these specs assert is the real policy at work rather than a stub agreeing
+ * with them.
+ */
+const allowingFixtureServer: UrlPolicy = {
+  isAllowedPort: () => true,
+  isBlockedAddress: (address) =>
+    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)
+}
+
 describe('PlaywrightAxeAuditor', () => {
   let server: FixtureServer
   let sut: PlaywrightAxeAuditor
 
   beforeAll(async () => {
     server = await startFixtureServer()
-    sut = new PlaywrightAxeAuditor(BUDGETS)
+    sut = new PlaywrightAxeAuditor(BUDGETS, new NodeDnsResolver(), allowingFixtureServer)
   }, 60_000)
 
   afterAll(async () => {

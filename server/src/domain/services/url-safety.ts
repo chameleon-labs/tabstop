@@ -49,7 +49,34 @@ export const bareHostname = (url: URL): string =>
  * Pure: no DNS, no network, no clock. That is what makes the range list cheap
  * to test exhaustively, which is the only way this class of bug gets caught.
  */
-export const parseAuditUrl = (raw: string): UrlSafetyResult => {
+/**
+ * What counts as safe, as one replaceable unit.
+ *
+ * It is a parameter so the guard's MECHANISM - redirect walking, subresource
+ * refusal, the hop cap - can be exercised against a fixture server, which
+ * necessarily listens on loopback and an ephemeral port: both of which the
+ * real policy is determined to refuse, and rightly so.
+ *
+ * The POLICY itself is not tested that way. Every range and every port rule is
+ * covered exhaustively by the pure specs in this file, with no network at all.
+ * Splitting them keeps each honest: the policy specs cannot be satisfied by a
+ * lenient mechanism, and the mechanism specs cannot be satisfied by a lenient
+ * policy. Nothing in production passes anything but the default.
+ */
+export type UrlPolicy = {
+  isAllowedPort: (port: number) => boolean
+  isBlockedAddress: (address: string) => boolean
+}
+
+export const DEFAULT_URL_POLICY: UrlPolicy = {
+  isAllowedPort: (port) => ALLOWED_PORTS.includes(port),
+  isBlockedAddress
+}
+
+export const parseAuditUrl = (
+  raw: string,
+  policy: UrlPolicy = DEFAULT_URL_POLICY
+): UrlSafetyResult => {
   let url: URL
   try {
     url = new URL(raw)
@@ -62,14 +89,14 @@ export const parseAuditUrl = (raw: string): UrlSafetyResult => {
   }
 
   const port = url.port === '' ? DEFAULT_PORTS[url.protocol] : Number(url.port)
-  if (port === undefined || !ALLOWED_PORTS.includes(port)) {
+  if (port === undefined || !policy.isAllowedPort(port)) {
     return { safe: false, reason: 'blocked-port' }
   }
 
   // A literal address needs no DNS at all, and catching it here keeps the
   // most obvious attack out of the resolver path entirely.
   const host = bareHostname(url)
-  if (isIP(host) !== 0 && isBlockedAddress(host)) {
+  if (isIP(host) !== 0 && policy.isBlockedAddress(host)) {
     return { safe: false, reason: 'blocked-address' }
   }
 

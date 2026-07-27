@@ -30,6 +30,12 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
  * net::ERR_* code in its message rather than a typed class.
  */
 const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  // Deliberately vague, and deliberately identical whatever the reason. A
+  // message distinguishing "blocked" from "unreachable" would turn the audit
+  // endpoint into an internal port scanner. Permanent because a blocked
+  // address is blocked identically on every retry - without this the
+  // classifier treats it as unrecognised and burns three attempts on it.
+  [/net::ERR_BLOCKED_BY_CLIENT/, "That address can't be audited"],
   [/net::ERR_NAME_NOT_RESOLVED/, 'Could not resolve that domain'],
   [/net::ERR_CONNECTION_REFUSED/, 'Nothing responded at that address'],
   [/net::ERR_UNSAFE_PORT/, "That port can't be audited"],
