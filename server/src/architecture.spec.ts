@@ -79,6 +79,43 @@ describe('layer dependencies', () => {
     expect(await offendingImports('data', outward)).toEqual([])
   })
 
+  it('holds that rule for the SPECS in domain/ and data/ as well', async () => {
+    // Separate from the rule above because it covers a different file set, and
+    // because the exemption the others make for specs does not belong here.
+    //
+    // Importing vitest in a spec is unavoidable. Importing a driver is not: a
+    // unit spec that reaches for infra/ is either testing something other than
+    // the unit - in which case it is an integration spec and belongs in main/,
+    // where composition lives - or it is using a concrete where the usecase
+    // takes a port, which is exactly the coupling these layers exist to
+    // prevent. Both were present: db-request-audit.spec.ts pulled in the real
+    // url policy instead of stubbing the port it is handed, and a 257-line
+    // end-to-end spec driving real Chromium and real Postgres sat inside
+    // data/usecases/run-audit/.
+    const outward = (specifier: string): boolean =>
+      !/(^|\/)(presentation|infra|main)\//.test(specifier)
+
+    const specs = async (directory: string): Promise<string[]> => {
+      const entries = await readdir(join(SRC, directory), {
+        recursive: true, withFileTypes: true
+      })
+      return entries
+        .filter((entry) => entry.isFile() && /\.(spec|test)\.ts$/.test(entry.name))
+        .map((entry) => relative(SRC, join(entry.parentPath, entry.name)))
+    }
+
+    const offences: string[] = []
+    for (const directory of ['domain', 'data']) {
+      for (const path of await specs(directory)) {
+        for (const specifier of await importsOf(path)) {
+          if (!outward(specifier)) offences.push(`${path} -> ${specifier}`)
+        }
+      }
+    }
+
+    expect(offences.sort()).toEqual([])
+  })
+
   it('keeps presentation/ off infra/ and main/', async () => {
     // Controllers depend on domain usecases and their own protocols. An infra
     // import here is a controller talking to a driver.
