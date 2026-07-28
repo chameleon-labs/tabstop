@@ -188,22 +188,32 @@ describe('account routes', () => {
 
       expect(registered.status).toBe(429)
       expect(unknown.status).toBe(429)
-      // Same shape, same error. toMatchObject is a subset match - it would
-      // stay green even if a later change added a field (e.g. a
-      // bucket-derived `scope`) that differed between the two bodies, which
-      // is exactly the kind of leak this spec exists to catch - so the key
-      // sets are compared exactly, not just the two named fields.
-      expect(Object.keys(unknown.body).sort()).toEqual(Object.keys(registered.body).sort())
-      expect(unknown.body.error).toBe(registered.body.error)
-      // retryAfter and resetAt are both wall-clock-derived, and the two
-      // exhaust() runs are sequential, so exact equality on either is a
-      // latent flake: enough real time between them shifts retryAfter by a
-      // second and resetAt is a fresh timestamp every response. A small
-      // tolerance on retryAfter still catches a real leak (a difference big
-      // enough to come from a different bucket, not from scheduling jitter)
-      // without being sensitive to how long the first exhaust() took.
-      expect(Math.abs(unknown.body.retryAfter - registered.body.retryAfter)).toBeLessThanOrEqual(1)
-      expect(typeof (unknown.body as { resetAt: string }).resetAt).toBe('string')
+
+      // Naming individual fields (or comparing key sets alone) only catches
+      // a field present on one body and absent on the other. It misses a
+      // field present on BOTH bodies with a DIFFERENT value - the actual
+      // leak shape: a bucket-derived field such as `scope: 'ip' | 'email'`
+      // would differ because the registered address trips the IP bucket and
+      // the unknown one trips the email bucket, and no assertion above would
+      // ever inspect it. Destructuring out only the two genuinely
+      // time-derived fields and deep-comparing everything else catches that,
+      // for any field present today or added later, without this spec
+      // needing to change.
+      const { retryAfter: unknownRetry, resetAt: unknownResetAt, ...unknownRest } = unknown.body
+      const { retryAfter: knownRetry, resetAt: knownResetAt, ...knownRest } = registered.body
+
+      // Everything that is not time-derived must match exactly - including
+      // any field added later, which is the case a named-field check would
+      // miss.
+      expect(unknownRest).toEqual(knownRest)
+      // These two are wall-clock-derived and the two exhaust() runs are
+      // sequential, so they are compared with tolerance rather than excluded
+      // from the comparison: enough real time between them legitimately
+      // shifts retryAfter by a second, and resetAt is a fresh timestamp
+      // every response.
+      expect(Math.abs(unknownRetry - knownRetry)).toBeLessThanOrEqual(1)
+      expect(typeof unknownResetAt).toBe('string')
+      expect(typeof knownResetAt).toBe('string')
     })
   })
 
