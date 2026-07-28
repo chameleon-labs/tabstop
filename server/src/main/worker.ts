@@ -8,6 +8,9 @@ import { PermanentAuditError } from '../domain/errors/permanent-audit-error.js'
 import {
   closePageAuditor, makeRunAudit
 } from './factories/usecases/run-audit/run-audit-factory.js'
+import { getDatabase } from './config/database.js'
+import { PostgresSessionRepository } from '../infra/db/postgres/session/postgres-session-repository.js'
+import { startSessionSweeper } from './maintenance/session-sweeper.js'
 
 const PING_TIMEOUT_MS = 10_000
 
@@ -52,6 +55,13 @@ const auditWorker = makeWorker<AuditPayload>(QUEUE_NAMES.audit, env.redisUrl, as
   lockDuration: env.auditJobTimeoutMs + 15_000
 })
 
+// Expired sessions were enforced at read time but never removed, so the
+// table only grew - one row per login, forever. This runs here rather than in
+// the API because the API scales horizontally and would have N instances
+// issuing the same delete, and because the worker already owns background
+// work and a database connection.
+const sessionSweeper = startSessionSweeper(new PostgresSessionRepository(getDatabase()))
+
 const workers = [pingWorker, auditWorker]
 
 for (const worker of workers) {
@@ -87,6 +97,7 @@ const shutdown = (signal: string): void => {
   // a job that is still finishing.
   void Promise.all(workers.map(async (worker) => { await worker.close() }))
     .then(async () => {
+      sessionSweeper.stop()
       await closePageAuditor()
       await disconnectDatabase()
       process.exit(0)

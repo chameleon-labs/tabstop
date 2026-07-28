@@ -187,6 +187,7 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/003-audit-settled.ts',
           'infra/db/postgres/migrations/004-violation-impact-nullable.ts',
           'infra/db/postgres/migrations/005-audit-claimed-at.ts',
+          'infra/db/postgres/migrations/006-sessions-expires-at-index.ts',
           // Reached only through `kysely/migration`, so the exact-name match
           // never saw it.
           'infra/db/postgres/migrations/index.ts',

@@ -6,6 +6,22 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-28 — expired sessions are swept, and signup's 409 stays an account oracle
+
+Two loose ends from the review of `main`, recorded together because the answers point in opposite directions: one was cheap to close, and the other cannot be closed by anything short of email delivery.
+
+**Expired sessions are now deleted, hourly, from the worker.** Expiry was already enforced where sessions are read — `expires_at > now()` in the lookup — so an expired row changed no authorisation outcome. It was never removed, though, so the table only grew: one row per login, forever, including for accounts that never come back. Correct and unbounded is still a problem, and the fix has to be a delete rather than a stricter read.
+
+It runs in the **worker**, not the API. The API scales horizontally, so N instances would issue the same delete on the same rows every hour — harmless, since the statement is idempotent and scoped by the database's own clock, but wasteful and hard to reason about. The worker already owns background work and a database connection. It is a plain timer rather than a BullMQ repeatable job on purpose: a repeatable job would make session maintenance depend on Redis being healthy, and the rate-limiting entry's whole argument is that authentication does not. The delete compares against `now()` for the same reason `loadBySessionId` does — with more than one instance the app clocks drift, and a sweeper on the fast one would delete sessions the slow one still considers live. It does not sweep on boot, because a worker in a crash loop would otherwise issue a table-wide delete on every start, which is exactly when the database least wants one. Index `sessions_expires_at_idx` exists for this delete and for nothing else; the session lookup is by primary key.
+
+**`POST /api/signup` still answers `409` for an email that already exists, which is an account-existence oracle, and it is being kept.** Worth stating plainly because it is the one place the careful work on the login path is undone: login returns an identical `401` for a wrong password and an unknown email, and burns a dummy scrypt verify so a stopwatch cannot separate them — and then signup will tell anyone who asks, in one request, whether an address is registered. An attacker enumerates through signup and only then attacks addresses already known to exist.
+
+**Rate limiting does not fix this, and it is important not to file it under "mitigated by #8".** The oracle leaks on the *first* request for any given email, so a limit on how many requests an attacker may make per hour changes the rate of enumeration and nothing about whether it works. Signup's bucket is keyed per-IP only, so address rotation defeats it outright. Adding a per-email signup bucket would not help either — one probe per email is all the attack needs — and would introduce a fresh denial vector, where burning an address's bucket blocks the legitimate owner from ever signing up with it.
+
+The only real fix is to stop the response from depending on whether the account exists: answer `201` either way, create nothing for a taken address, and send mail — either "here is your account" or "you already have one, here is a reset link". That needs a transactional email provider, which is **#15**, and which does not exist yet. Returning `201` before then would be strictly worse than the leak: a user who already has an account would get a success page, no session, and no email telling them to log in instead.
+
+So it is accepted, deliberately and with the cost named, until #15 lands — at which point signup should change in the same commit that makes the change safe. Recorded here rather than left as a comment because the next person to look at signup will see a plain `409` and no reason to think it was ever considered.
+
 ## 2026-07-28 — the score formula
 
 `score = max(0, 100 − Σ over rules: weight(impact) × min(elements, 5))`, weights `critical 10 · serious 5 · moderate 2 · minor 1`. Fixed in v1 and not configurable, which is the only thing that makes two scores comparable.
