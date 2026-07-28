@@ -42,12 +42,44 @@ export const startSessionSweeper = (
     }
   }
 
+  let timer: NodeJS.Timeout | null = null
+  let stopped = false
+
+  // setTimeout re-armed after the sweep SETTLES, not setInterval.
+  //
+  // setInterval fires on a fixed cadence regardless of whether the previous
+  // callback finished, and this callback is async - so a delete that outlasts
+  // the interval, which is exactly what a table big enough to need sweeping
+  // plus lock contention produces, would have a second delete start on top of
+  // it, then a third. Each holds a pool connection, and the pool is the same
+  // one the audit jobs need. Re-arming afterwards makes at most one
+  // maintenance query possible at a time, and costs only that the period
+  // becomes "an hour after the last one finished" rather than "on the hour" -
+  // which for a cleanup task is the more useful of the two.
+  const schedule = (): void => {
+    if (stopped) return
+    timer = setTimeout(() => { void run() }, intervalMs)
+    // So a pending sweep can never hold the process open during shutdown.
+    timer.unref()
+  }
+
+  const run = async (): Promise<void> => {
+    try {
+      await sweep()
+    } finally {
+      schedule()
+    }
+  }
+
   // Not on boot: a worker restarting in a crash loop would otherwise issue a
   // table-wide delete on every start, which is exactly when the database is
   // least likely to want one.
-  const timer = setInterval(() => { void sweep() }, intervalMs)
-  // So a pending sweep can never hold the process open during shutdown.
-  timer.unref()
+  schedule()
 
-  return { stop: () => { clearInterval(timer) } }
+  return {
+    stop: () => {
+      stopped = true
+      if (timer !== null) clearTimeout(timer)
+    }
+  }
 }
