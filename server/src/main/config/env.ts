@@ -21,6 +21,7 @@ export type Env = {
   trustProxyHops: number
   auditRateCapacity: number
   auditRatePerHour: number
+  auditQueueMaxDepth: number
 }
 
 const DEFAULT_PORT = 3000
@@ -47,6 +48,15 @@ const DEFAULT_TRUST_PROXY_HOPS = 0
 const MAX_TRUST_PROXY_HOPS = 8
 const DEFAULT_AUDIT_RATE_CAPACITY = 5
 const DEFAULT_AUDIT_RATE_PER_HOUR = 5
+/**
+ * The aggregate backstop the per-IP buckets cannot provide: those bound one
+ * source each, while the queue is shared by all of them. Roughly an hour of
+ * backlog at the default concurrency of one, so an accepted client still gets
+ * a result rather than a place in a line nobody reaches. The ceiling is what
+ * keeps a stray zero from removing the bound entirely.
+ */
+const DEFAULT_AUDIT_QUEUE_MAX_DEPTH = 100
+const MAX_AUDIT_QUEUE_MAX_DEPTH = 10_000
 /**
  * This is the one dial documented as production-tunable, which is exactly
  * why it needs a ceiling like every other numeric variable in this file:
@@ -256,6 +266,10 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     auditRatePerHour: positiveIntegerOr(
       source.AUDIT_RATE_PER_HOUR, DEFAULT_AUDIT_RATE_PER_HOUR, 'AUDIT_RATE_PER_HOUR',
       MAX_AUDIT_RATE_PER_HOUR
+    ),
+    auditQueueMaxDepth: positiveIntegerOr(
+      source.AUDIT_QUEUE_MAX_DEPTH, DEFAULT_AUDIT_QUEUE_MAX_DEPTH, 'AUDIT_QUEUE_MAX_DEPTH',
+      MAX_AUDIT_QUEUE_MAX_DEPTH
     )
   }
 }

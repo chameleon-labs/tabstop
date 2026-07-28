@@ -225,4 +225,24 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...validSource, AUDIT_RATE_PER_HOUR: '50000' }))
       .toThrow('AUDIT_RATE_PER_HOUR')
   })
+
+  it('defaults the queue depth cap, and reads an override', () => {
+    // The default is load-bearing rather than a placeholder: it is the only
+    // thing bounding the queue in a deployment that never sets the variable,
+    // which is every deployment until someone has a reason to tune it.
+    expect(parseEnv(validSource).auditQueueMaxDepth).toBe(100)
+    expect(parseEnv({ ...validSource, AUDIT_QUEUE_MAX_DEPTH: '250' }).auditQueueMaxDepth).toBe(250)
+  })
+
+  it('rejects a queue depth cap that would remove the bound', () => {
+    // Same reasoning as the audit bucket above, and the same failure mode: a
+    // stray zero boots cleanly and silently turns the backstop off, which is
+    // invisible until the queue is already long.
+    expect(() => parseEnv({ ...validSource, AUDIT_QUEUE_MAX_DEPTH: '100000' }))
+      .toThrow('AUDIT_QUEUE_MAX_DEPTH')
+    expect(() => parseEnv({ ...validSource, AUDIT_QUEUE_MAX_DEPTH: '0' }))
+      .toThrow('AUDIT_QUEUE_MAX_DEPTH')
+    expect(() => parseEnv({ ...validSource, AUDIT_QUEUE_MAX_DEPTH: 'lots' }))
+      .toThrow('AUDIT_QUEUE_MAX_DEPTH')
+  })
 })

@@ -253,8 +253,8 @@ describe('account routes', () => {
       const cookie = firstSetCookie(signup)
       await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200)
 
-      // logout is deliberately unrated - no x-forwarded-for needed.
-      const logout = await request(app).post('/api/logout').set('Cookie', cookie)
+      const logout = await request(app).post('/api/logout')
+        .set('x-forwarded-for', ip).set('Cookie', cookie)
       expect(logout.status).toBe(204)
 
       // The assertion that proves revocation is real rather than cosmetic: the
@@ -264,9 +264,33 @@ describe('account routes', () => {
     })
 
     it('is idempotent without a cookie or with an unknown session', async () => {
-      // logout is deliberately unrated - no x-forwarded-for needed.
-      await request(app).post('/api/logout').expect(204)
-      await request(app).post('/api/logout').set('Cookie', `sid=${'b'.repeat(64)}`).expect(204)
+      const ip = uniqueIp()
+      await request(app).post('/api/logout').set('x-forwarded-for', ip).expect(204)
+      await request(app).post('/api/logout').set('x-forwarded-for', ip)
+        .set('Cookie', `sid=${'b'.repeat(64)}`).expect(204)
+    })
+
+    it('stays idempotent right up to the limit, then answers 429', async () => {
+      // Logout was the one route with no bucket, on the reasoning that it is
+      // idempotent and nothing accumulates from repeating it. Both true, and
+      // neither is about load: every call with a cookie is an indexed DELETE,
+      // and an anonymous caller can drive them as fast as it can open sockets.
+      //
+      // The bucket has to be generous enough that no real client ever meets
+      // it - a person with several tabs signing out is still nowhere near -
+      // which is why this asserts the idempotence survives all the way to
+      // capacity rather than just that a 429 eventually arrives.
+      const ip = uniqueIp()
+      const logout = async () => await request(app)
+        .post('/api/logout').set('x-forwarded-for', ip)
+
+      const statuses: number[] = []
+      for (let i = 0; i <= RATE_LIMITS.logout.capacity; i++) {
+        statuses.push((await logout()).status)
+      }
+
+      expect(statuses.slice(0, -1).every((status) => status === 204)).toBe(true)
+      expect(statuses.at(-1)).toBe(429)
     })
   })
 
@@ -293,8 +317,8 @@ describe('account routes', () => {
         .send({ email: newEmail(), password }).expect(201)
       const cookie = firstSetCookie(signup)
 
-      // logout is deliberately unrated - no x-forwarded-for needed.
       const forced = await request(app).post('/api/logout')
+        .set('x-forwarded-for', ip)
         .set('Cookie', cookie)
         .set('Origin', 'https://evil.tabstop.dev')
 
@@ -308,16 +332,15 @@ describe('account routes', () => {
       const signup = await request(app).post('/api/signup').set('x-forwarded-for', uniqueIp())
         .send({ email: newEmail(), password }).expect(201)
 
-      // logout is deliberately unrated - no x-forwarded-for needed.
       await request(app).post('/api/logout')
+        .set('x-forwarded-for', uniqueIp())
         .set('Cookie', firstSetCookie(signup))
         .set('Origin', 'http://localhost:5173')
         .expect(204)
     })
 
     it('allows a request with no Origin at all, which no browser CSRF can be', async () => {
-      // logout is deliberately unrated - no x-forwarded-for needed.
-      await request(app).post('/api/logout').expect(204)
+      await request(app).post('/api/logout').set('x-forwarded-for', uniqueIp()).expect(204)
     })
 
     it('does not interfere with reads', async () => {
