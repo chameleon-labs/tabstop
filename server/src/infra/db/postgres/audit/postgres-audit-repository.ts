@@ -19,6 +19,9 @@ import type {
 import type {
   MarkFailedRepository
 } from '../../../../data/protocols/db/audit/mark-failed-repository.js'
+import type {
+  DeleteQueuedAuditRepository
+} from '../../../../data/protocols/db/audit/delete-queued-audit-repository.js'
 import type { Database } from '../database.js'
 import { toAuditModel } from './audit-mapper.js'
 
@@ -55,7 +58,8 @@ export class PostgresAuditRepository implements
   LoadAuditByIdRepository,
   MarkRunningRepository,
   MarkDoneRepository,
-  MarkFailedRepository {
+  MarkFailedRepository,
+  DeleteQueuedAuditRepository {
   constructor (
     private readonly db: Kysely<Database>,
     private readonly staleClaimAfterMs: number = DEFAULT_STALE_CLAIM_AFTER_MS
@@ -173,6 +177,17 @@ export class PostgresAuditRepository implements
       // successful audit into a failure.
       .where('status', '=', 'running')
       .where('claimed_at', '=', claimedAt)
+      .execute()
+  }
+
+  async deleteIfQueued (auditId: string): Promise<void> {
+    // The only delete on this repository, and scoped so it can never remove a
+    // real audit: by the time anything is running or finished, somebody is
+    // relying on it existing.
+    await this.db
+      .deleteFrom('audits')
+      .where('id', '=', auditId)
+      .where('status', '=', 'queued')
       .execute()
   }
 }
