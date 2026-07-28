@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isBlockedAddress, parseAuditUrl } from './url-safety.js'
+import { parseAuditUrl } from '../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY, isBlockedAddress } from './ip-address-policy.js'
 
 describe('isBlockedAddress', () => {
   it('blocks every private and reserved range', () => {
@@ -55,6 +56,30 @@ describe('isBlockedAddress', () => {
     expect(isBlockedAddress('::ffff:169.254.169.254')).toBe(true)
   })
 
+  it('blocks the IPv4-COMPATIBLE IPv6 form too, not only the mapped one', () => {
+    // The other `::a.b.c.d` form, and the gap the mapped rule does not cover:
+    // BlockList reads ::ffff:0:0/96 against the IPv4 rules, but ::/96 is a
+    // different prefix and matched nothing. Only `::` itself was blocked, as a
+    // /128, so `::169.254.169.254` was ALLOWED - the same wrapped-IPv4 trick
+    // as 6to4 and NAT64, both of which this list already refuses.
+    //
+    // Neither Linux nor macOS routes these today (measured: ENETUNREACH), so
+    // this closes a gap rather than a live bypass - the same standard applied
+    // to fec0::/10, which is blocked for being routable on legacy networks
+    // rather than on this one.
+    expect(isBlockedAddress('::127.0.0.1')).toBe(true)
+    expect(isBlockedAddress('::169.254.169.254')).toBe(true)
+    expect(isBlockedAddress('::10.0.0.1')).toBe(true)
+    // Same address, written the way node normalises it.
+    expect(isBlockedAddress('::7f00:1')).toBe(true)
+  })
+
+  it('still allows a public address in IPv4-mapped form', () => {
+    // The ::/96 rule above must not spill into ::ffff:0:0/96, which is how a
+    // dual-stack host legitimately names a public IPv4 address.
+    expect(isBlockedAddress('::ffff:8.8.8.8')).toBe(false)
+  })
+
   it('blocks anything that is not an address at all', () => {
     // node:net BlockList.check returns FALSE for a non-address, so relying on
     // it alone fails OPEN. Verified against Node 24.
@@ -66,8 +91,8 @@ describe('isBlockedAddress', () => {
 
 describe('parseAuditUrl', () => {
   it('accepts an ordinary http and https URL', () => {
-    expect(parseAuditUrl('https://example.com/a').safe).toBe(true)
-    expect(parseAuditUrl('http://example.com').safe).toBe(true)
+    expect(parseAuditUrl('https://example.com/a', DEFAULT_URL_POLICY).safe).toBe(true)
+    expect(parseAuditUrl('http://example.com', DEFAULT_URL_POLICY).safe).toBe(true)
   })
 
   it('rejects a non-http scheme', () => {
@@ -75,15 +100,20 @@ describe('parseAuditUrl', () => {
       'file:///etc/passwd', 'ftp://example.com', 'gopher://example.com',
       'javascript:alert(1)', 'data:text/html,<h1>x'
     ]) {
-      expect(parseAuditUrl(raw)).toEqual({ safe: false, reason: 'blocked-scheme' })
+      expect(parseAuditUrl(raw, DEFAULT_URL_POLICY)).toEqual({ safe: false, reason: 'blocked-scheme' })
     }
   })
 
   it('rejects a literal private address without any DNS lookup', () => {
-    expect(parseAuditUrl('http://169.254.169.254/latest/meta-data/'))
+    expect(parseAuditUrl('http://169.254.169.254/latest/meta-data/', DEFAULT_URL_POLICY))
       .toEqual({ safe: false, reason: 'blocked-address' })
-    expect(parseAuditUrl('http://[::1]/')).toEqual({ safe: false, reason: 'blocked-address' })
-    expect(parseAuditUrl('http://127.0.0.1/')).toEqual({ safe: false, reason: 'blocked-address' })
+    expect(parseAuditUrl('http://[::1]/', DEFAULT_URL_POLICY)).toEqual({ safe: false, reason: 'blocked-address' })
+    expect(parseAuditUrl('http://127.0.0.1/', DEFAULT_URL_POLICY)).toEqual({ safe: false, reason: 'blocked-address' })
+    // The IPv4-compatible form, which reached this far as a plain accepted url.
+    expect(parseAuditUrl('http://[::169.254.169.254]/latest/meta-data/', DEFAULT_URL_POLICY))
+      .toEqual({ safe: false, reason: 'blocked-address' })
+    expect(parseAuditUrl('http://[::127.0.0.1]/', DEFAULT_URL_POLICY))
+      .toEqual({ safe: false, reason: 'blocked-address' })
   })
 
   it('rejects a URL carrying credentials', () => {
@@ -95,30 +125,30 @@ describe('parseAuditUrl', () => {
       'https://alice@example.com/',
       'http://:secret@example.com/'
     ]) {
-      expect(parseAuditUrl(raw)).toEqual({ safe: false, reason: 'blocked-credentials' })
+      expect(parseAuditUrl(raw, DEFAULT_URL_POLICY)).toEqual({ safe: false, reason: 'blocked-credentials' })
     }
   })
 
   it('rejects a non-standard port', () => {
-    expect(parseAuditUrl('http://example.com:8080/'))
+    expect(parseAuditUrl('http://example.com:8080/', DEFAULT_URL_POLICY))
       .toEqual({ safe: false, reason: 'blocked-port' })
-    expect(parseAuditUrl('https://example.com:3000/'))
+    expect(parseAuditUrl('https://example.com:3000/', DEFAULT_URL_POLICY))
       .toEqual({ safe: false, reason: 'blocked-port' })
   })
 
   it('accepts the default ports, stated explicitly or not', () => {
-    expect(parseAuditUrl('http://example.com:80/').safe).toBe(true)
-    expect(parseAuditUrl('https://example.com:443/').safe).toBe(true)
+    expect(parseAuditUrl('http://example.com:80/', DEFAULT_URL_POLICY).safe).toBe(true)
+    expect(parseAuditUrl('https://example.com:443/', DEFAULT_URL_POLICY).safe).toBe(true)
   })
 
   it('rejects unparseable input rather than throwing', () => {
     for (const raw of ['', 'not a url', 'http://', '://example.com']) {
-      expect(parseAuditUrl(raw)).toEqual({ safe: false, reason: 'invalid-url' })
+      expect(parseAuditUrl(raw, DEFAULT_URL_POLICY)).toEqual({ safe: false, reason: 'invalid-url' })
     }
   })
 
   it('normalises the host but not the path', () => {
-    const result = parseAuditUrl('HTTPS://Example.COM/Path')
+    const result = parseAuditUrl('HTTPS://Example.COM/Path', DEFAULT_URL_POLICY)
 
     expect(result.safe && result.url.host).toBe('example.com')
     // Path case is significant to a server, so folding it would audit a

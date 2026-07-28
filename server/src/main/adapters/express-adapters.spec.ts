@@ -99,6 +99,21 @@ describe('adaptRoute', () => {
     expect(response.body.userId).toBe('from-session')
     expect(response.body.other).toBe('kept')
   })
+
+  it('lets a path parameter outrank a query string of the same name', async () => {
+    // Both are client-supplied, so neither can spoof a session - but they are
+    // not interchangeable. A path segment is what the route matched and what a
+    // cache keys on; a query string is an extra the client appended. With the
+    // query spread last, `GET /api/audits/<uuid>?uuid=<other>` is answered
+    // from <other> while the cached url still says <uuid>.
+    const app = express()
+    app.use(express.json())
+    app.get('/probe/:id', adaptRoute(echoController))
+
+    const response = await request(app).get('/probe/from-path?id=from-query')
+
+    expect(response.body.id).toBe('from-path')
+  })
 })
 
 describe('adaptMiddleware', () => {

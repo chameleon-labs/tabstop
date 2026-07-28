@@ -4,13 +4,14 @@ import {
   mockAddAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository
 } from '../../test/index.js'
 import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
+import { DEFAULT_URL_POLICY } from '../../../infra/net/ip-address-policy.js'
 
 const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const audits = mockAddAuditRepository()
   const deletes = mockDeleteQueuedAuditRepository()
   const queue = mockAuditQueue()
   const resolver = { resolve: vi.fn<DnsResolver['resolve']>(async () => addresses) }
-  const sut = new DbRequestAudit(audits, deletes, queue, resolver)
+  const sut = new DbRequestAudit(audits, deletes, queue, resolver, DEFAULT_URL_POLICY)
   return { sut, audits, deletes, queue, resolver }
 }
 

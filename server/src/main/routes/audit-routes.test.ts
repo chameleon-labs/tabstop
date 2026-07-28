@@ -85,14 +85,19 @@ describe('audit routes', () => {
     })
 
     it('stores nothing for a rejected URL', async () => {
-      const before = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
-        .executeTakeFirstOrThrow()
+      // Scoped to the url under test rather than counting the whole table.
+      // Every spec in this suite shares one Postgres container and vitest runs
+      // files in parallel, so a table-wide count is a race with whichever
+      // other file happens to insert an audit in the same instant - it fails
+      // by reporting somebody else's row as this one's.
+      const rejected = `file:///etc/passwd?${randomUUID()}`
 
-      await submit('file:///etc/passwd')
+      await submit(rejected)
 
-      const after = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
+      const stored = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
+        .where('url', '=', rejected)
         .executeTakeFirstOrThrow()
-      expect(after.n).toEqual(before.n)
+      expect(Number(stored.n)).toBe(0)
     })
   })
 

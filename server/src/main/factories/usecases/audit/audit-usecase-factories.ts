@@ -8,6 +8,7 @@ import { PostgresViolationRepository } from '../../../../infra/db/postgres/viola
 import { BullMqAuditQueue } from '../../../../infra/queue/bullmq-job-queue.js'
 import { makeQueue } from '../../../../infra/queue/helpers/bullmq-helper.js'
 import { NodeDnsResolver } from '../../../../infra/net/node-dns-resolver.js'
+import { DEFAULT_URL_POLICY } from '../../../../infra/net/ip-address-policy.js'
 import { getDatabase } from '../../../config/database.js'
 import { env } from '../../../config/env.js'
 import { QUEUE_NAMES } from '../../../config/queue-names.js'
@@ -38,7 +39,13 @@ const getAuditQueue = (): BullMqAuditQueue => {
 
 export const makeRequestAudit = (): RequestAudit => {
   const audits = new PostgresAuditRepository(getDatabase())
-  return new DbRequestAudit(audits, audits, getAuditQueue(), new NodeDnsResolver())
+  // The policy is injected rather than defaulted inside the usecase: data/
+  // must not name the concrete rule set, and a default there would have been
+  // a `node:net` import in the layer that is supposed to be free of the
+  // runtime. The composition root is where a concrete belongs.
+  return new DbRequestAudit(
+    audits, audits, getAuditQueue(), new NodeDnsResolver(), DEFAULT_URL_POLICY
+  )
 }
 
 export const makeLoadAuditResult = (): LoadAuditResult => new DbLoadAuditResult(

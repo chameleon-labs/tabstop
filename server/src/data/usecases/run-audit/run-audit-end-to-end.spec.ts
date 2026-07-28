@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { isBlockedAddress, type UrlPolicy } from '../../../domain/services/url-safety.js'
+import type { UrlPolicy } from '../../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY, isBlockedAddress } from '../../../infra/net/ip-address-policy.js'
 import { NodeDnsResolver } from '../../../infra/net/node-dns-resolver.js'
 import { randomUUID } from 'node:crypto'
 import type { Kysely } from 'kysely'
@@ -30,7 +31,10 @@ import {
 const allowingFixtureServer: UrlPolicy = {
   isAllowedPort: () => true,
   isBlockedAddress: (address) =>
-    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)
+    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address),
+  // Not relaxed: recognising an address is not part of what these specs need
+  // to bend, so it stays the real implementation.
+  isIpLiteral: DEFAULT_URL_POLICY.isIpLiteral
 }
 
 describe('run-audit end to end', () => {
