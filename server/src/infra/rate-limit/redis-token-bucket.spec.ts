@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { RedisTokenBucket } from './redis-token-bucket.js'
+import { RedisTokenBucket, WAIT_MS_FORMULA } from './redis-token-bucket.js'
 import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const connectionUrl = (): string => {
@@ -70,5 +70,33 @@ describe('RedisTokenBucket', () => {
     expect(ttl).toBeGreaterThan(0)
     // Time to refill what was taken, plus a second of grace.
     expect(ttl).toBeLessThanOrEqual(1_100)
+  })
+
+  it('does not overshoot the wait by a millisecond at an exact-boundary deficit', async () => {
+    // A real consume() can't drive this deterministically: forcing SCRIPT's
+    // own `tokens` to land at precisely `cost - 1` (a deficit of exactly one
+    // token) would mean racing Redis's TIME() call, and a timing-dependent
+    // spec is not evidence either way - it would pass or fail depending on
+    // machine speed and load, not on whether the formula is correct. So this
+    // evals WAIT_MS_FORMULA directly, against a real Lua interpreter, with
+    // the exact inputs (deficit of 1, refillPerHour 1) that overshoot with
+    // the naive `(cost - tokens) / refillPerMs` form: 3_600_001 instead of
+    // 3_600_000. Sharing the formula string with the production script is
+    // what keeps this from silently drifting out of sync with it.
+    const script = `
+      local cost = tonumber(ARGV[1])
+      local tokens = tonumber(ARGV[2])
+      local refillPerHour = tonumber(ARGV[3])
+      local msPerHour = tonumber(ARGV[4])
+      -- Defined so the formula string works whichever form it's in - the
+      -- naive pre-fix version divides by this instead of multiplying by
+      -- msPerHour directly.
+      local refillPerMs = refillPerHour / msPerHour
+      return math.ceil(${WAIT_MS_FORMULA})
+    `
+
+    const result = await redis.eval(script, 0, 1, 0, 1, 3_600_000)
+
+    expect(Number(result)).toBe(3_600_000)
   })
 })

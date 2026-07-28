@@ -6,6 +6,25 @@ import type {
 const MS_PER_HOUR = 3_600_000
 
 /**
+ * Not `(cost - tokens) / refillPerMs`: `refillPerMs` is itself already a
+ * rounded division (`refillPerHour / msPerHour`), and dividing by it a second
+ * time compounds that rounding into a result a whole millisecond over the
+ * true value at exact-boundary deficits (e.g. capacity 3, refillPerHour 1, a
+ * deficit of exactly 1 token - `1 / (1 / 3600000) === 3600000.0000000005` in
+ * IEEE754, and Lua's numbers are the same doubles JS uses). Deriving the wait
+ * straight from `refillPerHour` keeps it to one division instead of a
+ * division of a division.
+ *
+ * Exported verbatim so `redis-token-bucket.spec.ts` can eval this exact
+ * expression against a real Lua interpreter with controlled inputs: forcing
+ * SCRIPT's own `tokens` to land at precisely `cost - 1` would mean racing
+ * Redis's TIME() call, which cannot be done deterministically, so the
+ * boundary is instead verified here, sharing this string so the production
+ * formula and the spec can never silently diverge.
+ */
+export const WAIT_MS_FORMULA = '(cost - tokens) * msPerHour / refillPerHour'
+
+/**
  * Check and consume in one round trip. Read-then-write from Node is not
  * equivalent: two concurrent requests both see the last token and both
  * proceed, which a spec fires twenty parallel consumes to prove.
@@ -16,9 +35,11 @@ const MS_PER_HOUR = 3_600_000
  * by effects, so calling TIME and then writing is permitted.
  */
 const SCRIPT = `
-local capacity     = tonumber(ARGV[1])
-local refillPerMs  = tonumber(ARGV[2])
-local cost         = tonumber(ARGV[3])
+local msPerHour     = ${MS_PER_HOUR}
+local capacity      = tonumber(ARGV[1])
+local refillPerMs   = tonumber(ARGV[2])
+local cost          = tonumber(ARGV[3])
+local refillPerHour = tonumber(ARGV[4])
 
 local time = redis.call('TIME')
 local now  = time[1] * 1000 + math.floor(time[2] / 1000)
@@ -43,7 +64,7 @@ redis.call('HSET', KEYS[1], 'tokens', tokens, 'updated', now)
 redis.call('PEXPIRE', KEYS[1], math.ceil((capacity - tokens) / refillPerMs) + 1000)
 
 if allowed then return { 1, math.floor(tokens), 0 } end
-return { 0, math.floor(tokens), math.ceil((cost - tokens) / refillPerMs) }
+return { 0, math.floor(tokens), math.ceil(${WAIT_MS_FORMULA}) }
 `
 
 export class RedisTokenBucket implements RateLimiter {
@@ -68,7 +89,7 @@ export class RedisTokenBucket implements RateLimiter {
   ): Promise<[number, number, number]> {
     const result = await this.redis.eval(
       SCRIPT, 1, `${this.keyPrefix}:${key}`,
-      bucket.capacity, bucket.refillPerHour / MS_PER_HOUR, cost
+      bucket.capacity, bucket.refillPerHour / MS_PER_HOUR, cost, bucket.refillPerHour
     )
 
     // eval is typed `unknown`; the script's own return shape is the contract.
