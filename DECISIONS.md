@@ -6,6 +6,24 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-28 — the audit API, and what a public payload may contain
+
+`POST /api/audits` and `GET /api/audits/:uuid` — the one-off audit with no signup, and the result behind the public share page.
+
+**Gate 1 is syntactic only.** #7 left the submission-time check to this issue, and it validates with `parseAuditUrl` and performs no DNS. A hostname that resolves private becomes a `failed` audit thirty seconds later rather than an immediate `400`, which is a real cost accepted for two reasons: this endpoint is anonymous and unlimited until #8, so a lookup per request is an amplifier against a resolver we do not control; and a submission-time resolution cannot be trusted anyway, since gate 2 re-resolves at fetch time precisely because the answer can change in between. Worth revisiting once rate limiting makes a per-request lookup safe.
+
+**A failed enqueue deletes the row rather than stranding it.** The insert must precede the enqueue — reversed, the worker can dequeue an id whose row does not exist — which leaves the window where the row exists and nothing will run it. The enqueue is retried three times first, since most failures are a blip; a sustained one deletes the audit and answers `503`. The row was acknowledged to nobody, so removing it strands nothing and the client simply retries.
+
+Two alternatives were weighed and rejected. **Leaving the row `queued`** and deferring recovery to #13 is simplest, and a stranded `queued` row is indistinguishable from one that has not started — but it is the same shape as the stranded-row defects the audit worker spent several review rounds eliminating. **Claiming it and marking it `failed`** reuses the fenced write path and leaves an explanation, but records a failure for an audit nothing ever attempted, fabricates a claim no worker held, and turns a queue outage into a table of failures rather than a clean rejection. The delete is scoped to `where id = $1 and status = 'queued'`, which is what keeps the only delete on this repository from ever removing a real audit. If it fails too, the outcome degrades to a stranded row — the single accepted residual.
+
+**The public payload is built by an explicit mapper, never spread.** `GET` is gated only by an unguessable uuid, and `AuditModel` carries `pageId`, which links to a site and therefore to an account. A spread, or a later `select *`, is exactly how that reaches the wire — so every field is named, and specs at both the mapper and the route assert the forbidden keys are absent. Mutation-checked by putting `pageId` back.
+
+Worth recording a testing trap found while writing those specs: asserting `JSON.stringify(body)` does not *contain* the internal id is worthless when the id is a `bigserial`. A single digit matches by coincidence inside a uuid or a timestamp, so the assertion fails for the wrong reason and would equally have passed for the wrong reason. Both checks compare structurally instead.
+
+**`HttpResponse` gained an optional `headers`.** The global `no-store` from #10 covers every response, so a route could not otherwise opt into caching. A terminal audit is immutable and carries nothing user-identifying, so the share page can be served from a cache; an in-flight one changes on the next poll and stays `no-store`. The controller describes the intent and `adaptRoute` applies it, mirroring how cookies already work rather than inventing a second mechanism.
+
+**This endpoint ships unlimited.** #8 is blocked partly on it existing, so it cannot come first. Each accepted request costs roughly thirty seconds of Chromium, and nothing throttles that yet — so it must not be deployed before #8, which is recorded there and on #16 rather than left to memory.
+
 ## 2026-07-27 — URL safety: the redirect check the issue described does not fire
 
 "Audit any URL" hands anonymous users a server-side request forgery primitive, so this lands **before** #9 opens that path. The endpoint should never exist in an unsafe form, rather than exist and be fixed afterwards.

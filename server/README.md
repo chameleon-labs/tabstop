@@ -80,6 +80,17 @@ await q.close()
 "
 ```
 
+## API
+
+| Route | Notes |
+|---|---|
+| `GET /api/health` | includes a Postgres reachability probe |
+| `POST /api/signup` · `login` · `logout` · `GET /api/me` | session cookie, see Auth |
+| `POST /api/audits` | anonymous one-off audit. **Unlimited until #8 — do not deploy before it.** Validated by gate 1 (`parseAuditUrl`, no DNS) |
+| `GET /api/audits/:uuid` | fully public, gated only by an unguessable uuid |
+
+`GET /api/audits/:uuid` returns one shape for all four states so a client narrows on `status`. Its payload is built by an explicit mapper in `presentation/helpers/audit-view.ts` — **never spread from the model**, because `AuditModel` carries `pageId` and that links to an account. A terminal audit is cacheable (`public, max-age=3600`); an in-flight one is `no-store`.
+
 ## Audit worker
 
 The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations. `pnpm dev:worker` consumes both `ping` and `audit`.
