@@ -3,8 +3,7 @@ import type { AddAuditRepository } from '../protocols/db/audit/add-audit-reposit
 import type {
   DeleteQueuedAuditRepository
 } from '../protocols/db/audit/delete-queued-audit-repository.js'
-import type { JobQueue } from '../protocols/queue/job-queue.js'
-import type { AuditJob } from '../usecases/request-audit/db-request-audit.js'
+import type { AuditJob, AuditJobQueue } from '../protocols/queue/audit-job-queue.js'
 import type { AuditModel } from '../../domain/models/audit.js'
 import type { AuditPageResult, PageAuditor } from '../protocols/audit/page-auditor.js'
 import type {
@@ -87,5 +86,8 @@ export const mockDeleteQueuedAuditRepository = () => ({
 })
 
 export const mockAuditQueue = () => ({
-  enqueue: vi.fn<JobQueue<AuditJob>['enqueue']>(async () => { /* no-op */ })
+  enqueueOnce: vi.fn<AuditJobQueue['enqueueOnce']>(async () => { /* no-op */ }),
+  // Absent by default: the interesting case is a queue that lost the reply
+  // but did accept the job, and each spec opts into that explicitly.
+  has: vi.fn<AuditJobQueue['has']>(async () => false)
 })

@@ -24,8 +24,8 @@ describe('DbRequestAudit', () => {
 
     expect(result.outcome).toBe('queued')
     expect(audits.add.mock.invocationCallOrder[0] as number)
-      .toBeLessThan(queue.enqueue.mock.invocationCallOrder[0] as number)
-    expect(queue.enqueue).toHaveBeenCalledWith({ auditId: 'audit-1' })
+      .toBeLessThan(queue.enqueueOnce.mock.invocationCallOrder[0] as number)
+    expect(queue.enqueueOnce).toHaveBeenCalledWith({ auditId: 'audit-1' })
   })
 
   it('rejects an unsafe URL without touching the database or the queue', async () => {
@@ -46,7 +46,7 @@ describe('DbRequestAudit', () => {
     }
 
     expect(audits.add).not.toHaveBeenCalled()
-    expect(queue.enqueue).not.toHaveBeenCalled()
+    expect(queue.enqueueOnce).not.toHaveBeenCalled()
   })
 
   it('rejects a hostname that resolves to a private address', async () => {
@@ -58,7 +58,7 @@ describe('DbRequestAudit', () => {
     expect(await sut.request({ url: 'https://internal.corp/' }))
       .toEqual({ outcome: 'rejected', reason: 'blocked-address' })
     expect(audits.add).not.toHaveBeenCalled()
-    expect(queue.enqueue).not.toHaveBeenCalled()
+    expect(queue.enqueueOnce).not.toHaveBeenCalled()
   })
 
   it('rejects a host answering with one public and one private address', async () => {
@@ -115,18 +115,18 @@ describe('DbRequestAudit', () => {
     // Most enqueue failures are a blip. Absorbing them here keeps the delete
     // path for a genuine outage.
     const { sut, queue, deletes } = makeSut()
-    queue.enqueue.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    queue.enqueueOnce.mockRejectedValueOnce(new Error('ECONNREFUSED'))
 
     const result = await sut.request({ url: 'https://example.com/a' })
 
     expect(result.outcome).toBe('queued')
-    expect(queue.enqueue).toHaveBeenCalledTimes(2)
+    expect(queue.enqueueOnce).toHaveBeenCalledTimes(2)
     expect(deletes.deleteIfQueued).not.toHaveBeenCalled()
   })
 
   it('deletes the row and reports unavailable when the queue stays down', async () => {
     const { sut, queue, deletes } = makeSut()
-    queue.enqueue.mockRejectedValue(new Error('ECONNREFUSED'))
+    queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'))
 
     const result = await sut.request({ url: 'https://example.com/a' })
 
@@ -135,11 +135,64 @@ describe('DbRequestAudit', () => {
     expect(deletes.deleteIfQueued).toHaveBeenCalledWith('audit-1')
   })
 
+  it('keeps the audit when the queue turns out to have accepted it', async () => {
+    // An enqueue can fail from here while Redis committed the job and lost the
+    // reply. Deleting the row then would leave a job pointing at an audit that
+    // no longer exists - a guaranteed failure, for work that was accepted.
+    const { sut, queue, deletes } = makeSut()
+    queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'))
+    queue.has.mockResolvedValue(true)
+
+    const result = await sut.request({ url: 'https://example.com/a' })
+
+    expect(result.outcome).toBe('queued')
+    expect(deletes.deleteIfQueued).not.toHaveBeenCalled()
+  })
+
+  it('retries the same audit rather than submitting a second one', async () => {
+    // The queue dedupes on the audit id, so a retry only enqueues once - but
+    // only as long as every attempt asks for the same audit.
+    const { sut, queue } = makeSut()
+    queue.enqueueOnce.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+
+    await sut.request({ url: 'https://example.com/a' })
+
+    expect(queue.enqueueOnce.mock.calls).toEqual([
+      [{ auditId: 'audit-1' }],
+      [{ auditId: 'audit-1' }]
+    ])
+  })
+
+  it('deletes the row when the queue cannot say whether it accepted', async () => {
+    // A job that fails once with "audit no longer exists" is a better outcome
+    // than a row nothing ever recovers.
+    const { sut, queue, deletes } = makeSut()
+    queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'))
+    queue.has.mockRejectedValue(new Error('ECONNREFUSED'))
+
+    expect((await sut.request({ url: 'https://example.com/a' })).outcome).toBe('unavailable')
+    expect(deletes.deleteIfQueued).toHaveBeenCalledWith('audit-1')
+  })
+
+  it('does not hang when the queue never answers', async () => {
+    // BullMQ retries a lost Redis forever, so `add` does not reject - it
+    // hangs. Measured at five minutes. Without a bound the request never
+    // answers and none of the recovery above is reachable.
+    const { sut, queue, deletes } = makeSut()
+    queue.enqueueOnce.mockImplementation(async () => await new Promise<never>(() => {}))
+    queue.has.mockImplementation(async () => await new Promise<never>(() => {}))
+
+    const result = await sut.request({ url: 'https://example.com/a' })
+
+    expect(result).toEqual({ outcome: 'unavailable' })
+    expect(deletes.deleteIfQueued).toHaveBeenCalledWith('audit-1')
+  }, 30_000)
+
   it('still reports unavailable when the cleanup delete also fails', async () => {
     // This degrades to a stranded queued row, which is the accepted residual -
     // but it must not become a 500 on top of it.
     const { sut, queue, deletes } = makeSut()
-    queue.enqueue.mockRejectedValue(new Error('ECONNREFUSED'))
+    queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'))
     deletes.deleteIfQueued.mockRejectedValue(new Error('database down'))
 
     expect(await sut.request({ url: 'https://example.com/a' }))

@@ -10,18 +10,35 @@ import type { AddAuditRepository } from '../../protocols/db/audit/add-audit-repo
 import type {
   DeleteQueuedAuditRepository
 } from '../../protocols/db/audit/delete-queued-audit-repository.js'
-import type { JobQueue } from '../../protocols/queue/job-queue.js'
-
-export type AuditJob = { auditId: string }
+import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
 
 const ENQUEUE_ATTEMPTS = 3
 const ENQUEUE_BACKOFF_MS = 50
+
+/**
+ * Bounds a single enqueue attempt.
+ *
+ * BullMQ configures its connection to retry a lost Redis forever, so `add`
+ * does not reject when Redis is down - it hangs. Measured: five minutes with
+ * no resolution, and `enableOfflineQueue: false` does not change it. Without
+ * this bound the whole retry-and-recover path below is unreachable and the
+ * request simply never answers.
+ */
+const ENQUEUE_TIMEOUT_MS = 2000
+
+const withTimeout = async <T>(work: Promise<T>, ms: number): Promise<T> =>
+  await Promise.race([
+    work,
+    new Promise<never>((_resolve, reject) => {
+      setTimeout(() => { reject(new Error('Timed out talking to the queue')) }, ms).unref()
+    })
+  ])
 
 export class DbRequestAudit implements RequestAudit {
   constructor (
     private readonly addAuditRepository: AddAuditRepository,
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
-    private readonly auditQueue: JobQueue<AuditJob>,
+    private readonly auditQueue: AuditJobQueue,
     private readonly dnsResolver: DnsResolver,
     private readonly urlPolicy: UrlPolicy = DEFAULT_URL_POLICY
   ) {}
@@ -54,10 +71,15 @@ export class DbRequestAudit implements RequestAudit {
     try {
       await this.enqueueWithRetry(audit.id)
     } catch {
-      // The row was acknowledged to nobody, so removing it leaves nothing
-      // stranded and the client simply retries for a fresh id. If the delete
-      // fails too this degrades to a queued row nothing runs - strictly better
-      // than not attempting it, and the only residual.
+      // Failing to confirm an enqueue is not the same as it not happening:
+      // Redis may have committed the job and lost the reply. Deleting the row
+      // then would leave a job pointing at an audit that no longer exists.
+      if (await this.queueAlreadyHas(audit.id)) return { outcome: 'queued', audit }
+
+      // Genuinely not queued. The row was acknowledged to nobody, so removing
+      // it strands nothing and the client retries for a fresh id. If the
+      // delete fails too this degrades to a queued row nothing runs, which is
+      // the only residual.
       await this.deleteQueuedAuditRepository.deleteIfQueued(audit.id).catch(() => undefined)
       return { outcome: 'unavailable' }
     }
@@ -79,11 +101,29 @@ export class DbRequestAudit implements RequestAudit {
     )
   }
 
+  /**
+   * Whether the queue already holds this job. Bounded and best-effort: if the
+   * queue cannot answer, treat it as absent and let the row be removed - a job
+   * that fails once with "audit no longer exists" is a better outcome than a
+   * row nothing ever recovers.
+   */
+  private async queueAlreadyHas (auditId: string): Promise<boolean> {
+    try {
+      return await withTimeout(this.auditQueue.has(auditId), ENQUEUE_TIMEOUT_MS)
+    } catch {
+      return false
+    }
+  }
+
   /** Most enqueue failures are a blip; absorbing them keeps the delete path for real outages. */
   private async enqueueWithRetry (auditId: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.auditQueue.enqueue({ auditId })
+        // Deduped on the audit id, so a retry after a lost reply enqueues once.
+        return await withTimeout(
+          this.auditQueue.enqueueOnce({ auditId }),
+          ENQUEUE_TIMEOUT_MS
+        )
       } catch (error) {
         if (attempt >= ENQUEUE_ATTEMPTS) throw error
         await new Promise<void>((resolve) => {
