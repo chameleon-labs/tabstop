@@ -129,4 +129,35 @@ describe('adaptMiddleware', () => {
 
     expect(seen).toEqual({ sid: 'abc123', junk: 'x' })
   })
+
+  it('applies headers a controller asked for, overriding a middleware default', async () => {
+    // The no-store middleware runs before the route, so a controller opting
+    // into caching has to be able to win - otherwise an immutable public
+    // result could never be cached at all.
+    const controller: Controller = {
+      async handle (): Promise<HttpResponse> {
+        return {
+          statusCode: 200,
+          body: { ok: true },
+          headers: { 'cache-control': 'public, max-age=3600' }
+        }
+      }
+    }
+    const app = express()
+    app.use((_req, res, next) => { res.set('cache-control', 'no-store'); next() })
+    app.post('/probe', adaptRoute(controller))
+
+    const response = await request(app).post('/probe').send({})
+
+    expect(response.headers['cache-control']).toBe('public, max-age=3600')
+  })
+
+  it('leaves the default alone when a controller asks for nothing', async () => {
+    const app = express()
+    app.use((_req, res, next) => { res.set('cache-control', 'no-store'); next() })
+    app.post('/probe', adaptRoute(echoController))
+
+    expect((await request(app).post('/probe').send({})).headers['cache-control'])
+      .toBe('no-store')
+  })
 })

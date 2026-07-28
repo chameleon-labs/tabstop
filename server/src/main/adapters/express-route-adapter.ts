@@ -53,6 +53,13 @@ export const adaptRoute = (controller: Controller) => {
     const httpResponse = await controller.handle(httpRequest)
 
     applyCookies(res, httpResponse.cookies)
+
+    // After the middleware stack, so a controller opting into caching wins
+    // over the global no-store rather than being silently overridden by it.
+    for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
+      res.set(name, value)
+    }
+
     res.status(httpResponse.statusCode).json(httpResponse.body)
   }
 }
