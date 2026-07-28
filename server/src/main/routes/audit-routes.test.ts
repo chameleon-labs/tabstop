@@ -1,0 +1,184 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import request from 'supertest'
+import { randomUUID } from 'node:crypto'
+import type { Express } from 'express'
+import type { Kysely } from 'kysely'
+import { setupApp } from '../config/app.js'
+import { connectDatabase, disconnectDatabase, getDatabase } from '../config/database.js'
+import type { Database } from '../../infra/db/postgres/database.js'
+import { PostgresAuditRepository } from '../../infra/db/postgres/audit/postgres-audit-repository.js'
+import {
+  PostgresViolationRepository
+} from '../../infra/db/postgres/violation/postgres-violation-repository.js'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+describe('audit routes', () => {
+  let app: Express
+  let db: Kysely<Database>
+
+  beforeAll(() => {
+    const url = process.env.DATABASE_URL
+    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
+    connectDatabase(url)
+    db = getDatabase()
+    app = setupApp()
+  })
+
+  afterAll(async () => {
+    await disconnectDatabase()
+  })
+
+  const submit = async (url: string) => await request(app).post('/api/audits').send({ url })
+
+  /**
+   * A public literal address, so gate 1 short-circuits resolution: a hostname
+   * would need real DNS, and `.test` deliberately does not resolve at all.
+   * Nothing here ever fetches the URL - no worker runs in these specs.
+   */
+  const auditableUrl = (): string => `http://93.184.216.34/${randomUUID()}`
+
+  describe('POST /api/audits', () => {
+    it('accepts a URL and returns a public id to poll', async () => {
+      const response = await submit(auditableUrl())
+
+      expect(response.status).toBe(202)
+      expect(response.body.auditId).toMatch(UUID)
+      expect(response.body.status).toBe('queued')
+      expect(response.body.pollAfterMs).toBeGreaterThan(0)
+    })
+
+    it('never returns the internal id', async () => {
+      const response = await submit(auditableUrl())
+      const row = await db.selectFrom('audits').select(['id'])
+        .where('public_uuid', '=', response.body.auditId as string).executeTakeFirstOrThrow()
+
+      // Compared structurally, not as a substring: the internal id is a
+      // bigserial, so a single digit matches by coincidence inside a uuid or a
+      // timestamp and would prove nothing either way.
+      expect(response.body.auditId).not.toBe(row.id)
+      expect(Object.values(response.body)).not.toContain(row.id)
+    })
+
+    it('rejects the addresses gate 1 exists to catch', async () => {
+      // The submission-time half of #7: an obviously bad URL becomes a 400
+      // here rather than a queued job, a browser launch, and a failed audit
+      // thirty seconds later.
+      for (const url of [
+        'file:///etc/passwd',
+        'https://alice:secret@example.com/',
+        'data:text/html,<h1>x',
+        'javascript:alert(1)',
+        'http://169.254.169.254/latest/meta-data/',
+        'http://127.0.0.1/',
+        'http://example.com:8080/',
+        'not a url'
+      ]) {
+        const response = await submit(url)
+        expect(response.status).toBe(400)
+        expect(typeof response.body.error).toBe('string')
+      }
+    })
+
+    it('rejects a request with no url at all', async () => {
+      expect((await request(app).post('/api/audits').send({})).status).toBe(400)
+    })
+
+    it('stores nothing for a rejected URL', async () => {
+      const before = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
+        .executeTakeFirstOrThrow()
+
+      await submit('file:///etc/passwd')
+
+      const after = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
+        .executeTakeFirstOrThrow()
+      expect(after.n).toEqual(before.n)
+    })
+  })
+
+  describe('GET /api/audits/:uuid', () => {
+    it('reports a queued audit, and refuses to let it be cached', async () => {
+      const created = await submit(auditableUrl())
+
+      const response = await request(app).get(`/api/audits/${created.body.auditId as string}`)
+
+      expect(response.status).toBe(200)
+      expect(response.body.status).toBe('queued')
+      expect(response.body.violations).toEqual([])
+      // It changes on the next poll, so nothing may hold it.
+      expect(response.headers['cache-control']).toBe('no-store')
+    })
+
+    it('reports a finished audit with its violations, and lets it be cached', async () => {
+      const created = await submit(auditableUrl())
+      const auditId = created.body.auditId as string
+      const audits = new PostgresAuditRepository(db)
+      const violations = new PostgresViolationRepository(db)
+      const row = await db.selectFrom('audits').select(['id'])
+        .where('public_uuid', '=', auditId).executeTakeFirstOrThrow()
+
+      const claimedAt = await audits.claimForRun(row.id)
+      if (claimedAt === null) throw new Error('fixture failed to claim')
+      await violations.replaceAll(row.id, claimedAt, [{
+        ruleId: 'image-alt',
+        impact: 'critical',
+        description: 'Images must have alternate text',
+        helpUrl: 'https://dequeuniversity.com/rules/axe/4.12/image-alt',
+        nodes: [{ target: ['img'], html: '<img>' }]
+      }])
+      await audits.markDone(row.id, claimedAt, {
+        countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 1 },
+        axeVersion: '4.12.1',
+        durationMs: 1234,
+        settled: true
+      })
+
+      const response = await request(app).get(`/api/audits/${auditId}`)
+
+      expect(response.status).toBe(200)
+      expect(response.body.status).toBe('done')
+      expect(response.body.axeVersion).toBe('4.12.1')
+      expect(response.body.settled).toBe(true)
+      expect(response.body.violations).toEqual([{
+        ruleId: 'image-alt',
+        impact: 'critical',
+        description: 'Images must have alternate text',
+        helpUrl: 'https://dequeuniversity.com/rules/axe/4.12/image-alt',
+        nodes: [{ target: ['img'], html: '<img>' }]
+      }])
+      // Terminal and immutable, so the share page can be served from a cache.
+      expect(response.headers['cache-control']).toBe('public, max-age=3600')
+    })
+
+    it('leaks nothing that identifies a user', async () => {
+      // This endpoint is public to anyone holding the uuid, so the payload is
+      // the whole security boundary.
+      const created = await submit(auditableUrl())
+      const auditId = created.body.auditId as string
+      const row = await db.selectFrom('audits').select(['id'])
+        .where('public_uuid', '=', auditId).executeTakeFirstOrThrow()
+
+      const response = await request(app).get(`/api/audits/${auditId}`)
+
+      const keys = Object.keys(response.body)
+      for (const forbidden of ['pageId', 'page_id', 'id', 'siteId', 'userId', 'durationMs']) {
+        expect(keys).not.toContain(forbidden)
+      }
+      // Structural again - a bigserial id is one or two characters, so a
+      // substring check would match by chance and mean nothing.
+      expect(Object.values(response.body)).not.toContain(row.id)
+      expect(response.body.auditId).not.toBe(row.id)
+    })
+
+    it('answers 404 for an id no audit carries', async () => {
+      expect((await request(app).get(`/api/audits/${randomUUID()}`)).status).toBe(404)
+    })
+
+    it('answers 404 for a malformed id rather than 500', async () => {
+      // A value that cannot be a uuid is a miss, not a database error.
+      for (const bad of ['not-a-uuid', '123', 'a'.repeat(50)]) {
+        expect((await request(app).get(`/api/audits/${bad}`)).status).toBe(404)
+      }
+    })
+  })
+})

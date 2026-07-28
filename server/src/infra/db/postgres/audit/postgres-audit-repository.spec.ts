@@ -313,6 +313,43 @@ describe('PostgresAuditRepository', () => {
     })
   })
 
+  describe('deleteIfQueued', () => {
+    it('removes an audit that is still queued', async () => {
+      const audit = await sut.add({ url: `https://${randomUUID()}.test/x`, pageId: null })
+
+      await sut.deleteIfQueued(audit.id)
+
+      expect(await sut.loadById(audit.id)).toBeNull()
+    })
+
+    it('refuses to remove an audit that is no longer queued', async () => {
+      // This is the only delete on the repository. The status predicate is
+      // what keeps it from ever removing a real audit - by the time anything
+      // is running or finished, somebody is relying on it.
+      for (const advance of ['running', 'done', 'failed'] as const) {
+        const audit = await sut.add({ url: `https://${randomUUID()}.test/x`, pageId: null })
+        const claimedAt = await sut.claimForRun(audit.id)
+        if (claimedAt === null) throw new Error('fixture failed to claim')
+
+        if (advance === 'done') {
+          await sut.markDone(audit.id, claimedAt, {
+            countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+            axeVersion: '4.12.1', durationMs: 1, settled: true
+          })
+        } else if (advance === 'failed') {
+          await sut.markFailed(audit.id, claimedAt, 'Could not resolve that domain')
+        }
+
+        await sut.deleteIfQueued(audit.id)
+
+        expect(await sut.loadById(audit.id)).not.toBeNull()
+      }
+    })
+
+    it('is silent about an id that does not exist', async () => {
+      await expect(sut.deleteIfQueued('999999999')).resolves.toBeUndefined()
+    })
+  })
 })
 
 describe('claimLeaseFor', () => {

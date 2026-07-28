@@ -1,4 +1,9 @@
 import { vi } from 'vitest'
+import type { AddAuditRepository } from '../protocols/db/audit/add-audit-repository.js'
+import type {
+  DeleteQueuedAuditRepository
+} from '../protocols/db/audit/delete-queued-audit-repository.js'
+import type { AuditJob, AuditJobQueue } from '../protocols/queue/audit-job-queue.js'
 import type { AuditModel } from '../../domain/models/audit.js'
 import type { AuditPageResult, PageAuditor } from '../protocols/audit/page-auditor.js'
 import type {
@@ -68,4 +73,21 @@ export const mockReplaceViolationsRepository = () => ({
 
 export const mockPageAuditor = () => ({
   audit: vi.fn<PageAuditor['audit']>(async () => mockAuditPageResult())
+})
+
+export const mockAddAuditRepository = () => ({
+  add: vi.fn<AddAuditRepository['add']>(async () => mockAuditModel())
+})
+
+export const mockDeleteQueuedAuditRepository = () => ({
+  deleteIfQueued: vi.fn<DeleteQueuedAuditRepository['deleteIfQueued']>(
+    async () => { /* no-op */ }
+  )
+})
+
+export const mockAuditQueue = () => ({
+  enqueueOnce: vi.fn<AuditJobQueue['enqueueOnce']>(async () => { /* no-op */ }),
+  // Absent by default: the interesting case is a queue that lost the reply
+  // but did accept the job, and each spec opts into that explicitly.
+  has: vi.fn<AuditJobQueue['has']>(async () => false)
 })

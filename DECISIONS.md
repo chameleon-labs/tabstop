@@ -6,6 +6,40 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-28 — the audit API, and what a public payload may contain
+
+`POST /api/audits` and `GET /api/audits/:uuid` — the one-off audit with no signup, and the result behind the public share page.
+
+**Gate 1 parses and resolves.** #7 left the submission-time check to this issue. It parses with `parseAuditUrl` and resolves the hostname, rejecting when any answer is a blocked address — which is what #7's criteria actually require.
+
+It was very nearly syntactic-only. The argument against resolving was that a lookup per request on an anonymous, unlimited endpoint is an amplifier against a resolver we do not control. What changed is the second decision below: with the endpoint off unless explicitly enabled, and #8 required before enabling it, that objection no longer holds. The two are a package — either would be wrong alone.
+
+Gate 2 still re-resolves at fetch time. This check does not replace it and cannot: the answer can change in between, which is the whole reason the worker validates every request. It rejects what is already known to be wrong, fifty milliseconds in rather than thirty seconds.
+
+**The endpoints are absent unless `AUDIT_API_ENABLED` is set.** Each accepted request costs roughly thirty seconds of Chromium and nothing throttles that until #8. A comment cannot stop a deploy; an unregistered route can. The flag defaults to false — the only optional boolean in the schema that does — and #8 is what makes turning it on safe.
+
+**A failed enqueue deletes the row rather than stranding it.** The insert must precede the enqueue — reversed, the worker can dequeue an id whose row does not exist — which leaves the window where the row exists and nothing will run it. The enqueue is retried three times first, since most failures are a blip; a sustained one deletes the audit and answers `503`. The row was acknowledged to nobody, so removing it strands nothing and the client simply retries.
+
+The retry is only safe because the enqueue is idempotent. A plain `add` mints a fresh job id per call, so a reply lost after Redis committed would leave two jobs racing for one audit — and the recovery path would then delete a row whose job is still queued. The job id is derived from the audit id, and the failure path asks the queue whether it holds the job before deleting anything.
+
+Each attempt is also bounded by a two-second timeout, which is what makes any of this reachable. BullMQ configures its connection to retry a lost Redis forever, so `add` does not reject when Redis is down — it hangs. Measured at five minutes with no resolution, and `enableOfflineQueue: false` does not change it. Unbounded, the request never answers at all and neither the retry nor the delete ever runs.
+
+Deriving it is less obvious than it looks: BullMQ rejects an all-digit custom id (it would collide with the ids BullMQ assigns itself) and also rejects one containing `:`. Audit ids are a `bigserial`, so every one of them is all digits — passing the id straight through made *every* enqueue throw, and the unit tests could not see it because their ids were not shaped like real ones. The prefix is `audit-`, and the specs covering it run against a real Redis.
+
+Two alternatives were weighed and rejected. **Leaving the row `queued`** and deferring recovery to #13 is simplest, and a stranded `queued` row is indistinguishable from one that has not started — but it is the same shape as the stranded-row defects the audit worker spent several review rounds eliminating. **Claiming it and marking it `failed`** reuses the fenced write path and leaves an explanation, but records a failure for an audit nothing ever attempted, fabricates a claim no worker held, and turns a queue outage into a table of failures rather than a clean rejection. The delete is scoped to `where id = $1 and status = 'queued'`, which is what keeps the only delete on this repository from ever removing a real audit. If it fails too, the outcome degrades to a stranded row — the single accepted residual.
+
+**The public payload is built by an explicit mapper, never spread.** `GET` is gated only by an unguessable uuid, and `AuditModel` carries `pageId`, which links to a site and therefore to an account. A spread, or a later `select *`, is exactly how that reaches the wire — so every field is named, and specs at both the mapper and the route assert the forbidden keys are absent. Mutation-checked by putting `pageId` back.
+
+Worth recording a testing trap found while writing those specs: asserting `JSON.stringify(body)` does not *contain* the internal id is worthless when the id is a `bigserial`. A single digit matches by coincidence inside a uuid or a timestamp, so the assertion fails for the wrong reason and would equally have passed for the wrong reason. Both checks compare structurally instead.
+
+**`HttpResponse` gained an optional `headers`.** The global `no-store` from #10 covers every response, so a route could not otherwise opt into caching. A terminal audit is immutable and carries nothing user-identifying, so the share page can be served from a cache; an in-flight one changes on the next poll and stays `no-store`. The controller describes the intent and `adaptRoute` applies it, mirroring how cookies already work rather than inventing a second mechanism.
+
+**Three leaks review found, all in the same family: things that are true of the model but must not be true of the wire.** A URL carrying credentials — `https://alice:secret@example.com/` — survived normalisation, would have been stored, and then handed back by the public result endpoint and cached for an hour. Violations were loaded whatever the audit's status, so a running audit published whatever the current attempt had written so far as though it were the answer, and a failed one published the leftovers of a run that did not complete. And `HttpResponse.headers` forwarded any header a controller named, which would have let one emit its own `set-cookie` without the adapter's security attributes or rewrite the CORS headers the middleware had just set — so it is now allowlisted to `cache-control` and `vary`, the only response metadata a controller legitimately owns.
+
+Worth recording a testing trap found alongside them: asserting `JSON.stringify(body)` does not *contain* the internal id is worthless when the id is a `bigserial`. A single digit matches by coincidence inside a uuid or a timestamp, so the assertion failed for the wrong reason and would equally have passed for the wrong reason. Both checks compare structurally instead.
+
+**The shared DTO package is not built.** #9 asks for the response contract to live where `web/` can import it, because three surfaces consume it — but there is no `web/` and no workspace yet. The types are exported from `presentation/helpers/audit-view.ts` and the move is recorded on #17, which creates the thing they would move into.
+
 ## 2026-07-27 — URL safety: the redirect check the issue described does not fire
 
 "Audit any URL" hands anonymous users a server-side request forgery primitive, so this lands **before** #9 opens that path. The endpoint should never exist in an unsafe form, rather than exist and be fixed afterwards.

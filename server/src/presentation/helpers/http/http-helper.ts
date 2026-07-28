@@ -12,6 +12,22 @@ export const created = <T>(body: T, cookies?: CookieDirective[]): HttpResponse<T
     : { statusCode: 201, body, cookies }
 )
 
+export const accepted = <T>(body: T): HttpResponse<T> => ({
+  statusCode: 202,
+  body
+})
+
+export const notFound = (error: Error): HttpResponse<{ error: string }> => ({
+  statusCode: 404,
+  body: { error: error.message }
+})
+
+export const okCacheable = <T>(body: T, cacheControl: string): HttpResponse<T> => ({
+  statusCode: 200,
+  body,
+  headers: { 'cache-control': cacheControl }
+})
+
 export const okWithCookies = <T>(body: T, cookies: CookieDirective[]): HttpResponse<T> => ({
   statusCode: 200,
   body,

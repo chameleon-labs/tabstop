@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { makeQueue, makeWorker } from './helpers/bullmq-helper.js'
-import { BullMqJobQueue } from './bullmq-job-queue.js'
+import { BullMqAuditQueue, BullMqJobQueue } from './bullmq-job-queue.js'
 import type { PayloadQueue, PayloadWorker } from './helpers/bullmq-helper.js'
+import type { AuditJob } from '../../data/protocols/queue/audit-job-queue.js'
 
 type TestPayload = { value: string }
 
@@ -104,5 +105,72 @@ describe('BullMqJobQueue', () => {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 }
     })
+  })
+})
+
+describe('BullMqAuditQueue', () => {
+  let queue: PayloadQueue<AuditJob> | null = null
+
+  afterEach(async () => {
+    await queue?.close()
+    queue = null
+  })
+
+  // audits.id is a bigserial, so in production every audit id is all digits -
+  // and BullMQ rejects an all-digit custom id, because it would collide with
+  // the ids it mints itself. With the id passed through unprefixed, every
+  // enqueue this queue exists to perform threw "Custom Id cannot be integers".
+  const auditId = '12345'
+
+  it('enqueues an audit whose id is all digits', async () => {
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId })
+
+    const jobs = await queue.getJobs(['waiting', 'prioritized', 'delayed', 'active'])
+    expect(jobs.map((job) => job.data)).toEqual([{ auditId }])
+  })
+
+  it('enqueues one job when the same audit is submitted twice', async () => {
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId })
+    await sut.enqueueOnce({ auditId })
+
+    expect(await queue.getJobCountByTypes('waiting', 'prioritized', 'delayed', 'active')).toBe(1)
+  })
+
+  it('finds a job it enqueued, and reports an unknown audit as absent', async () => {
+    // has() derives the job id the same way enqueueOnce does. If the two ever
+    // diverge, the lookup silently answers false and the recovery path it
+    // guards deletes a row whose job is still queued.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId })
+
+    expect(await sut.has(auditId)).toBe(true)
+    expect(await sut.has('67890')).toBe(false)
+  })
+
+  it('does not collide with the ids BullMQ assigns itself', async () => {
+    // The reason BullMQ refuses integer custom ids: its own counter would
+    // reach the same value and overwrite the job.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    const assigned = await queue.add(name, { auditId: 'other' })
+    expect(assigned.id).toBe('1')
+
+    await sut.enqueueOnce({ auditId: '1' })
+
+    expect((await queue.getJob('1'))?.data).toEqual({ auditId: 'other' })
+    expect(await sut.has('1')).toBe(true)
   })
 })

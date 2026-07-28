@@ -12,4 +12,11 @@ export type HttpResponse<T = unknown> = {
   statusCode: number
   body: T
   cookies?: CookieDirective[]
+  /**
+   * Applied after any middleware default, so a controller can opt out of the
+   * global no-store. Security attributes stay in the adapter, where a
+   * controller cannot weaken them; this is for response metadata a controller
+   * legitimately owns, such as whether its result is cacheable.
+   */
+  headers?: Record<string, string>
 }
