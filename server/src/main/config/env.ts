@@ -14,6 +14,14 @@ export type Env = {
   auditSettleBudgetMs: number
   auditFallbackSettleMs: number
   auditApiEnabled: boolean
+  /**
+   * How many reverse proxies sit in front of this process. Express takes the
+   * X-Forwarded-For entry that many positions from the right - the last one a
+   * client could not have written.
+   */
+  trustProxyHops: number
+  auditRateCapacity: number
+  auditRatePerHour: number
 }
 
 const DEFAULT_PORT = 3000
@@ -34,6 +42,12 @@ const DEFAULT_SESSION_TTL_DAYS = 30
  * than merely being an odd setting.
  */
 const MAX_SESSION_TTL_DAYS = 400
+
+/** Zero trusts nothing. #16 sets the real hop count for its topology. */
+const DEFAULT_TRUST_PROXY_HOPS = 0
+const MAX_TRUST_PROXY_HOPS = 8
+const DEFAULT_AUDIT_RATE_CAPACITY = 5
+const DEFAULT_AUDIT_RATE_PER_HOUR = 5
 
 const DEFAULT_AUDIT_CONCURRENCY = 1
 /**
@@ -142,6 +156,24 @@ const positiveIntegerOr = (
 }
 
 /**
+ * Mirrors positiveIntegerOr, but trustProxyHops has a meaningful zero - "no
+ * proxy in front of this process" - so the floor has to allow it.
+ */
+const nonNegativeIntegerOr = (
+  raw: string | undefined, fallback: number, name: string, maximum = Number.MAX_SAFE_INTEGER
+): number => {
+  if (raw === undefined || raw === '') return fallback
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer, but was "${raw}"`)
+  }
+  if (parsed > maximum) {
+    throw new Error(`${name} must be at most ${maximum}, but was "${raw}"`)
+  }
+  return parsed
+}
+
+/**
  * A cost that is merely a positive integer still breaks scrypt at runtime: it
  * must be a power of two, and must fit within maxmem. Left unchecked, a value
  * like 20000 boots cleanly and then fails every signup with a 500 while login
@@ -221,7 +253,16 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     auditNavigationTimeoutMs,
     auditSettleBudgetMs,
     auditFallbackSettleMs,
-    auditApiEnabled: optionalBoolean(source, 'AUDIT_API_ENABLED')
+    auditApiEnabled: optionalBoolean(source, 'AUDIT_API_ENABLED'),
+    trustProxyHops: nonNegativeIntegerOr(
+      source.TRUST_PROXY_HOPS, DEFAULT_TRUST_PROXY_HOPS, 'TRUST_PROXY_HOPS', MAX_TRUST_PROXY_HOPS
+    ),
+    auditRateCapacity: positiveIntegerOr(
+      source.AUDIT_RATE_CAPACITY, DEFAULT_AUDIT_RATE_CAPACITY, 'AUDIT_RATE_CAPACITY'
+    ),
+    auditRatePerHour: positiveIntegerOr(
+      source.AUDIT_RATE_PER_HOUR, DEFAULT_AUDIT_RATE_PER_HOUR, 'AUDIT_RATE_PER_HOUR'
+    )
   }
 }
 

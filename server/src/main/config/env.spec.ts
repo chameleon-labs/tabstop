@@ -166,4 +166,38 @@ describe('parseEnv', () => {
   it('throws when REDIS_URL is empty', () => {
     expect(() => parseEnv({ DATABASE_URL: 'postgres://x', REDIS_URL: '' })).toThrow('REDIS_URL')
   })
+
+  it('defaults trustProxyHops to zero', () => {
+    // Not `true`: Express would then trust the whole X-Forwarded-For chain,
+    // and any client could prepend a fabricated address to mint a fresh rate
+    // limit bucket per request. Over-restrictive fails visibly; over-trusting
+    // fails silently and makes the limiter decorative.
+    expect(parseEnv(validSource).trustProxyHops).toBe(0)
+  })
+
+  it('reads trustProxyHops from the environment', () => {
+    expect(parseEnv({ ...validSource, TRUST_PROXY_HOPS: '2' }).trustProxyHops).toBe(2)
+  })
+
+  it('rejects a negative trustProxyHops', () => {
+    expect(() => parseEnv({ ...validSource, TRUST_PROXY_HOPS: '-1' })).toThrow(/TRUST_PROXY_HOPS/)
+  })
+
+  it('rejects a trustProxyHops beyond the configured maximum', () => {
+    expect(() => parseEnv({ ...validSource, TRUST_PROXY_HOPS: '9' })).toThrow(/TRUST_PROXY_HOPS/)
+  })
+
+  it('defaults the anonymous audit bucket', () => {
+    const parsed = parseEnv(validSource)
+
+    expect(parsed.auditRateCapacity).toBe(5)
+    expect(parsed.auditRatePerHour).toBe(5)
+  })
+
+  it('reads the anonymous audit bucket from the environment', () => {
+    const parsed = parseEnv({ ...validSource, AUDIT_RATE_CAPACITY: '20', AUDIT_RATE_PER_HOUR: '40' })
+
+    expect(parsed.auditRateCapacity).toBe(20)
+    expect(parsed.auditRatePerHour).toBe(40)
+  })
 })

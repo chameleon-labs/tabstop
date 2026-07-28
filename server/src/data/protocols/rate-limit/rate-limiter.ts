@@ -5,7 +5,11 @@ export type RateLimitDecision =
 export type BucketConfig = {
   /** Requests available at once, from cold. */
   capacity: number
-  /** Sustained rate. Expressed per hour because that is how the limits are reasoned about. */
+  /**
+   * Sustained rate. Expressed per hour because that is how the limits are
+   * reasoned about. Must be greater than zero - it divides both the wait and
+   * TTL arithmetic in every implementation of this protocol.
+   */
   refillPerHour: number
 }
 
