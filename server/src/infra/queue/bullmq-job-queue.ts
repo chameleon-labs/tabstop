@@ -37,4 +37,13 @@ export class BullMqAuditQueue implements AuditJobQueue {
   async has (auditId: string): Promise<boolean> {
     return await this.queue.getJob(jobIdFor(auditId)) !== undefined
   }
+
+  /**
+   * Waiting only - not active, delayed or failed. The question submission is
+   * asking is "how long is the line in front of a job added now", and a job
+   * already running is not in that line.
+   */
+  async waitingCount (): Promise<number> {
+    return await this.queue.getWaitingCount()
+  }
 }

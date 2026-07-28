@@ -4,6 +4,8 @@ import {
   mockAddAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository
 } from '../../test/index.js'
 import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
+import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
+import { DEFAULT_URL_POLICY } from '../../../domain/services/url-safety.js'
 
 const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const audits = mockAddAuditRepository()
@@ -13,6 +15,81 @@ const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const sut = new DbRequestAudit(audits, deletes, queue, resolver)
   return { sut, audits, deletes, queue, resolver }
 }
+
+describe('DbRequestAudit queue depth', () => {
+  /**
+   * The gap the per-IP rate limit cannot close. A bucket bounds ONE source;
+   * the queue is shared by all of them, so enough distinct addresses - each
+   * politely inside its own allowance - still drive the backlog to whatever
+   * length they collectively want. Nothing downstream refuses it either:
+   * AUDIT_CONCURRENCY bounds how many audits run at once, not how many wait,
+   * and each waiting one is a Redis job plus a row that a user is polling.
+   */
+  const deepQueue = (waiting: number) => {
+    const queue = mockAuditQueue()
+    return Object.assign(queue, {
+      waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => waiting)
+    })
+  }
+
+  const sutWith = (queue: ReturnType<typeof deepQueue>, maxDepth = 100) => {
+    const audits = mockAddAuditRepository()
+    const deletes = mockDeleteQueuedAuditRepository()
+    const resolver = { resolve: vi.fn<DnsResolver['resolve']>(async () => ['93.184.216.34']) }
+    const sut = new DbRequestAudit(
+      audits, deletes, queue, resolver, DEFAULT_URL_POLICY, maxDepth
+    )
+    return { sut, audits, deletes, queue }
+  }
+
+  it('refuses a new audit once the queue is already at its cap', async () => {
+    const { sut, audits, queue } = sutWith(deepQueue(100), 100)
+
+    const result = await sut.request({ url: 'https://example.com/a' })
+
+    expect(result.outcome).toBe('unavailable')
+    // Checked BEFORE the insert, so a refusal strands no row for the cleanup
+    // path to find - the client simply retries later for a fresh id.
+    expect(audits.add).not.toHaveBeenCalled()
+    expect(queue.enqueueOnce).not.toHaveBeenCalled()
+  })
+
+  it('accepts while the queue is still under the cap', async () => {
+    const { sut, audits } = sutWith(deepQueue(99), 100)
+
+    expect((await sut.request({ url: 'https://example.com/a' })).outcome).toBe('queued')
+    expect(audits.add).toHaveBeenCalledOnce()
+  })
+
+  it('accepts when the queue cannot say how deep it is', async () => {
+    // Fails OPEN, deliberately. A depth check that cannot answer must not
+    // become a second way for a sick Redis to refuse submissions: the enqueue
+    // below already handles a genuinely unreachable queue, and it does so by
+    // retrying first. Turning "I could not measure" into a 503 would make an
+    // unmeasurable queue indistinguishable from a full one.
+    const queue = mockAuditQueue()
+    const failing = Object.assign(queue, {
+      waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => {
+        throw new Error('redis unreachable')
+      })
+    })
+    const { sut, audits } = sutWith(failing, 100)
+
+    expect((await sut.request({ url: 'https://example.com/a' })).outcome).toBe('queued')
+    expect(audits.add).toHaveBeenCalledOnce()
+  })
+
+  it('checks depth only after the URL has been accepted', async () => {
+    // A blocked address must still get its specific rejection rather than a
+    // generic "try again later" that tells the caller nothing.
+    const { sut, queue } = sutWith(deepQueue(100), 100)
+
+    const result = await sut.request({ url: 'file:///etc/passwd' })
+
+    expect(result).toEqual({ outcome: 'rejected', reason: 'blocked-scheme' })
+    expect(queue.waitingCount).not.toHaveBeenCalled()
+  })
+})
 
 describe('DbRequestAudit', () => {
   it('validates, inserts, then enqueues - in that order', async () => {

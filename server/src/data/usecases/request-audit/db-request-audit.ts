@@ -26,6 +26,13 @@ const ENQUEUE_BACKOFF_MS = 50
  */
 const ENQUEUE_TIMEOUT_MS = 2000
 
+/**
+ * Roughly an hour of backlog at the default concurrency of one, so a client
+ * that IS accepted still gets a result rather than a place in a line nobody
+ * will reach. Overridable, because the right number depends on worker count.
+ */
+const DEFAULT_MAX_QUEUE_DEPTH = 100
+
 const withTimeout = async <T>(work: Promise<T>, ms: number): Promise<T> =>
   await Promise.race([
     work,
@@ -40,7 +47,8 @@ export class DbRequestAudit implements RequestAudit {
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
     private readonly auditQueue: AuditJobQueue,
     private readonly dnsResolver: DnsResolver,
-    private readonly urlPolicy: UrlPolicy = DEFAULT_URL_POLICY
+    private readonly urlPolicy: UrlPolicy = DEFAULT_URL_POLICY,
+    private readonly maxQueueDepth: number = DEFAULT_MAX_QUEUE_DEPTH
   ) {}
 
   async request ({ url }: RequestAuditParams): Promise<RequestAuditResult> {
@@ -60,6 +68,19 @@ export class DbRequestAudit implements RequestAudit {
     if (!await this.resolvesSafely(parsed.url)) {
       return { outcome: 'rejected', reason: 'blocked-address' }
     }
+
+    // The gap a per-IP bucket cannot close. That bucket bounds ONE source,
+    // and the queue is shared by every source: enough distinct addresses,
+    // each politely inside its own allowance, still drive the backlog to
+    // whatever length they collectively want. Nothing downstream refuses it
+    // either - AUDIT_CONCURRENCY bounds how many audits RUN at once, not how
+    // many wait, and each waiting one is a Redis job plus a row somebody is
+    // polling for a result that is hours away.
+    //
+    // Checked here, after the url has been accepted and before the insert:
+    // a rejected url still gets its own specific message rather than a
+    // generic "try again later", and a refusal strands no row.
+    if (await this.queueIsSaturated()) return { outcome: 'unavailable' }
 
     // Insert BEFORE enqueue. Reversed, the worker can dequeue an id whose row
     // does not exist yet.
@@ -85,6 +106,25 @@ export class DbRequestAudit implements RequestAudit {
     }
 
     return { outcome: 'queued', audit }
+  }
+
+  /**
+   * Bounded and best-effort, and it fails OPEN.
+   *
+   * A depth check that cannot answer must not become a second way for a sick
+   * Redis to refuse submissions. The enqueue below already handles a queue
+   * that is genuinely unreachable, and it does so by retrying first - whereas
+   * treating "I could not measure" as "it is full" would make an unmeasurable
+   * queue indistinguishable from a saturated one, and turn a Redis blip into
+   * a blanket 503 on the endpoint that is the product's hook.
+   */
+  private async queueIsSaturated (): Promise<boolean> {
+    try {
+      const waiting = await withTimeout(this.auditQueue.waitingCount(), ENQUEUE_TIMEOUT_MS)
+      return waiting >= this.maxQueueDepth
+    } catch {
+      return false
+    }
   }
 
   private async resolvesSafely (url: URL): Promise<boolean> {

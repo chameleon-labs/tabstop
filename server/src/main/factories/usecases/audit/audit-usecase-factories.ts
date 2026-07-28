@@ -8,6 +8,7 @@ import { PostgresViolationRepository } from '../../../../infra/db/postgres/viola
 import { BullMqAuditQueue } from '../../../../infra/queue/bullmq-job-queue.js'
 import { makeQueue } from '../../../../infra/queue/helpers/bullmq-helper.js'
 import { NodeDnsResolver } from '../../../../infra/net/node-dns-resolver.js'
+import { DEFAULT_URL_POLICY } from '../../../../domain/services/url-safety.js'
 import { getDatabase } from '../../../config/database.js'
 import { env } from '../../../config/env.js'
 import { QUEUE_NAMES } from '../../../config/queue-names.js'
@@ -38,7 +39,10 @@ const getAuditQueue = (): BullMqAuditQueue => {
 
 export const makeRequestAudit = (): RequestAudit => {
   const audits = new PostgresAuditRepository(getDatabase())
-  return new DbRequestAudit(audits, audits, getAuditQueue(), new NodeDnsResolver())
+  return new DbRequestAudit(
+    audits, audits, getAuditQueue(), new NodeDnsResolver(),
+    DEFAULT_URL_POLICY, env.auditQueueMaxDepth
+  )
 }
 
 export const makeLoadAuditResult = (): LoadAuditResult => new DbLoadAuditResult(

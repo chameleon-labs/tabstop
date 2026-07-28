@@ -20,6 +20,15 @@ export const RATE_LIMITS = {
   /** Keyed on the submitted address: per-IP alone misses credential stuffing. */
   loginEmail: { capacity: 5, refillPerHour: 10 },
   signup: { capacity: 3, refillPerHour: 5 },
+  /**
+   * Deliberately the loosest bucket here, because logout must not become a
+   * thing a real client can fail at: signing out is idempotent and a person
+   * with several tabs may fire it more than once. But every call carrying a
+   * cookie is an indexed DELETE, and "idempotent" says nothing about load -
+   * an anonymous caller can drive them as fast as it can open sockets. 30 is
+   * far past any genuine client and far below a useful amount of traffic.
+   */
+  logout: { capacity: 30, refillPerHour: 120 },
   /** The auth middleware looks the session up before rejecting it. */
   me: { capacity: 60, refillPerHour: 600 }
 } as const satisfies Record<string, BucketConfig>

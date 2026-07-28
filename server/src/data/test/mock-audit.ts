@@ -89,5 +89,8 @@ export const mockAuditQueue = () => ({
   enqueueOnce: vi.fn<AuditJobQueue['enqueueOnce']>(async () => { /* no-op */ }),
   // Absent by default: the interesting case is a queue that lost the reply
   // but did accept the job, and each spec opts into that explicitly.
-  has: vi.fn<AuditJobQueue['has']>(async () => false)
+  has: vi.fn<AuditJobQueue['has']>(async () => false),
+  // An empty queue by default: depth is not what most of these specs are
+  // about, and a mock that saturated by accident would fail all of them.
+  waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => 0)
 })

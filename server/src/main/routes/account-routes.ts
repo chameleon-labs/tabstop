@@ -25,10 +25,16 @@ export default (router: Router): void => {
     ]),
     adaptRoute(makeLoginController()))
 
-  // Deliberately unlimited: logout must stay idempotent, and nothing
-  // accumulates from repeating it.
   // Not behind the auth middleware: logout stays idempotent rather than 401.
-  router.post('/logout', adaptRoute(makeLogoutController()))
+  //
+  // It IS behind a bucket, though a deliberately loose one. Idempotence and
+  // "nothing accumulates" are both true and neither is about load: every call
+  // carrying a cookie is an indexed DELETE that an anonymous caller can drive
+  // as fast as it can open sockets. The capacity is set so far above any
+  // genuine client that signing out cannot become a thing a person fails at.
+  router.post('/logout',
+    makeRateLimit(makeRateLimiter(), [{ name: 'logout', bucket: RATE_LIMITS.logout, key: ipKey }]),
+    adaptRoute(makeLogoutController()))
 
   // The limiter runs BEFORE the auth middleware, which looks a session up
   // before rejecting it - so an unauthenticated caller could otherwise force
