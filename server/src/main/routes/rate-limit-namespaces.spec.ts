@@ -18,9 +18,23 @@ import { RATE_LIMITS } from '../config/rate-limits.js'
  * one route's spec. So this reads the whole table.
  *
  * Mutation-checked, which is the only thing that makes a spec like this worth
- * keeping: renaming the `/me` rule to `'login'` turns the first two
- * assertions red, and renaming any rule to a bucket that does not exist turns
- * the third red. The rest of the suite stays green under both.
+ * keeping. The two mutations do not behave the same way, and the difference
+ * is the point:
+ *
+ * Renaming the `/me` rule to `'login'` turns the first two assertions red
+ * immediately and by name. It does NOT leave the rest of the suite green,
+ * contrary to the note in DECISIONS.md: `account-routes.test.ts`'s login
+ * timing spec times out after 30 seconds, because the `/me` calls earlier in
+ * that file drain the now-shared `login` bucket and the attempts it measures
+ * come back 429. So that collision was already detectable - just 30 seconds
+ * later, from a spec about scrypt timing, pointing nowhere near a namespace.
+ *
+ * Naming a rule after a bucket that does not exist - `'signupp'` - turns the
+ * third assertion red and leaves the other 486 tests entirely green
+ * (measured). Nothing else in the suite notices at all, because the key
+ * prefix is still unique and the bucket is still passed by reference: the
+ * name has simply stopped describing what it limits. That one is the
+ * stronger argument for keeping this file.
  */
 
 // The real factory opens a Redis connection the moment it is called, and
