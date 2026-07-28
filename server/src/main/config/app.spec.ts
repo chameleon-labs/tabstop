@@ -16,16 +16,33 @@ describe('setupApp', () => {
     await disconnectDatabase()
   })
 
-  it('sets trust proxy to the configured hop count, not `true`', () => {
+  it('sets trust proxy to the configured hop count, not `true`', async () => {
     // `true` would trust the whole X-Forwarded-For chain, letting any client
     // prepend a fabricated address and mint a fresh rate limit bucket per
     // request. Express's own default (unset) is `false`, and `toBe(0)`
     // distinguishes that from a real hop count of zero.
-    connectDatabase(connectionString())
+    //
+    // Stubbed rather than read off the real env: vitest.globalSetup.ts now
+    // sets TRUST_PROXY_HOPS=1 process-wide so the route specs can drive the
+    // rate limiter through x-forwarded-for, so 0 is no longer what the real
+    // env resolves to in this suite.
+    vi.resetModules()
+    const actual = await vi.importActual<typeof import('./env.js')>('./env.js')
+    vi.doMock('./env.js', () => ({ ...actual, env: { ...actual.env, trustProxyHops: 0 } }))
 
-    const app = setupApp()
+    const database = await import('./database.js')
+    database.connectDatabase(connectionString())
 
-    expect(app.get('trust proxy')).toBe(0)
+    try {
+      const { setupApp: setupAppWithStubbedEnv } = await import('./app.js')
+      const app = setupAppWithStubbedEnv()
+
+      expect(app.get('trust proxy')).toBe(0)
+    } finally {
+      await database.disconnectDatabase()
+      vi.doUnmock('./env.js')
+      vi.resetModules()
+    }
   })
 
   it('reads the hop count from env rather than hardcoding it', async () => {

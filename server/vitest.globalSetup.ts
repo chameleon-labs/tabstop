@@ -22,9 +22,10 @@ export async function setup (): Promise<void> {
     // scrypt at the production cost is ~89ms per call, which would dominate
     // the suite. 16384 is the highest cost Node accepts on default maxmem.
     process.env.SCRYPT_COST ??= '16384'
-    // The audit endpoints are off by default, so the specs covering them have
-    // to turn them on explicitly.
-    process.env.AUDIT_API_ENABLED ??= 'true'
+    // The route specs drive the client IP through x-forwarded-for to exercise
+    // the rate limiter. One hop means supertest's own connection is the
+    // trusted proxy and anything to its left came from the client.
+    process.env.TRUST_PROXY_HOPS ??= '1'
 
     const db = makeDatabase(connectionString)
     try {

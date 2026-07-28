@@ -86,10 +86,18 @@ await q.close()
 |---|---|
 | `GET /api/health` | includes a Postgres reachability probe |
 | `POST /api/signup` · `login` · `logout` · `GET /api/me` | session cookie, see Auth |
-| `POST /api/audits` | anonymous one-off audit, validated by gate 1 (parse **and** resolve). **Absent unless `AUDIT_API_ENABLED=true`** — unlimited until #8 |
-| `GET /api/audits/:uuid` | fully public, gated only by an unguessable uuid. Also absent unless enabled |
+| `POST /api/audits` | anonymous one-off audit, validated by gate 1 (parse **and** resolve). Always registered, rate limited per IP |
+| `GET /api/audits/:uuid` | fully public, gated only by an unguessable uuid. Rate limited per IP |
 
 `GET /api/audits/:uuid` returns one shape for all four states so a client narrows on `status`. Its payload is built by an explicit mapper in `presentation/helpers/audit-view.ts` — **never spread from the model**, because `AuditModel` carries `pageId` and that links to an account. A terminal audit is cacheable (`public, max-age=3600`); an in-flight one is `no-store`.
+
+### Rate limiting
+
+A Redis token bucket in front of `POST /api/audits`, `GET /api/audits/:uuid`, `/signup`, `/login` (per IP and, separately, per submitted email) and `GET /api/me`. `/logout` is deliberately unlimited so it stays idempotent. When Redis cannot answer, the limiter degrades to a per-instance in-memory bucket rather than rejecting — see `DECISIONS.md` for why.
+
+`TRUST_PROXY_HOPS` (default `0`) is how many reverse proxies sit in front of the process; Express reads the client IP from that many positions in `X-Forwarded-For`. It must be a real hop count, never `true` — see the comment in `main/config/app.ts`.
+
+Every bucket except the anonymous audit one is a constant in `main/config/rate-limits.ts`. The audit bucket is env-configurable because it is the cost dial: `AUDIT_RATE_CAPACITY` (default `5`) and `AUDIT_RATE_PER_HOUR` (default `5`).
 
 ## Audit worker
 

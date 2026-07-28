@@ -53,10 +53,10 @@ export class DbRequestAudit implements RequestAudit {
     // launch and a failed audit thirty seconds later.
     //
     // This costs a lookup per accepted request, which is only affordable
-    // because the endpoint is off unless AUDIT_API_ENABLED is set - and #8,
-    // which is what makes enabling it safe, also bounds how often this runs.
-    // Gate 2 still re-resolves at fetch time: this answer cannot be trusted
-    // by then, it merely rejects what is already known to be wrong.
+    // because the per-IP rate limit in front of this endpoint bounds how
+    // often it runs. Gate 2 still re-resolves at fetch time: this answer
+    // cannot be trusted by then, it merely rejects what is already known to
+    // be wrong.
     if (!await this.resolvesSafely(parsed.url)) {
       return { outcome: 'rejected', reason: 'blocked-address' }
     }

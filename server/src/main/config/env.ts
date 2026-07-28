@@ -13,7 +13,6 @@ export type Env = {
   auditNavigationTimeoutMs: number
   auditSettleBudgetMs: number
   auditFallbackSettleMs: number
-  auditApiEnabled: boolean
   /**
    * How many reverse proxies sit in front of this process. Express takes the
    * X-Forwarded-For entry that many positions from the right - the last one a
@@ -81,23 +80,6 @@ const required = (source: NodeJS.ProcessEnv, name: string): string => {
  * production ships insecure cookies if anyone forgets; defaulted to true, local
  * login fails silently over http. Neither failure announces itself.
  */
-/**
- * Defaults to FALSE, unlike the required booleans above.
- *
- * `POST /api/audits` is anonymous and has no rate limit until #8, and each
- * accepted request costs roughly thirty seconds of Chromium. A comment cannot
- * stop a deploy, so the route is simply absent unless somebody turns it on -
- * and #8 is what makes turning it on safe.
- */
-const optionalBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
-  const value = source[name]
-  if (value === undefined || value === '') return false
-  if (value !== 'true' && value !== 'false') {
-    throw new Error(`${name} must be "true" or "false", but was "${value}"`)
-  }
-  return value === 'true'
-}
-
 const requiredBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
   const value = required(source, name)
   if (value !== 'true' && value !== 'false') {
@@ -253,7 +235,6 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     auditNavigationTimeoutMs,
     auditSettleBudgetMs,
     auditFallbackSettleMs,
-    auditApiEnabled: optionalBoolean(source, 'AUDIT_API_ENABLED'),
     trustProxyHops: nonNegativeIntegerOr(
       source.TRUST_PROXY_HOPS, DEFAULT_TRUST_PROXY_HOPS, 'TRUST_PROXY_HOPS', MAX_TRUST_PROXY_HOPS
     ),

@@ -6,6 +6,24 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-28 — rate limiting, and why Redis is not a hard dependency for auth
+
+A token bucket per key in Redis, one atomic Lua script, in front of the audit and account endpoints. A bucket rather than a fixed window for two reasons: the natural first session on an anonymous audit tool is "try my homepage, then two more pages", which a burst against a slow refill fits exactly; and a fixed window lets twice the limit land in the two minutes either side of a boundary.
+
+The script reads its clock from Redis rather than taking one from Node. With more than one API instance the app clocks drift, and a bucket shared between them would refill at whichever instance ran fast. It is one script rather than a read and a write because two concurrent requests otherwise both see the last token and both proceed — a property asserted by firing twenty parallel consumes at a capacity of five and counting exactly five allowances.
+
+**When Redis cannot answer, the limiter degrades to a per-instance bucket rather than refusing.** Failing closed on the write endpoints was designed first and rejected. It hands an attacker who can make Redis flaky a complete authentication outage, and degrading a Redis instance is plausibly easier than exhausting scrypt CPU across the API — so the mitigation would convert a hard attack into a cheaper one with a larger blast radius. It also expands a dependency's criticality tier by side effect: Redis entered this codebase as a queue, and a rate-limiting decision is the wrong place to quietly make logging in depend on the queue's health. "Cannot measure" does not have to mean "refuse": a per-instance bucket still bounds the scrypt cost that motivated the limit.
+
+What the fallback gives up is only counter-sharing across instances. **A per-IP limit never defended against distributed IP rotation** — an attacker with many addresses defeats it whether the counters sit in Redis or in memory — so falling back loses no class of defence, and the per-email bucket still works against credential stuffing on one account. The in-memory map is bounded and evicts least-recently-used, because an unbounded one would turn the fallback into a memory-exhaustion vector during exactly the outage it exists to survive.
+
+**`trust proxy` is a hop count, never `true`.** The two wrong settings fail in opposite directions and both look like success. Unset behind a proxy, every anonymous user in the world shares one bucket. Set to `true`, any client can prepend a fabricated address to `X-Forwarded-For` and mint a fresh bucket per request, leaving the limiter decorative. A hop count takes the entry the client could not have written. It defaults to 0 — the safe wrong answer, visible immediately in testing.
+
+**`AUDIT_API_ENABLED` is deleted rather than defaulted true.** It existed to make "do not deploy this unprotected" mechanical rather than a comment someone might not read. Now that the protection exists, a flag that can still be left off is only a way to ship a dead endpoint, and a second configuration state every future change has to be tested against.
+
+Rejected submissions are not refunded. The behaviour worth having would refund a syntactic rejection, which costs a parse, while charging one that resolved to a blocked address, which costs a DNS lookup — but both return `400`, so a middleware watching the status cannot tell them apart, and making it visible needs an extra field on `HttpResponse`, a refund handle held outside `res.locals`, and an adapter change. Refunding every `400` was the cheap version and is worse: it makes hostname probing free. The anonymous burst is 5 instead of 3 instead, which costs one number and leaves the sustained rate — the actual cost control — untouched.
+
+**A bare per-requester key is not enough to key storage — the bucket it belongs to has to be in there too.** `ipKey`/`emailKey` return the same string regardless of which named bucket called them, and both token bucket implementations key their storage purely on that string, with no visibility into the `BucketConfig` passed alongside it. Without a namespace, `RATE_LIMITS.auditRead` and `RATE_LIMITS.me` — which happen to share a capacity and refill rate — would silently share one counter per address, and `audit` would share a counter with both. Every rule's key is wrapped with the route's own name before it reaches the limiter; a spec pins that two rules on the same requester get distinct keys.
+
 ## 2026-07-28 — the score formula
 
 `score = max(0, 100 − Σ over rules: weight(impact) × min(elements, 5))`, weights `critical 10 · serious 5 · moderate 2 · minor 1`. Fixed in v1 and not configurable, which is the only thing that makes two scores comparable.
