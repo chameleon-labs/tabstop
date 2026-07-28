@@ -97,19 +97,22 @@ describe('RedisTokenBucket', () => {
     expect(results.filter((result) => result.allowed)).toHaveLength(3)
   })
 
-  it('does not let a single refund push the stored balance above capacity', async () => {
-    // The previous spec only observes this through later consumes, and those
-    // go through the refill step's own cap first - which quietly re-clamps
-    // an over-refund before a consume ever sees it. Reading the raw hash
-    // right after one refund is what actually exercises the post-adjustment
-    // cap in the script.
+  it('does not let a single refund on a full bucket blow past its TTL budget', async () => {
+    // The previous spec only observes an over-refund through a later consume,
+    // and that goes through the refill step's own cap first - which quietly
+    // re-clamps the excess before a consume ever sees it. But an uncapped
+    // refund on a full bucket leaves `tokens` above `capacity`, so
+    // `capacity - tokens` goes negative; PEXPIRE with a negative value
+    // deletes the key outright, rather than setting a small TTL. That
+    // deletion - visible via PTTL, the same channel the TTL spec below uses
+    // - is the externally observable symptom of the cap being missing.
     const k = key()
+    await sut.refund(k, frozen) // a cold bucket is already full
 
-    await sut.refund(k, frozen)
+    const ttl = await redis.pttl(`rl:${k}`)
 
-    const stored = await redis.hget(`rl:${k}`, 'tokens')
-    expect(stored).not.toBeNull()
-    expect(Number(stored)).toBeLessThanOrEqual(frozen.capacity)
+    expect(ttl).toBeGreaterThan(0) // the mutation deletes the key, so pttl is -2
+    expect(ttl).toBeLessThanOrEqual(1_100)
   })
 
   it('expires an idle bucket rather than keeping a key per caller forever', async () => {
