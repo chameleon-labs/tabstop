@@ -1,8 +1,8 @@
-import { isIP } from 'node:net'
 import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
 import {
-  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+  bareHostname, parseAuditUrl, type UrlPolicy
 } from '../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY } from '../net/ip-address-policy.js'
 
 /** Chromium's own default is 20; five is ample for a page worth auditing. */
 export const MAX_REDIRECTS = 5
@@ -121,7 +121,7 @@ export const makeRequestGuard = (
 ) => {
   const isAddressSafe = async (url: URL): Promise<boolean> => {
     const host = bareHostname(url)
-    if (isIP(host) !== 0) return !policy.isBlockedAddress(host)
+    if (policy.isIpLiteral(host)) return !policy.isBlockedAddress(host)
 
     const addresses = await resolver.resolve(host)
     // Empty means resolution failed: fail closed. And EVERY address has to be

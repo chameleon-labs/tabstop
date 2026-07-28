@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
-import { isBlockedAddress, type UrlPolicy } from '../../domain/services/url-safety.js'
+import type { UrlPolicy } from '../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY, isBlockedAddress } from '../net/ip-address-policy.js'
 import { NodeDnsResolver } from '../net/node-dns-resolver.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +28,10 @@ const BUDGETS = { navigationMs: 20_000, settleMs: 3_000, fallbackSettleMs: 500 }
 const allowingFixtureServer: UrlPolicy = {
   isAllowedPort: () => true,
   isBlockedAddress: (address) =>
-    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)
+    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address),
+  // Not relaxed: recognising an address is not part of what these specs need
+  // to bend, so it stays the real implementation.
+  isIpLiteral: DEFAULT_URL_POLICY.isIpLiteral
 }
 
 describe('PlaywrightAxeAuditor', () => {

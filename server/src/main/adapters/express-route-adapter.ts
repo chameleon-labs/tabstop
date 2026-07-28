@@ -46,13 +46,19 @@ export const adaptRoute = (controller: Controller) => {
     // outrank the body: with res.locals first, a client posts {"userId": 1}
     // and impersonates. Pinned by a spec.
     //
+    // Within the client-supplied half the order is body, then query, then
+    // params - weakest claim to strongest. A path segment is what the route
+    // actually matched and what a cache keys on, so it must not be reachable
+    // from a query string: with query last, `GET /api/audits/<uuid>?uuid=<other>`
+    // is answered from <other> while the url still says <uuid>.
+    //
     // Logout needs the cookie without sitting behind the auth middleware, so
     // that it stays idempotent (204 on an absent or dead session) rather than
     // answering 401.
     const httpRequest = {
       ...req.body,
-      ...req.params,
       ...req.query,
+      ...req.params,
       cookies: parseCookies(req.headers.cookie),
       ...res.locals
     }

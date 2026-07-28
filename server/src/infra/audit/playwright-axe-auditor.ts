@@ -1,14 +1,14 @@
 import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { fileURLToPath } from 'node:url'
-import { isIP } from 'node:net'
 import type { Impact } from '../../domain/models/impact.js'
 import type { AuditPageResult, PageAuditor } from '../../data/protocols/audit/page-auditor.js'
 import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
 import { CoalescingDnsResolver } from '../net/coalescing-dns-resolver.js'
 import { makeRequestGuard, type RouteLike } from './request-guard.js'
 import {
-  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+  bareHostname, parseAuditUrl, type UrlPolicy
 } from '../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY } from '../net/ip-address-policy.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -194,7 +194,7 @@ const isNavigable = async (
   if (!parsed.safe) return false
 
   const host = bareHostname(parsed.url)
-  if (isIP(host) !== 0) return !policy.isBlockedAddress(host)
+  if (policy.isIpLiteral(host)) return !policy.isBlockedAddress(host)
 
   const addresses = await resolver.resolve(host)
   return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address))
@@ -344,12 +344,6 @@ export class PlaywrightAxeAuditor implements PageAuditor {
 
       await page.addScriptTag({ path: AXE_PATH })
 
-      // Mapped INSIDE the browser. Measured on a fixture: the raw result
-      // serialises to 42,996 bytes and 41,922 with resultTypes - a 2.5%
-      // saving, not the "dramatic" one the issue assumed - while returning
-      // only the mapped violations is 621 bytes, because `passes` never
-      // crosses the CDP boundary at all. It also means no axe type ever
-      // exists in Node, so the protocol boundary is real rather than nominal.
       // Mapped INSIDE the browser. Measured on a fixture: the raw result
       // serialises to 42,996 bytes and 41,922 with resultTypes - a 2.5%
       // saving, not the "dramatic" one the issue assumed - while returning
