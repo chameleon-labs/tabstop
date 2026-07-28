@@ -39,9 +39,9 @@ export class BullMqAuditQueue implements AuditJobQueue {
   }
 
   /**
-   * Waiting only - not active, delayed or failed. The question submission is
-   * asking is "how long is the line in front of a job added now", and a job
-   * already running is not in that line.
+   * Waiting only - not active, delayed or failed. Submission is asking how
+   * long the line in front of a new job would be, and a job already running
+   * is not in that line, nor is one scheduled for later.
    */
   async waitingCount (): Promise<number> {
     return await this.queue.getWaitingCount()

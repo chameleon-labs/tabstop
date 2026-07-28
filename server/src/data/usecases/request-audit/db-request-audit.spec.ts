@@ -79,6 +79,42 @@ describe('DbRequestAudit queue depth', () => {
     expect(audits.add).toHaveBeenCalledOnce()
   })
 
+  it('overshoots under a simultaneous burst, then refuses until it drains', async () => {
+    // The soft edge, pinned rather than papered over.
+    //
+    // Reading the depth and then enqueueing is check-then-act: everything in
+    // flight during that window has already passed the check, so a burst of
+    // simultaneous submissions - across instances too - all get in and the
+    // queue ends up over the cap by roughly the size of the burst.
+    //
+    // What the cap does bound is the STEADY STATE. Every request arriving
+    // after the burst sees the raised depth and is refused, so the queue
+    // cannot keep growing; it spikes and then drains. That is the property
+    // worth having here, and it is the second half of this test.
+    //
+    // Closing the window properly needs an atomic reservation in Redis -
+    // released on both the insert and the enqueue failing, with a TTL for the
+    // process dying in between. That is a distributed semaphore, and it would
+    // have to fail OPEN to respect this branch's rule that Redis is not a hard
+    // dependency of the write path - at which point it is not atomic when it
+    // matters either. The soft edge is the better trade for a backstop.
+    const { sut: burstSut } = sutWith(deepQueue(99), 100)
+
+    const burst = await Promise.all(
+      Array.from({ length: 10 }, async () =>
+        await burstSut.request({ url: 'https://example.com/a' }))
+    )
+
+    expect(burst.every((result) => result.outcome === 'queued')).toBe(true)
+
+    // ...and the queue, now over its cap, turns the next one away.
+    const { sut: afterSut, audits } = sutWith(deepQueue(109), 100)
+
+    expect((await afterSut.request({ url: 'https://example.com/a' })).outcome)
+      .toBe('unavailable')
+    expect(audits.add).not.toHaveBeenCalled()
+  })
+
   it('checks depth only after the URL has been accepted', async () => {
     // A blocked address must still get its specific rejection rather than a
     // generic "try again later" that tells the caller nothing.

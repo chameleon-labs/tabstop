@@ -109,7 +109,24 @@ export class DbRequestAudit implements RequestAudit {
   }
 
   /**
-   * Bounded and best-effort, and it fails OPEN.
+   * Bounded, best-effort, and a SOFT edge - it fails open, and it does not
+   * make the cap exact.
+   *
+   * Reading the depth and then enqueueing is check-then-act: everything
+   * already in flight has passed the check, so a burst of simultaneous
+   * submissions - across instances too - all get in, and the queue lands over
+   * the cap by roughly the size of the burst. What is bounded is the steady
+   * state: every request arriving afterwards sees the raised depth and is
+   * refused, so the queue spikes and drains rather than growing without
+   * limit. That is the property this exists for.
+   *
+   * Making the edge hard needs an atomic reservation in Redis, released on
+   * both the insert and the enqueue failing, with a TTL for the process dying
+   * in between. That is a distributed semaphore - and to respect this
+   * branch's rule that Redis is not a hard dependency of the write path it
+   * would have to fail open, at which point it is not atomic when it matters
+   * either. Pinned by a spec so the limitation is understood rather than
+   * assumed away.
    *
    * A depth check that cannot answer must not become a second way for a sick
    * Redis to refuse submissions. The enqueue below already handles a queue

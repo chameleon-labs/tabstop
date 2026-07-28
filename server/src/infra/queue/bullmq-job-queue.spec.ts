@@ -158,6 +158,36 @@ describe('BullMqAuditQueue', () => {
     expect(await sut.has('67890')).toBe(false)
   })
 
+  it('counts waiting jobs, and only waiting ones', async () => {
+    // The whole queue cap rests on this number meaning what submission thinks
+    // it means: "how long is the line in front of a job added now". A delayed
+    // job is not in that line - it is not runnable yet - and counting it would
+    // make a queue of scheduled retries look like a saturated one and refuse
+    // submissions that the workers have capacity for.
+    //
+    // Driven against real BullMQ rather than a fake, because the distinction
+    // between waiting and every other state is BullMQ's, not ours: getWaiting
+    // Count is the only thing that decides it, and a fake would just agree
+    // with whichever method we happened to call.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    expect(await sut.waitingCount()).toBe(0)
+
+    await sut.enqueueOnce({ auditId: '111' })
+    await sut.enqueueOnce({ auditId: '222' })
+    expect(await sut.waitingCount()).toBe(2)
+
+    // Not waiting: scheduled for later, so nothing is queued behind it.
+    await queue.add(name, { auditId: '333' }, { delay: 60_000 })
+    expect(await sut.waitingCount()).toBe(2)
+
+    // Deduped rather than counted twice, matching enqueueOnce's contract.
+    await sut.enqueueOnce({ auditId: '111' })
+    expect(await sut.waitingCount()).toBe(2)
+  })
+
   it('does not collide with the ids BullMQ assigns itself', async () => {
     // The reason BullMQ refuses integer custom ids: its own counter would
     // reach the same value and overwrite the job.
