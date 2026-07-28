@@ -28,43 +28,6 @@ describe('RedisTokenBucket', () => {
 
   const key = (): string => `spec-${randomUUID()}`
 
-  it('allows exactly the capacity from cold, then rejects', async () => {
-    const k = key()
-
-    const first = await sut.consume(k, frozen)
-    const second = await sut.consume(k, frozen)
-    const third = await sut.consume(k, frozen)
-    const fourth = await sut.consume(k, frozen)
-
-    expect(first).toEqual({ allowed: true, remaining: 2 })
-    expect(second).toEqual({ allowed: true, remaining: 1 })
-    expect(third).toEqual({ allowed: true, remaining: 0 })
-    expect(fourth.allowed).toBe(false)
-  })
-
-  it('reports how long the caller must wait, scaled to the deficit', async () => {
-    const k = key()
-    for (let i = 0; i < 3; i++) await sut.consume(k, frozen)
-
-    const denied = await sut.consume(k, frozen)
-
-    if (denied.allowed) throw new Error('expected the bucket to be empty')
-    // One token per hour, so a deficit of one token is close to an hour. A
-    // constant would satisfy `> 0`; this pins that the number means something.
-    expect(denied.retryAfterMs).toBeGreaterThan(3_000_000)
-    expect(denied.retryAfterMs).toBeLessThanOrEqual(3_600_000)
-  })
-
-  it('refills over elapsed time', async () => {
-    const k = key()
-    for (let i = 0; i < 3; i++) await sut.consume(k, fast)
-    expect((await sut.consume(k, fast)).allowed).toBe(false)
-
-    await new Promise((resolve) => setTimeout(resolve, 250))
-
-    expect((await sut.consume(k, fast)).allowed).toBe(true)
-  })
-
   it('never oversells under concurrency', async () => {
     // The reason the whole thing is one Lua script. A read-then-write from
     // Node lets two callers both see the last token and both proceed.
@@ -77,35 +40,18 @@ describe('RedisTokenBucket', () => {
     expect(results.filter((result) => result.allowed)).toHaveLength(3)
   })
 
-  it('returns a token on refund', async () => {
-    const k = key()
-    for (let i = 0; i < 3; i++) await sut.consume(k, frozen)
-
-    await sut.refund(k, frozen)
-
-    expect((await sut.consume(k, frozen)).allowed).toBe(true)
-  })
-
-  it('cannot refund a full bucket past its capacity', async () => {
-    // Otherwise refund becomes a way to mint quota.
-    const k = key()
-    for (let i = 0; i < 5; i++) await sut.refund(k, frozen)
-
-    const results = []
-    for (let i = 0; i < 4; i++) results.push(await sut.consume(k, frozen))
-
-    expect(results.filter((result) => result.allowed)).toHaveLength(3)
-  })
-
   it('does not let a single refund on a full bucket blow past its TTL budget', async () => {
-    // The previous spec only observes an over-refund through a later consume,
-    // and that goes through the refill step's own cap first - which quietly
-    // re-clamps the excess before a consume ever sees it. But an uncapped
-    // refund on a full bucket leaves `tokens` above `capacity`, so
-    // `capacity - tokens` goes negative; PEXPIRE with a negative value
-    // deletes the key outright, rather than setting a small TTL. That
-    // deletion - visible via PTTL, the same channel the TTL spec below uses
-    // - is the externally observable symptom of the cap being missing.
+    // The contract spec `cannot refund a full bucket past its capacity` only
+    // observes an over-refund through a later consume, and that goes through
+    // the refill step's own cap first - which quietly re-clamps the excess
+    // before a consume ever sees it. But an uncapped refund on a full bucket
+    // leaves `tokens` above `capacity`, so `capacity - tokens` goes negative;
+    // PEXPIRE with a negative value deletes the key outright, rather than
+    // setting a small TTL. That deletion - visible via PTTL, the same channel
+    // the TTL spec below uses - is the externally observable symptom of the
+    // cap being missing, and it is Redis-specific: memory has no TTL to leak
+    // through, which is why its own version of this defect needed a different
+    // probe (see `caps a refund at capacity...` in memory-token-bucket.spec).
     const k = key()
     await sut.refund(k, frozen) // a cold bucket is already full
 
