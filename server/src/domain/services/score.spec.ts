@@ -95,7 +95,13 @@ describe('summariseViolations', () => {
       // two elements: 5 x 2 = 10.
       const violations = [rule('moderate', 1, 'color-contrast'), rule('serious', 1, 'color-contrast')]
 
-      expect(summariseViolations(violations).score).toBe(90)
+      const summary = summariseViolations(violations)
+      expect(summary.score).toBe(90)
+      // Counts follow the same merge: both elements land under the winning
+      // impact rather than split across moderate and serious, which is the
+      // behaviour that changed when the two entries stopped being counted
+      // separately.
+      expect(summary.countsByImpact).toEqual({ minor: 0, moderate: 0, serious: 2, critical: 0 })
     })
 
     it('picks the most severe impact regardless of the order seen', () => {
@@ -117,9 +123,14 @@ describe('summariseViolations', () => {
     })
 
     it('counts a repeated rule once, with its elements summed', () => {
+      // Merged: 5 x min(7, 5) = 25, scoring 75. Unmerged this would deduct
+      // (5 x 3) + (5 x 4) = 35, scoring 65 - the cap applying twice instead of
+      // once, which is exactly what merging exists to prevent.
       const violations = [rule('serious', 3, 'color-contrast'), rule('serious', 4, 'color-contrast')]
 
-      expect(summariseViolations(violations).countsByImpact.serious).toBe(7)
+      const summary = summariseViolations(violations)
+      expect(summary.countsByImpact.serious).toBe(7)
+      expect(summary.score).toBe(75)
     })
   })
 

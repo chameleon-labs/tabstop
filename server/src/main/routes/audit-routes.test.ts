@@ -138,6 +138,7 @@ describe('audit routes', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.status).toBe('done')
+      expect(response.body.score).toBe(90)
       expect(response.body.axeVersion).toBe('4.12.1')
       expect(response.body.settled).toBe(true)
       expect(response.body.violations).toEqual([{

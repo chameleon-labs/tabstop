@@ -93,7 +93,7 @@ await q.close()
 
 ## Audit worker
 
-The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations. `pnpm dev:worker` consumes both `ping` and `audit`.
+The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations, and score the page. `pnpm dev:worker` consumes both `ping` and `audit`.
 
 - **axe-core is vendored, not imported at runtime.** `src/infra/audit/vendor/axe.min.js` is checked in; refresh it with `pnpm vendor:axe`, which also rewrites the sibling `VERSION` file. The reported `axe_version` comes from `testEngine.version` in the run itself, so it can never disagree with the file that executed.
 - **`pnpm build` copies that file explicitly.** `tsc` compiles `.ts` and ignores everything else, so without `scripts/copy-vendor.mjs` the engine never reaches `dist/` — and it fails only in production. A spec asserts the built file exists, and CI builds before testing.
@@ -136,7 +136,7 @@ Seven tables, across five migrations in `src/infra/db/postgres/migrations/`:
 | `sessions` | primary key **is** the cookie value; `expires_at` is filtered in SQL so no caller can forget it |
 | `sites` | `unique (user_id, domain)`; deleting a user cascades all the way down |
 | `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
-| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker |
+| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `score` and `counts_by_impact` are written by the domain score formula when the audit completes; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker |
 | `violations` | `nodes` is display-only jsonb, never queried across; `impact` is nullable, because axe reports violations with no severity and dropping them would hide real findings |
 | `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
 
