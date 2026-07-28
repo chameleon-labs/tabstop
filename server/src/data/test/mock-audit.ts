@@ -1,4 +1,10 @@
 import { vi } from 'vitest'
+import type { AddAuditRepository } from '../protocols/db/audit/add-audit-repository.js'
+import type {
+  DeleteQueuedAuditRepository
+} from '../protocols/db/audit/delete-queued-audit-repository.js'
+import type { JobQueue } from '../protocols/queue/job-queue.js'
+import type { AuditJob } from '../usecases/request-audit/db-request-audit.js'
 import type { AuditModel } from '../../domain/models/audit.js'
 import type { AuditPageResult, PageAuditor } from '../protocols/audit/page-auditor.js'
 import type {
@@ -68,4 +74,18 @@ export const mockReplaceViolationsRepository = () => ({
 
 export const mockPageAuditor = () => ({
   audit: vi.fn<PageAuditor['audit']>(async () => mockAuditPageResult())
+})
+
+export const mockAddAuditRepository = () => ({
+  add: vi.fn<AddAuditRepository['add']>(async () => mockAuditModel())
+})
+
+export const mockDeleteQueuedAuditRepository = () => ({
+  deleteIfQueued: vi.fn<DeleteQueuedAuditRepository['deleteIfQueued']>(
+    async () => { /* no-op */ }
+  )
+})
+
+export const mockAuditQueue = () => ({
+  enqueue: vi.fn<JobQueue<AuditJob>['enqueue']>(async () => { /* no-op */ })
 })
