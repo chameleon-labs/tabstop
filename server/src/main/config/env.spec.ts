@@ -187,6 +187,21 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...validSource, TRUST_PROXY_HOPS: '9' })).toThrow(/TRUST_PROXY_HOPS/)
   })
 
+  it('accepts an explicit trustProxyHops of zero, not just the omitted default', () => {
+    // Zero is both the default and the safe setting, so it has to work when a
+    // deployment sets it on purpose - not merely when the variable is absent
+    // and falls through to the default.
+    expect(parseEnv({ ...validSource, TRUST_PROXY_HOPS: '0' }).trustProxyHops).toBe(0)
+  })
+
+  it('accepts trustProxyHops at the configured maximum', () => {
+    expect(parseEnv({ ...validSource, TRUST_PROXY_HOPS: '8' }).trustProxyHops).toBe(8)
+  })
+
+  it('rejects a non-integer trustProxyHops', () => {
+    expect(() => parseEnv({ ...validSource, TRUST_PROXY_HOPS: '1.5' })).toThrow(/TRUST_PROXY_HOPS/)
+  })
+
   it('defaults the anonymous audit bucket', () => {
     const parsed = parseEnv(validSource)
 
