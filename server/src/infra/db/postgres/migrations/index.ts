@@ -4,6 +4,7 @@ import * as accounts from './002-accounts.js'
 import * as auditSettled from './003-audit-settled.js'
 import * as violationImpactNullable from './004-violation-impact-nullable.js'
 import * as auditClaimedAt from './005-audit-claimed-at.js'
+import * as sessionsExpiresAtIndex from './006-sessions-expires-at-index.js'
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -18,7 +19,8 @@ export const migrations: Record<string, Migration> = {
   '002-accounts': accounts,
   '003-audit-settled': auditSettled,
   '004-violation-impact-nullable': violationImpactNullable,
-  '005-audit-claimed-at': auditClaimedAt
+  '005-audit-claimed-at': auditClaimedAt,
+  '006-sessions-expires-at-index': sessionsExpiresAtIndex
 }
 
 export const staticMigrationProvider: MigrationProvider = {
