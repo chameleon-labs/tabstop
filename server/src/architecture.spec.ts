@@ -37,6 +37,24 @@ const offendingImports = async (
 
 const isRelative = (specifier: string): boolean => specifier.startsWith('.')
 
+/** Rejects an import that lands in any of the named layers. */
+const forbids = (...layers: string[]) => {
+  const pattern = new RegExp(`(^|/)(${layers.join('|')})/`)
+  return (specifier: string): boolean => !pattern.test(specifier)
+}
+
+/**
+ * The installed package a specifier resolves to, so a subpath counts as the
+ * package it comes from. Matching the bare name alone missed
+ * `kysely/migration`, which two migration files import - and one of them,
+ * migrations/index.ts, imports kysely by no other route, so it was absent
+ * from the pinned list entirely while the assertion still passed.
+ */
+const vendorRoot = (specifier: string): string =>
+  specifier.startsWith('@')
+    ? specifier.split('/').slice(0, 2).join('/')
+    : (specifier.split('/')[0] ?? specifier)
+
 /**
  * The dependency rule, enforced rather than described.
  *
@@ -71,12 +89,17 @@ describe('layer dependencies', () => {
     expect(await offendingImports('data/protocols', isRelative)).toEqual([])
   })
 
-  it('never lets domain/ or data/ reach outward into presentation, infra or main', async () => {
-    const outward = (specifier: string): boolean =>
-      !/(^|\/)(presentation|infra|main)\//.test(specifier)
-
-    expect(await offendingImports('domain', outward)).toEqual([])
-    expect(await offendingImports('data', outward)).toEqual([])
+  it('never lets domain/ or data/ reach into a layer above them', async () => {
+    // A predicate PER LAYER, not one shared between them, because the two do
+    // not have the same neighbours: data/ may name domain/, and domain/ may
+    // name nothing. Sharing one list quietly dropped `data` from domain's -
+    // so `domain/services/x.ts` importing '../../data/usecases/y.js' was
+    // relative, was not presentation/infra/main, and passed both assertions.
+    // Nothing does that today; the point of this file is that nothing can.
+    expect(await offendingImports('domain', forbids('data', 'presentation', 'infra', 'main')))
+      .toEqual([])
+    expect(await offendingImports('data', forbids('presentation', 'infra', 'main')))
+      .toEqual([])
   })
 
   it('holds that rule for the SPECS in domain/ and data/ as well', async () => {
@@ -116,13 +139,16 @@ describe('layer dependencies', () => {
     expect(offences.sort()).toEqual([])
   })
 
-  it('keeps presentation/ off infra/ and main/', async () => {
-    // Controllers depend on domain usecases and their own protocols. An infra
-    // import here is a controller talking to a driver.
-    const allowed = (specifier: string): boolean =>
-      !/(^|\/)(infra|main)\//.test(specifier)
-
-    expect(await offendingImports('presentation', allowed)).toEqual([])
+  it('keeps presentation/ off data/, infra/ and main/', async () => {
+    // Controllers depend on domain USECASES - the interfaces - and on their
+    // own protocols. main/ is what hands them a concrete.
+    //
+    // `data` belongs in this list even though the comment above never said so:
+    // a controller importing DbAuthenticate rather than the Authenticate it is
+    // constructed with is the same mistake as importing a driver, just one
+    // layer shallower, and the assertion was not catching it.
+    expect(await offendingImports('presentation', forbids('data', 'infra', 'main')))
+      .toEqual([])
   })
 
   it('confines playwright, kysely, pg, bullmq, express and zod to their adapters', async () => {
@@ -135,8 +161,12 @@ describe('layer dependencies', () => {
     for (const directory of ['domain', 'data', 'presentation', 'infra']) {
       for (const path of await sourceFiles(directory)) {
         for (const specifier of await importsOf(path)) {
-          if (!vendors.includes(specifier)) continue
-          found.set(specifier, [...(found.get(specifier) ?? []), path])
+          // Resolved to the package, so `kysely/migration` counts as kysely.
+          const vendor = vendorRoot(specifier)
+          if (!vendors.includes(vendor)) continue
+          const paths = found.get(vendor) ?? []
+          // A file importing both `kysely` and `kysely/migration` is one file.
+          if (!paths.includes(path)) found.set(vendor, [...paths, path])
         }
       }
     }
@@ -157,6 +187,9 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/003-audit-settled.ts',
           'infra/db/postgres/migrations/004-violation-impact-nullable.ts',
           'infra/db/postgres/migrations/005-audit-claimed-at.ts',
+          // Reached only through `kysely/migration`, so the exact-name match
+          // never saw it.
+          'infra/db/postgres/migrations/index.ts',
           'infra/db/postgres/migrations/migrator.ts',
           'infra/db/postgres/session/postgres-session-repository.ts',
           'infra/db/postgres/session/session-mapper.ts',
