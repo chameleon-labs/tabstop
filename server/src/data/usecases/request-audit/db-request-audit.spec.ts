@@ -1,15 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DbRequestAudit } from './db-request-audit.js'
 import {
   mockAddAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository
 } from '../../test/index.js'
+import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
 
-const makeSut = () => {
+const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const audits = mockAddAuditRepository()
   const deletes = mockDeleteQueuedAuditRepository()
   const queue = mockAuditQueue()
-  const sut = new DbRequestAudit(audits, deletes, queue)
-  return { sut, audits, deletes, queue }
+  const resolver = { resolve: vi.fn<DnsResolver['resolve']>(async () => addresses) }
+  const sut = new DbRequestAudit(audits, deletes, queue, resolver)
+  return { sut, audits, deletes, queue, resolver }
 }
 
 describe('DbRequestAudit', () => {
@@ -45,6 +47,51 @@ describe('DbRequestAudit', () => {
 
     expect(audits.add).not.toHaveBeenCalled()
     expect(queue.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects a hostname that resolves to a private address', async () => {
+    // Gate 1's other half. Without this the audit is queued, a browser is
+    // launched, and the worker's guard fails it thirty seconds later - correct
+    // but wasteful, and it fails #7's stated criteria.
+    const { sut, audits, queue } = makeSut(['10.0.0.5'])
+
+    expect(await sut.request({ url: 'https://internal.corp/' }))
+      .toEqual({ outcome: 'rejected', reason: 'blocked-address' })
+    expect(audits.add).not.toHaveBeenCalled()
+    expect(queue.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects a host answering with one public and one private address', async () => {
+    // Taking only the first answer would wave this straight through.
+    const { sut, audits } = makeSut(['93.184.216.34', '10.0.0.5'])
+
+    expect((await sut.request({ url: 'https://mixed.test/' })).outcome).toBe('rejected')
+    expect(audits.add).not.toHaveBeenCalled()
+  })
+
+  it('rejects when resolution fails, rather than accepting', async () => {
+    const { sut, audits } = makeSut([])
+
+    expect((await sut.request({ url: 'https://nowhere.invalid/' })).outcome).toBe('rejected')
+    expect(audits.add).not.toHaveBeenCalled()
+  })
+
+  it('does not resolve a literal address, which was already checked', async () => {
+    const { sut, resolver } = makeSut()
+
+    await sut.request({ url: 'http://93.184.216.34/' })
+
+    expect(resolver.resolve).not.toHaveBeenCalled()
+  })
+
+  it('rejects a URL carrying credentials before anything else happens', async () => {
+    // They would otherwise be stored and handed back by the public result
+    // endpoint, and cached for an hour.
+    const { sut, audits } = makeSut()
+
+    expect(await sut.request({ url: 'https://alice:secret@example.com/' }))
+      .toEqual({ outcome: 'rejected', reason: 'blocked-credentials' })
+    expect(audits.add).not.toHaveBeenCalled()
   })
 
   it('stores the normalised URL rather than the raw input', async () => {

@@ -10,7 +10,13 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 `POST /api/audits` and `GET /api/audits/:uuid` — the one-off audit with no signup, and the result behind the public share page.
 
-**Gate 1 is syntactic only.** #7 left the submission-time check to this issue, and it validates with `parseAuditUrl` and performs no DNS. A hostname that resolves private becomes a `failed` audit thirty seconds later rather than an immediate `400`, which is a real cost accepted for two reasons: this endpoint is anonymous and unlimited until #8, so a lookup per request is an amplifier against a resolver we do not control; and a submission-time resolution cannot be trusted anyway, since gate 2 re-resolves at fetch time precisely because the answer can change in between. Worth revisiting once rate limiting makes a per-request lookup safe.
+**Gate 1 parses and resolves.** #7 left the submission-time check to this issue. It parses with `parseAuditUrl` and resolves the hostname, rejecting when any answer is a blocked address — which is what #7's criteria actually require.
+
+It was very nearly syntactic-only. The argument against resolving was that a lookup per request on an anonymous, unlimited endpoint is an amplifier against a resolver we do not control. What changed is the second decision below: with the endpoint off unless explicitly enabled, and #8 required before enabling it, that objection no longer holds. The two are a package — either would be wrong alone.
+
+Gate 2 still re-resolves at fetch time. This check does not replace it and cannot: the answer can change in between, which is the whole reason the worker validates every request. It rejects what is already known to be wrong, fifty milliseconds in rather than thirty seconds.
+
+**The endpoints are absent unless `AUDIT_API_ENABLED` is set.** Each accepted request costs roughly thirty seconds of Chromium and nothing throttles that until #8. A comment cannot stop a deploy; an unregistered route can. The flag defaults to false — the only optional boolean in the schema that does — and #8 is what makes turning it on safe.
 
 **A failed enqueue deletes the row rather than stranding it.** The insert must precede the enqueue — reversed, the worker can dequeue an id whose row does not exist — which leaves the window where the row exists and nothing will run it. The enqueue is retried three times first, since most failures are a blip; a sustained one deletes the audit and answers `503`. The row was acknowledged to nobody, so removing it strands nothing and the client simply retries.
 
@@ -22,7 +28,11 @@ Worth recording a testing trap found while writing those specs: asserting `JSON.
 
 **`HttpResponse` gained an optional `headers`.** The global `no-store` from #10 covers every response, so a route could not otherwise opt into caching. A terminal audit is immutable and carries nothing user-identifying, so the share page can be served from a cache; an in-flight one changes on the next poll and stays `no-store`. The controller describes the intent and `adaptRoute` applies it, mirroring how cookies already work rather than inventing a second mechanism.
 
-**This endpoint ships unlimited.** #8 is blocked partly on it existing, so it cannot come first. Each accepted request costs roughly thirty seconds of Chromium, and nothing throttles that yet — so it must not be deployed before #8, which is recorded there and on #16 rather than left to memory.
+**Three leaks review found, all in the same family: things that are true of the model but must not be true of the wire.** A URL carrying credentials — `https://alice:secret@example.com/` — survived normalisation, would have been stored, and then handed back by the public result endpoint and cached for an hour. Violations were loaded whatever the audit's status, so a running audit published whatever the current attempt had written so far as though it were the answer, and a failed one published the leftovers of a run that did not complete. And `HttpResponse.headers` forwarded any header a controller named, which would have let one emit its own `set-cookie` without the adapter's security attributes or rewrite the CORS headers the middleware had just set — so it is now allowlisted to `cache-control` and `vary`, the only response metadata a controller legitimately owns.
+
+Worth recording a testing trap found alongside them: asserting `JSON.stringify(body)` does not *contain* the internal id is worthless when the id is a `bigserial`. A single digit matches by coincidence inside a uuid or a timestamp, so the assertion failed for the wrong reason and would equally have passed for the wrong reason. Both checks compare structurally instead.
+
+**The shared DTO package is not built.** #9 asks for the response contract to live where `web/` can import it, because three surfaces consume it — but there is no `web/` and no workspace yet. The types are exported from `presentation/helpers/audit-view.ts` and the move is recorded on #17, which creates the thing they would move into.
 
 ## 2026-07-27 — URL safety: the redirect check the issue described does not fire
 

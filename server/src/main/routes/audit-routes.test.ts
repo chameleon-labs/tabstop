@@ -31,9 +31,16 @@ describe('audit routes', () => {
 
   const submit = async (url: string) => await request(app).post('/api/audits').send({ url })
 
+  /**
+   * A public literal address, so gate 1 short-circuits resolution: a hostname
+   * would need real DNS, and `.test` deliberately does not resolve at all.
+   * Nothing here ever fetches the URL - no worker runs in these specs.
+   */
+  const auditableUrl = (): string => `http://93.184.216.34/${randomUUID()}`
+
   describe('POST /api/audits', () => {
     it('accepts a URL and returns a public id to poll', async () => {
-      const response = await submit(`https://${randomUUID()}.test/a`)
+      const response = await submit(auditableUrl())
 
       expect(response.status).toBe(202)
       expect(response.body.auditId).toMatch(UUID)
@@ -42,7 +49,7 @@ describe('audit routes', () => {
     })
 
     it('never returns the internal id', async () => {
-      const response = await submit(`https://${randomUUID()}.test/a`)
+      const response = await submit(auditableUrl())
       const row = await db.selectFrom('audits').select(['id'])
         .where('public_uuid', '=', response.body.auditId as string).executeTakeFirstOrThrow()
 
@@ -59,6 +66,7 @@ describe('audit routes', () => {
       // thirty seconds later.
       for (const url of [
         'file:///etc/passwd',
+        'https://alice:secret@example.com/',
         'data:text/html,<h1>x',
         'javascript:alert(1)',
         'http://169.254.169.254/latest/meta-data/',
@@ -90,7 +98,7 @@ describe('audit routes', () => {
 
   describe('GET /api/audits/:uuid', () => {
     it('reports a queued audit, and refuses to let it be cached', async () => {
-      const created = await submit(`https://${randomUUID()}.test/a`)
+      const created = await submit(auditableUrl())
 
       const response = await request(app).get(`/api/audits/${created.body.auditId as string}`)
 
@@ -102,7 +110,7 @@ describe('audit routes', () => {
     })
 
     it('reports a finished audit with its violations, and lets it be cached', async () => {
-      const created = await submit(`https://${randomUUID()}.test/a`)
+      const created = await submit(auditableUrl())
       const auditId = created.body.auditId as string
       const audits = new PostgresAuditRepository(db)
       const violations = new PostgresViolationRepository(db)
@@ -145,7 +153,7 @@ describe('audit routes', () => {
     it('leaks nothing that identifies a user', async () => {
       // This endpoint is public to anyone holding the uuid, so the payload is
       // the whole security boundary.
-      const created = await submit(`https://${randomUUID()}.test/a`)
+      const created = await submit(auditableUrl())
       const auditId = created.body.auditId as string
       const row = await db.selectFrom('audits').select(['id'])
         .where('public_uuid', '=', auditId).executeTakeFirstOrThrow()

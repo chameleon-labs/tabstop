@@ -152,6 +152,38 @@ describe('adaptMiddleware', () => {
     expect(response.headers['cache-control']).toBe('public, max-age=3600')
   })
 
+  it('refuses header names a controller has no business setting', async () => {
+    // Forwarding arbitrary names would undo the boundary this adapter holds: a
+    // controller could emit its own set-cookie without the security
+    // attributes, or rewrite the CORS headers the middleware just set.
+    const controller: Controller = {
+      async handle (): Promise<HttpResponse> {
+        return {
+          statusCode: 200,
+          body: {},
+          headers: {
+            'set-cookie': 'sid=stolen',
+            'access-control-allow-origin': '*',
+            'cache-control': 'public, max-age=60'
+          }
+        }
+      }
+    }
+    const app = express()
+    app.use((_req, res, next) => {
+      res.set('access-control-allow-origin', 'https://app.example.com')
+      next()
+    })
+    app.post('/probe', adaptRoute(controller))
+
+    const response = await request(app).post('/probe').send({})
+
+    expect(response.headers['set-cookie']).toBeUndefined()
+    expect(response.headers['access-control-allow-origin']).toBe('https://app.example.com')
+    // The one thing a controller does legitimately own still works.
+    expect(response.headers['cache-control']).toBe('public, max-age=60')
+  })
+
   it('leaves the default alone when a controller asks for nothing', async () => {
     const app = express()
     app.use((_req, res, next) => { res.set('cache-control', 'no-store'); next() })

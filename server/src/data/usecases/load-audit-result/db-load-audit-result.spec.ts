@@ -21,8 +21,9 @@ const makeSut = () => {
 }
 
 describe('DbLoadAuditResult', () => {
-  it('returns the audit with its violations', async () => {
-    const { sut, violations } = makeSut()
+  it('returns the audit with its violations once it is done', async () => {
+    const { sut, audits, violations } = makeSut()
+    audits.loadByPublicUuid.mockResolvedValueOnce({ ...mockAuditModel(), status: 'done' })
     violations.loadByAuditId.mockResolvedValueOnce([{
       id: 'v1', auditId: 'audit-1', ruleId: 'label', impact: 'critical',
       description: 'd', helpUrl: 'u', nodes: []
@@ -30,9 +31,25 @@ describe('DbLoadAuditResult', () => {
 
     const result = await sut.load('11111111-1111-1111-1111-111111111111')
 
-    expect(result?.audit).toEqual(mockAuditModel())
+    expect(result?.audit).toEqual({ ...mockAuditModel(), status: 'done' })
     expect(result?.violations).toHaveLength(1)
     expect(violations.loadByAuditId).toHaveBeenCalledWith('audit-1')
+  })
+
+  it('reports no violations until the audit has finished', async () => {
+    // A running audit's violations are whatever the current attempt has
+    // written so far, and a retry replaces them wholesale - publishing them
+    // would show a partial set as the answer. A failed audit's leftovers
+    // describe a run that did not complete.
+    for (const status of ['queued', 'running', 'failed'] as const) {
+      const { sut, audits, violations } = makeSut()
+      audits.loadByPublicUuid.mockResolvedValueOnce({ ...mockAuditModel(), status })
+
+      const result = await sut.load('11111111-1111-1111-1111-111111111111')
+
+      expect(result?.violations).toEqual([])
+      expect(violations.loadByAuditId).not.toHaveBeenCalled()
+    }
   })
 
   it('returns null for a uuid no audit carries', async () => {

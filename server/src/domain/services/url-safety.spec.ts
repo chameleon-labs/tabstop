@@ -86,6 +86,19 @@ describe('parseAuditUrl', () => {
     expect(parseAuditUrl('http://127.0.0.1/')).toEqual({ safe: false, reason: 'blocked-address' })
   })
 
+  it('rejects a URL carrying credentials', () => {
+    // They survive normalisation, so an accepted URL would be stored and then
+    // returned by the public result endpoint - and cached for an hour -
+    // handing whatever was pasted in to everyone with the share link.
+    for (const raw of [
+      'https://alice:secret@example.com/',
+      'https://alice@example.com/',
+      'http://:secret@example.com/'
+    ]) {
+      expect(parseAuditUrl(raw)).toEqual({ safe: false, reason: 'blocked-credentials' })
+    }
+  })
+
   it('rejects a non-standard port', () => {
     expect(parseAuditUrl('http://example.com:8080/'))
       .toEqual({ safe: false, reason: 'blocked-port' })

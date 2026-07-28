@@ -1,4 +1,8 @@
-import { parseAuditUrl } from '../../../domain/services/url-safety.js'
+import { isIP } from 'node:net'
+import {
+  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+} from '../../../domain/services/url-safety.js'
+import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
 import type {
   RequestAudit, RequestAuditParams, RequestAuditResult
 } from '../../../domain/usecases/request-audit.js'
@@ -17,16 +21,28 @@ export class DbRequestAudit implements RequestAudit {
   constructor (
     private readonly addAuditRepository: AddAuditRepository,
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
-    private readonly auditQueue: JobQueue<AuditJob>
+    private readonly auditQueue: JobQueue<AuditJob>,
+    private readonly dnsResolver: DnsResolver,
+    private readonly urlPolicy: UrlPolicy = DEFAULT_URL_POLICY
   ) {}
 
   async request ({ url }: RequestAuditParams): Promise<RequestAuditResult> {
-    // Gate 1, the half of #7 left open. Syntactic only - no DNS - because this
-    // endpoint is anonymous and unlimited until #8, so a lookup per request is
-    // an amplifier; and because gate 2 re-resolves at fetch time anyway, which
-    // is the check that actually decides.
-    const parsed = parseAuditUrl(url)
+    // Gate 1, the half of #7 left open by the worker-side guard.
+    const parsed = parseAuditUrl(url, this.urlPolicy)
     if (!parsed.safe) return { outcome: 'rejected', reason: parsed.reason }
+
+    // Resolved as well as parsed. A hostname that answers with a private
+    // address is rejected here rather than becoming a queued job, a browser
+    // launch and a failed audit thirty seconds later.
+    //
+    // This costs a lookup per accepted request, which is only affordable
+    // because the endpoint is off unless AUDIT_API_ENABLED is set - and #8,
+    // which is what makes enabling it safe, also bounds how often this runs.
+    // Gate 2 still re-resolves at fetch time: this answer cannot be trusted
+    // by then, it merely rejects what is already known to be wrong.
+    if (!await this.resolvesSafely(parsed.url)) {
+      return { outcome: 'rejected', reason: 'blocked-address' }
+    }
 
     // Insert BEFORE enqueue. Reversed, the worker can dequeue an id whose row
     // does not exist yet.
@@ -47,6 +63,20 @@ export class DbRequestAudit implements RequestAudit {
     }
 
     return { outcome: 'queued', audit }
+  }
+
+  private async resolvesSafely (url: URL): Promise<boolean> {
+    const host = bareHostname(url)
+    // A literal address was already checked by parseAuditUrl.
+    if (isIP(host) !== 0) return true
+
+    const addresses = await this.dnsResolver.resolve(host)
+    // Empty means resolution failed: fail closed. And every address must be
+    // safe - a host answering with one public and one private is a rebinding
+    // attempt, not a coincidence.
+    return addresses.length > 0 && addresses.every(
+      (address) => !this.urlPolicy.isBlockedAddress(address)
+    )
   }
 
   /** Most enqueue failures are a blip; absorbing them keeps the delete path for real outages. */

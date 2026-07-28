@@ -19,6 +19,13 @@ const SESSION_COOKIE_ATTRIBUTES: CookieOptions = {
   path: '/'
 }
 
+/**
+ * The only response headers a controller may set. Anything else belongs to the
+ * middleware stack or to this adapter, both of which a controller must not be
+ * able to reach past.
+ */
+const CONTROLLER_HEADERS = new Set(['cache-control', 'vary'])
+
 export const applyCookies = (res: Response, cookies: CookieDirective[] | undefined): void => {
   for (const cookie of cookies ?? []) {
     if (cookie.action === 'set') {
@@ -56,7 +63,14 @@ export const adaptRoute = (controller: Controller) => {
 
     // After the middleware stack, so a controller opting into caching wins
     // over the global no-store rather than being silently overridden by it.
+    //
+    // Allowlisted, because forwarding arbitrary names would undo the boundary
+    // this adapter exists to hold: a controller could emit its own set-cookie
+    // without the security attributes below, or rewrite the CORS headers the
+    // middleware just set. Caching is the only thing a controller legitimately
+    // owns here.
     for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
+      if (!CONTROLLER_HEADERS.has(name.toLowerCase())) continue
       res.set(name, value)
     }
 

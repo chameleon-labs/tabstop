@@ -1,6 +1,7 @@
 import { BlockList, isIP } from 'node:net'
 
-export type UrlRejection = 'invalid-url' | 'blocked-scheme' | 'blocked-port' | 'blocked-address'
+export type UrlRejection =
+  | 'invalid-url' | 'blocked-scheme' | 'blocked-port' | 'blocked-address' | 'blocked-credentials'
 
 export type UrlSafetyResult =
   | { safe: true, url: URL }
@@ -123,6 +124,13 @@ export const parseAuditUrl = (
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { safe: false, reason: 'blocked-scheme' }
+  }
+
+  // Credentials survive normalisation, so an accepted URL would be stored and
+  // then handed back by the public result endpoint - and cached for an hour -
+  // exposing whatever was pasted in to everyone holding the share link.
+  if (url.username !== '' || url.password !== '') {
+    return { safe: false, reason: 'blocked-credentials' }
   }
 
   const port = url.port === '' ? DEFAULT_PORTS[url.protocol] : Number(url.port)

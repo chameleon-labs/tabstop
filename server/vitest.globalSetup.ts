@@ -22,6 +22,9 @@ export async function setup (): Promise<void> {
     // scrypt at the production cost is ~89ms per call, which would dominate
     // the suite. 16384 is the highest cost Node accepts on default maxmem.
     process.env.SCRYPT_COST ??= '16384'
+    // The audit endpoints are off by default, so the specs covering them have
+    // to turn them on explicitly.
+    process.env.AUDIT_API_ENABLED ??= 'true'
 
     const db = makeDatabase(connectionString)
     try {
