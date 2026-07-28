@@ -47,6 +47,17 @@ const DEFAULT_TRUST_PROXY_HOPS = 0
 const MAX_TRUST_PROXY_HOPS = 8
 const DEFAULT_AUDIT_RATE_CAPACITY = 5
 const DEFAULT_AUDIT_RATE_PER_HOUR = 5
+/**
+ * This is the one dial documented as production-tunable, which is exactly
+ * why it needs a ceiling like every other numeric variable in this file:
+ * unlike a typo in a timeout, AUDIT_RATE_CAPACITY=50000 boots cleanly and
+ * silently removes the limit that makes deploying this endpoint safe. 1000
+ * is far beyond what MAX_AUDIT_CONCURRENCY (16 concurrent Chromium contexts)
+ * could ever sustain, so it still catches a stray extra zero without
+ * constraining any real deployment.
+ */
+const MAX_AUDIT_RATE_CAPACITY = 1000
+const MAX_AUDIT_RATE_PER_HOUR = 1000
 
 const DEFAULT_AUDIT_CONCURRENCY = 1
 /**
@@ -239,10 +250,12 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
       source.TRUST_PROXY_HOPS, DEFAULT_TRUST_PROXY_HOPS, 'TRUST_PROXY_HOPS', MAX_TRUST_PROXY_HOPS
     ),
     auditRateCapacity: positiveIntegerOr(
-      source.AUDIT_RATE_CAPACITY, DEFAULT_AUDIT_RATE_CAPACITY, 'AUDIT_RATE_CAPACITY'
+      source.AUDIT_RATE_CAPACITY, DEFAULT_AUDIT_RATE_CAPACITY, 'AUDIT_RATE_CAPACITY',
+      MAX_AUDIT_RATE_CAPACITY
     ),
     auditRatePerHour: positiveIntegerOr(
-      source.AUDIT_RATE_PER_HOUR, DEFAULT_AUDIT_RATE_PER_HOUR, 'AUDIT_RATE_PER_HOUR'
+      source.AUDIT_RATE_PER_HOUR, DEFAULT_AUDIT_RATE_PER_HOUR, 'AUDIT_RATE_PER_HOUR',
+      MAX_AUDIT_RATE_PER_HOUR
     )
   }
 }

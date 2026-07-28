@@ -125,6 +125,46 @@ describe('rate limit middleware', () => {
     expect(limiter.refund).not.toHaveBeenCalledWith('email:email-key', bucket)
   })
 
+  it('fails open and calls next when the limiter throws on consume', async () => {
+    // The factory always wires a FallbackRateLimiter whose own fallback does
+    // no I/O, so this throw is unreachable through it - but makeRateLimit is
+    // a public seam the unit specs inject bare mocks into directly, and the
+    // "never 500s on the limiter's own account" invariant has to hold here
+    // too, not only inside that one collaborator.
+    const limiter: RateLimiter = {
+      consume: vi.fn(async () => { throw new Error('redis is on fire') }),
+      refund: vi.fn(async () => { /* no-op */ })
+    }
+    const next = vi.fn()
+    const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: () => 'ip-key' }])
+
+    await sut(request(), mockRes() as unknown as Response, next)
+
+    expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('fails open and calls next when the limiter throws on refund', async () => {
+    const limiter: RateLimiter = {
+      consume: vi.fn()
+        .mockResolvedValueOnce({ allowed: true, remaining: 2 })
+        .mockResolvedValueOnce({ allowed: false, retryAfterMs: 1000 }),
+      refund: vi.fn(async () => { throw new Error('redis is on fire') })
+    }
+    const next = vi.fn()
+    const res = mockRes()
+    const sut = makeRateLimit(limiter, [
+      { name: 'ip', bucket, key: () => 'ip-key' },
+      { name: 'email', bucket, key: () => 'email-key' }
+    ])
+
+    await sut(request(), res as unknown as Response, next)
+
+    // A throwing refund must not stop the 429 the second rule already
+    // decided on - only the consume path fails open into next().
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(429)
+  })
+
   it('skips a bucket whose key cannot be derived', async () => {
     // A body with no email is the controller's 400 to issue, not the
     // limiter's - but the IP bucket must still do its work.
@@ -200,5 +240,50 @@ describe('rate limit middleware', () => {
     )
     expect(keysSeen).toEqual(['audit:ip:203.0.113.9', 'auditRead:ip:203.0.113.9'])
     expect(new Set(keysSeen).size).toBe(2)
+  })
+
+  it('gives two addresses in the same IPv6 /64 the same key', async () => {
+    // Every major hosting provider and residential ISP routes at least a
+    // /64 to one customer, so keying on the full /128 lets one host mint an
+    // unlimited number of buckets just by incrementing the interface
+    // identifier.
+    expect(ipKey(request({ ip: '2001:db8:aaaa:1::1' })))
+      .toBe(ipKey(request({ ip: '2001:db8:aaaa:1::2' })))
+  })
+
+  it('gives two addresses in different IPv6 /64s different keys', async () => {
+    expect(ipKey(request({ ip: '2001:db8:aaaa:1::1' })))
+      .not.toBe(ipKey(request({ ip: '2001:db8:aaaa:2::1' })))
+  })
+
+  it('leaves an IPv4 address unchanged', async () => {
+    expect(ipKey(request({ ip: '203.0.113.9' }))).toBe('ip:203.0.113.9')
+  })
+
+  it('treats an IPv4-mapped IPv6 address as its IPv4 form, not truncated', async () => {
+    expect(ipKey(request({ ip: '::ffff:203.0.113.9' }))).toBe('ip:203.0.113.9')
+  })
+
+  it('does not throw on a malformed address', async () => {
+    expect(() => ipKey(request({ ip: 'not-an-ip' }))).not.toThrow()
+  })
+
+  it('still yields a key when no IP can be derived, rather than exempting the request', async () => {
+    // proxy-addr returns undefined when the socket was already destroyed, so
+    // a client that writes a full request and immediately resets the
+    // connection must share a bucket with every other unidentifiable
+    // requester, not skip the rule entirely.
+    expect(ipKey(request({ ip: undefined }))).toBe('ip:unknown')
+  })
+
+  it('hashes the email into the key rather than storing it in the clear', async () => {
+    // This Redis instance also backs BullMQ, so a plaintext
+    // `email:bob@example.com` key is readable by SCAN, a leaked RDB, or
+    // MONITOR/slowlog output - an enumerable list of every address that has
+    // ever attempted to log in.
+    const key = emailKey(request({ body: { email: 'bob@example.com' } }))
+
+    expect(key).not.toContain('bob@example.com')
+    expect(key).toMatch(/^email:[0-9a-f]{32}$/)
   })
 })

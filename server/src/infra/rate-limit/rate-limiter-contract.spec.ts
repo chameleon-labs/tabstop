@@ -68,6 +68,31 @@ describe.each<[string, () => RateLimiter]>([
     expect(denied.retryAfterMs).toBeLessThanOrEqual(3_600_000)
   })
 
+  it('scales the wait with the refill rate, not a constant', async () => {
+    // The spec above tests exactly one deficit against one rate, so
+    // `return { allowed: false, retryAfterMs: 3_600_000 }` hardcoded in both
+    // implementations would leave it green - it never proves retryAfterMs is
+    // computed from the bucket at all. A second bucket with the same
+    // capacity and deficit but four times the refill rate should wait about
+    // a quarter as long; a constant would make the two waits equal instead.
+    const quadRefill: BucketConfig = { capacity: 3, refillPerHour: 4 }
+    const sut = make()
+    const slowKey = key()
+    const fastKey = key()
+    for (let i = 0; i < 3; i++) await sut.consume(slowKey, frozen)
+    for (let i = 0; i < 3; i++) await sut.consume(fastKey, quadRefill)
+
+    const slowDenied = await sut.consume(slowKey, frozen)
+    const fastDenied = await sut.consume(fastKey, quadRefill)
+
+    if (slowDenied.allowed || fastDenied.allowed) {
+      throw new Error('expected both buckets to be empty')
+    }
+    const ratio = slowDenied.retryAfterMs / fastDenied.retryAfterMs
+    expect(ratio).toBeGreaterThan(3.5)
+    expect(ratio).toBeLessThan(4.5)
+  })
+
   it('refills over elapsed time', async () => {
     const sut = make()
     const k = key()

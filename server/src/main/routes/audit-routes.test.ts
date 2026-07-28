@@ -99,15 +99,22 @@ describe('audit routes', () => {
     })
 
     it('stores nothing for a rejected URL', async () => {
-      // Scoped to this exact literal, not a bare COUNT(*): specs share one
+      // Scoped to this literal, not a bare COUNT(*): specs share one
       // database and run in parallel, so an unscoped count drifts from
       // unrelated audits other files are inserting at the same moment and
       // proves nothing about this submission either way. No test ever
       // successfully submits this url - it is always rejected - so the count
       // for it is expected to be (and stay) zero regardless of ordering.
+      //
+      // `like` rather than an exact `=`, without reintroducing that same
+      // cross-spec race: a future regression that stored a normalised
+      // variant of this URL (e.g. with a trailing slash, or percent-decoded)
+      // would still match `=` on nothing and pass with the bug present. No
+      // other spec in this file ever submits a URL containing this
+      // substring, so widening the match does not pull in unrelated rows.
       const countForUrl = async () => await db.selectFrom('audits')
         .select(db.fn.countAll().as('n'))
-        .where('url', '=', 'file:///etc/passwd')
+        .where('url', 'like', '%etc/passwd%')
         .executeTakeFirstOrThrow()
 
       const before = await countForUrl()

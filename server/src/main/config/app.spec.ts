@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setupApp } from './app.js'
 import { connectDatabase, disconnectDatabase } from './database.js'
+import { closeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
 
 // setupApp reaches into route composition, which builds controllers that
 // grab a database connection eagerly (not per-request), so a real connection
@@ -14,6 +15,7 @@ const connectionString = (): string => {
 describe('setupApp', () => {
   afterEach(async () => {
     await disconnectDatabase()
+    await closeRateLimiter()
   })
 
   it('sets trust proxy to the configured hop count, not `true`', async () => {
@@ -40,6 +42,11 @@ describe('setupApp', () => {
       expect(app.get('trust proxy')).toBe(0)
     } finally {
       await database.disconnectDatabase()
+      // setupApp() built its rate limiter through this same reset-scoped
+      // module registry, not the one the top-level import above is bound
+      // to - closing that one instead would leave this Redis client open.
+      const rateLimitFactory = await import('../factories/middlewares/rate-limit-factory.js')
+      await rateLimitFactory.closeRateLimiter()
       vi.doUnmock('./env.js')
       vi.resetModules()
     }
@@ -65,6 +72,8 @@ describe('setupApp', () => {
       expect(app.get('trust proxy')).toBe(3)
     } finally {
       await database.disconnectDatabase()
+      const rateLimitFactory = await import('../factories/middlewares/rate-limit-factory.js')
+      await rateLimitFactory.closeRateLimiter()
       vi.doUnmock('./env.js')
       vi.resetModules()
     }

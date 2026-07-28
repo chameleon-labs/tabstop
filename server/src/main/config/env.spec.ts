@@ -215,4 +215,14 @@ describe('parseEnv', () => {
     expect(parsed.auditRateCapacity).toBe(20)
     expect(parsed.auditRatePerHour).toBe(40)
   })
+
+  it('rejects an anonymous audit bucket beyond its configured maximum', () => {
+    // This is the one dial documented as production-tunable, so unlike every
+    // other numeric variable here, a stray extra zero would boot cleanly and
+    // silently remove the limit that makes this endpoint deployable at all.
+    expect(() => parseEnv({ ...validSource, AUDIT_RATE_CAPACITY: '50000' }))
+      .toThrow('AUDIT_RATE_CAPACITY')
+    expect(() => parseEnv({ ...validSource, AUDIT_RATE_PER_HOUR: '50000' }))
+      .toThrow('AUDIT_RATE_PER_HOUR')
+  })
 })

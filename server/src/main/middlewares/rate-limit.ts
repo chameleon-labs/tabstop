@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import ipaddr from 'ipaddr.js'
 import type { NextFunction, Request, Response } from 'express'
 import type {
   BucketConfig, RateLimiter
@@ -35,7 +37,20 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
       if (rawKey === undefined) continue
       const key = `${rule.name}:${rawKey}`
 
-      const decision = await limiter.consume(key, rule.bucket)
+      // The limiter the factory wires in is a FallbackRateLimiter, whose own
+      // fallback does no I/O, so today nothing thrown here is reachable in
+      // production. But that invariant - this middleware never 5xxs on the
+      // limiter's own account - lives in that collaborator, not in this
+      // function, and makeRateLimit is a public seam the unit specs already
+      // inject bare mocks into. A throwing limiter must fail *open*, the
+      // same direction FallbackRateLimiter itself fails in.
+      let decision
+      try {
+        decision = await limiter.consume(key, rule.bucket)
+      } catch (error) {
+        console.warn('Rate limiter threw on consume; failing open:', error)
+        continue
+      }
       if (decision.allowed) {
         consumed.push({ key, bucket: rule.bucket })
         continue
@@ -44,9 +59,13 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
       // Give back what the earlier rules took. Without this, one attacker
       // exhausting a per-email bucket would also drain the per-IP bucket
       // shared by everyone behind that address.
-      await Promise.all(consumed.map(async (taken) =>
-        { await limiter.refund(taken.key, taken.bucket) }
-      ))
+      await Promise.all(consumed.map(async (taken) => {
+        try {
+          await limiter.refund(taken.key, taken.bucket)
+        } catch (error) {
+          console.warn('Rate limiter threw on refund; failing open:', error)
+        }
+      }))
 
       // Whole seconds - the header admits no other unit - and never zero,
       // which would invite an immediate retry.
@@ -66,14 +85,68 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
   }
 }
 
+/**
+ * The key never needs to be read back - only compared - so there is no
+ * reason to store the address in the clear. Redis is shared with BullMQ
+ * here, and `rl:loginEmail:email:bob@example.com` handed anyone with SCAN,
+ * a leaked RDB, or MONITOR/slowlog output a list of every address that has
+ * ever attempted to log in, typos included. The `email:` prefix stays so
+ * the key shape is still legible as "this is an email bucket" without
+ * revealing which email.
+ */
+const hashEmail = (normalised: string): string =>
+  createHash('sha256').update(normalised).digest('hex').slice(0, 32)
+
 /** Trimmed and lowercased to match the zod schema in account-validation-factory.ts. */
 export const emailKey = (req: Request): string | undefined => {
   const email = (req.body as { email?: unknown } | undefined)?.email
   if (typeof email !== 'string') return undefined
 
   const normalised = email.trim().toLowerCase()
-  return normalised === '' ? undefined : `email:${normalised}`
+  return normalised === '' ? undefined : `email:${hashEmail(normalised)}`
 }
 
-export const ipKey = (req: Request): string | undefined =>
-  req.ip === undefined ? undefined : `ip:${req.ip}`
+/**
+ * IPv6 is routed to end users in blocks of at least a /64 (every major
+ * hosting provider and residential ISP), not as single /128 addresses. Keyed
+ * on the full address, one attacker on one host mints an unlimited number of
+ * buckets simply by incrementing the interface identifier -
+ * 2001:db8:aaaa:1::1, ::2, ::3, ... - each starting fresh at full capacity.
+ * IPv4 has no such elasticity: an address is the allocation unit, so it
+ * passes through unchanged. An IPv4-mapped IPv6 address (::ffff:a.b.c.d) is
+ * unwrapped to its IPv4 form for the same reason, rather than truncated as
+ * if it were a native v6 address.
+ */
+const IPV6_BUCKET_PREFIX_GROUPS = 4 // 4 * 16 bits = /64
+
+const normaliseIp = (ip: string): string => {
+  let parsed
+  try {
+    parsed = ipaddr.parse(ip)
+  } catch {
+    // req.ip comes from proxy-addr, which is trusted to hand back a valid
+    // address or undefined - but a defensive key beats a 500 if it ever
+    // does not, so a malformed address is used as-is rather than thrown on.
+    return ip
+  }
+
+  if (parsed instanceof ipaddr.IPv4) return parsed.toNormalizedString()
+  if (parsed.isIPv4MappedAddress()) return parsed.toIPv4Address().toNormalizedString()
+
+  const prefix = new ipaddr.IPv6([
+    ...parsed.parts.slice(0, IPV6_BUCKET_PREFIX_GROUPS),
+    0, 0, 0, 0
+  ])
+  return prefix.toNormalizedString()
+}
+
+/**
+ * Never undefined: an unidentifiable requester (proxy-addr returns undefined
+ * when the socket was already destroyed) must share a bucket with every
+ * other unidentifiable requester rather than being exempt from the limit
+ * entirely. That is the right default for ipKey specifically - it differs
+ * from emailKey, where "no key" legitimately means "this rule does not
+ * apply", because a body with no email is the controller's 400 to issue.
+ */
+export const ipKey = (req: Request): string =>
+  `ip:${req.ip === undefined ? 'unknown' : normaliseIp(req.ip)}`

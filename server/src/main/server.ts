@@ -1,6 +1,7 @@
 import { setupApp } from './config/app.js'
 import { env } from './config/env.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from './config/database.js'
+import { closeRateLimiter } from './factories/middlewares/rate-limit-factory.js'
 import { PostgresHealthAdapter } from '../infra/db/postgres/health/postgres-health-adapter.js'
 
 connectDatabase(env.databaseUrl)
@@ -32,12 +33,12 @@ const shutdown = (signal: string): void => {
   forceExit.unref()
 
   server.close(() => {
-    void disconnectDatabase()
+    void Promise.all([disconnectDatabase(), closeRateLimiter()])
       .then(() => { process.exit(0) })
       .catch((error: unknown) => {
         // Exit non-zero so a supervisor or CI can distinguish a failed teardown
         // from a clean one - matching the force-exit path above.
-        console.error('Error closing the database pool:', error)
+        console.error('Error closing the database pool or rate limiter:', error)
         process.exit(1)
       })
   })

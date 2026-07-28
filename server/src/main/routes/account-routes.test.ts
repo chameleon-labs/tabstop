@@ -93,13 +93,17 @@ describe('account routes', () => {
     })
 
     it('returns 409, never 500, for the loser of a concurrent signup', async () => {
+      // The race this proves is on the email's unique constraint, not on the
+      // rate limiter, so each request gets its own address. Sharing one IP
+      // here left this spec running at exactly signup's capacity of 3 with
+      // no margin - any future change coupling the two would have started
+      // failing this spec instead of whichever one actually regressed.
       const email = newEmail()
-      const ip = uniqueIp()
 
       const responses = await Promise.all([
-        request(app).post('/api/signup').set('x-forwarded-for', ip).send({ email, password }),
-        request(app).post('/api/signup').set('x-forwarded-for', ip).send({ email, password }),
-        request(app).post('/api/signup').set('x-forwarded-for', ip).send({ email, password })
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password }),
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password }),
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password })
       ])
 
       expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409, 409])
