@@ -32,6 +32,8 @@ describe('DbRunAudit', () => {
     expect(auditStatus.claimForRun).toHaveBeenCalledWith('audit-1')
     expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), expect.any(Array))
     expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), {
+      // (10 x 2 critical) + (5 x 1 serious) = 25 deducted.
+      score: 75,
       // counted per NODE, not per rule: two alt-less images are two problems
       countsByImpact: { minor: 0, moderate: 0, serious: 1, critical: 2 },
       axeVersion: '4.12.1',
@@ -39,6 +41,17 @@ describe('DbRunAudit', () => {
       settled: true
     })
     expect(auditStatus.markFailed).not.toHaveBeenCalled()
+  })
+
+  it('scores a clean page at 100', async () => {
+    const { sut, auditStatus, pageAuditor } = makeSut()
+    pageAuditor.audit.mockResolvedValueOnce({
+      violations: [], axeVersion: '4.12.1', durationMs: 5, settled: true
+    })
+
+    await sut.run(params())
+
+    expect(auditStatus.markDone.mock.calls[0]?.[2].score).toBe(100)
   })
 
   it('audits the URL from the loaded audit row', async () => {

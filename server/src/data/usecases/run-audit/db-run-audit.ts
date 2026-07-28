@@ -1,6 +1,6 @@
 import { PermanentAuditError } from '../../../domain/errors/permanent-audit-error.js'
-import type { CountsByImpact } from '../../../domain/models/impact.js'
 import type { RunAudit, RunAuditParams } from '../../../domain/usecases/run-audit.js'
+import { summariseViolations } from '../../../domain/services/score.js'
 import type { PageAuditor } from '../../protocols/audit/page-auditor.js'
 import type {
   LoadAuditByIdRepository
@@ -8,27 +8,10 @@ import type {
 import type { MarkDoneRepository } from '../../protocols/db/audit/mark-done-repository.js'
 import type { MarkFailedRepository } from '../../protocols/db/audit/mark-failed-repository.js'
 import type { MarkRunningRepository } from '../../protocols/db/audit/mark-running-repository.js'
-import type { AddViolationParams } from '../../protocols/db/violation/violation-params.js'
 import type {
   ReplaceViolationsRepository
 } from '../../protocols/db/violation/replace-violations-repository.js'
 import { classifyAuditError } from './audit-error.js'
-
-/**
- * Every key present, zeros included: `counts_by_impact` carries a check
- * constraint requiring all four, so a partial record is rejected outright.
- */
-const countByImpact = (violations: AddViolationParams[]): CountsByImpact => {
-  const counts: CountsByImpact = { minor: 0, moderate: 0, serious: 0, critical: 0 }
-  for (const violation of violations) {
-    // A violation axe gave no severity is still persisted; it simply has no
-    // bucket to be counted in, and inventing one would corrupt the comparison
-    // regression detection makes between audits.
-    if (violation.impact === null) continue
-    counts[violation.impact] += violation.nodes.length
-  }
-  return counts
-}
 
 export type AuditStatusRepository =
   MarkRunningRepository & MarkDoneRepository & MarkFailedRepository
@@ -73,8 +56,13 @@ export class DbRunAudit implements RunAudit {
       // has no uniqueness constraint to catch a second insert of the same
       // rules. Replacing makes the write safe to repeat.
       await this.replaceViolationsRepository.replaceAll(auditId, claimedAt, result.violations)
+
+      const summary = summariseViolations(result.violations.map(
+        ({ ruleId, impact, nodes }) => ({ ruleId, impact, nodeCount: nodes.length })
+      ))
+
       await this.auditStatusRepository.markDone(auditId, claimedAt, {
-        countsByImpact: countByImpact(result.violations),
+        ...summary,
         axeVersion: result.axeVersion,
         durationMs: result.durationMs,
         settled: result.settled

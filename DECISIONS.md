@@ -6,6 +6,18 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-28 — the score formula
+
+`score = max(0, 100 − Σ over rules: weight(impact) × min(elements, 5))`, weights `critical 10 · serious 5 · moderate 2 · minor 1`. Fixed in v1 and not configurable, which is the only thing that makes two scores comparable.
+
+**The per-rule cap is the load-bearing part.** Without it, one unlabelled icon repeated 200 times zeroes an otherwise healthy page, and the number stops tracking anything a team could act on. The counts beside it stay uncapped for the opposite reason — the score must not be able to hide the size of the problem, so a rule failing 200 times deducts 50 and still reports 200.
+
+**Unknown severity deducts, at its own named weight.** axe reports `impact: null` for a violation whose checks carry no severity, and the auditor also funnels any severity we do not model to null rather than dropping a real finding. That second path is why excluding nulls was rejected: an axe upgrade introducing a new severity name would silently stop deducting for every violation carrying it, and every page would drift toward 100 with no code change and no error. `UNKNOWN_IMPACT_WEIGHT` is a separate constant from `WEIGHTS.minor`, though both are 1 — writing `?? 'minor'` invites a later reader to decide minor is too lenient and raise it, which would move real minor violations too.
+
+**Duplicated rules are merged, not rejected.** axe returns one entry per rule, so this is defensive — but the cap is per rule, so two entries for one rule apply it twice and can deduct double for a single problem. It merges rather than throwing because scoring runs inside the worker, after the page has been audited and after the violations have already been committed: throwing would convert a scoring nuance into a failed audit and discard real results. The most severe impact wins, because for a regression monitor, understating severity is the worse direction to be wrong in.
+
+The score and the counts come from one merge pass in one function, so the number and the counts printed next to it cannot disagree about what was found.
+
 ## 2026-07-28 — the audit API, and what a public payload may contain
 
 `POST /api/audits` and `GET /api/audits/:uuid` — the one-off audit with no signup, and the result behind the public share page.

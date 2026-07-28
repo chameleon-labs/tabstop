@@ -69,6 +69,12 @@ describe('toAuditResultResponse', () => {
     expect(response.completedAt).toBe('2026-07-28T10:00:30.000Z')
   })
 
+  it('maps the score through for a completed audit', () => {
+    const response = toAuditResultResponse({ audit: audit({ score: 87 }), violations: [] })
+
+    expect(response.score).toBe(87)
+  })
+
   it('reports a null completion for an audit that has not finished', () => {
     const response = toAuditResultResponse({
       audit: audit({ status: 'queued', completedAt: null, score: null, axeVersion: null }),

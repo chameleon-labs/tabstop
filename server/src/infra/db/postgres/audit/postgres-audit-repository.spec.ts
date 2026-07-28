@@ -168,6 +168,7 @@ describe('PostgresAuditRepository', () => {
         const { id, claimedAt } = await makeClaimedAudit()
         if (finish === 'done') {
           await sut.markDone(id, claimedAt, {
+            score: 100,
             countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
             axeVersion: '4.12.1', durationMs: 1, settled: true
           })
@@ -183,6 +184,7 @@ describe('PostgresAuditRepository', () => {
     it('refuses every concurrent delivery once the audit has finished', async () => {
       const { id, claimedAt } = await makeClaimedAudit()
       await sut.markDone(id, claimedAt, {
+        score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1', durationMs: 1, settled: true
       })
@@ -205,6 +207,7 @@ describe('PostgresAuditRepository', () => {
       const newOwner = await sut.claimForRun(id)
       if (newOwner === null) throw new Error('fixture failed to reclaim')
       await sut.markDone(id, newOwner, {
+        score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1', durationMs: 1, settled: true
       })
@@ -257,6 +260,10 @@ describe('PostgresAuditRepository', () => {
       const { id, claimedAt } = await makeClaimedAudit()
 
       await sut.markDone(id, claimedAt, {
+        // Not derived from the counts below: the repository writes whatever
+        // score it is given, so this pins that the column round-trips it
+        // rather than that it matches any particular formula.
+        score: 42,
         countsByImpact: { minor: 1, moderate: 0, serious: 2, critical: 3 },
         axeVersion: '4.12.1',
         durationMs: 1234,
@@ -265,20 +272,20 @@ describe('PostgresAuditRepository', () => {
 
       const row = await load(id)
       expect(row.status).toBe('done')
+      expect(row.score).toBe(42)
       // jsonb reorders keys, so this must be compared structurally.
       expect(row.counts_by_impact).toEqual({ minor: 1, moderate: 0, serious: 2, critical: 3 })
       expect(row.axe_version).toBe('4.12.1')
       expect(row.duration_ms).toBe(1234)
       expect(row.settled).toBe(false)
       expect(row.completed_at).toBeInstanceOf(Date)
-      // Scoring is #6; this worker never writes one.
-      expect(row.score).toBeNull()
     })
 
     it('writes all four impact keys, which the check constraint requires', async () => {
       const { id, claimedAt } = await makeClaimedAudit()
 
       await sut.markDone(id, claimedAt, {
+        score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1',
         durationMs: 10,
@@ -287,6 +294,22 @@ describe('PostgresAuditRepository', () => {
 
       expect((await load(id)).counts_by_impact)
         .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 0 })
+    })
+
+    it('persists both ends of the score range', async () => {
+      // audits.score is a smallint with `check (score between 0 and 100)`. A
+      // score outside it fails at completion time, a long way from whatever
+      // produced it.
+      for (const score of [0, 100]) {
+        const { id, claimedAt } = await makeClaimedAudit()
+        await sut.markDone(id, claimedAt, {
+          score,
+          countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+          axeVersion: '4.12.1', durationMs: 1, settled: true
+        })
+
+        expect((await load(id)).score).toBe(score)
+      }
     })
 
     it('marks an audit failed with a readable message and a completion time', async () => {
@@ -333,6 +356,7 @@ describe('PostgresAuditRepository', () => {
 
         if (advance === 'done') {
           await sut.markDone(audit.id, claimedAt, {
+            score: 100,
             countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
             axeVersion: '4.12.1', durationMs: 1, settled: true
           })

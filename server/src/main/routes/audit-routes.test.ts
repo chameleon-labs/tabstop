@@ -127,6 +127,7 @@ describe('audit routes', () => {
         nodes: [{ target: ['img'], html: '<img>' }]
       }])
       await audits.markDone(row.id, claimedAt, {
+        score: 90,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 1 },
         axeVersion: '4.12.1',
         durationMs: 1234,
@@ -137,6 +138,7 @@ describe('audit routes', () => {
 
       expect(response.status).toBe(200)
       expect(response.body.status).toBe('done')
+      expect(response.body.score).toBe(90)
       expect(response.body.axeVersion).toBe('4.12.1')
       expect(response.body.settled).toBe(true)
       expect(response.body.violations).toEqual([{
