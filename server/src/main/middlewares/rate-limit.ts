@@ -4,6 +4,18 @@ import type {
 } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 export type RateLimitRule = {
+  /**
+   * Both token bucket implementations key their storage purely on the string
+   * handed to `consume`/`refund` - they never see the BucketConfig alongside
+   * it. `ipKey`/`emailKey` return the same string regardless of which named
+   * bucket calls them, so without this prefix, e.g. RATE_LIMITS.auditRead and
+   * RATE_LIMITS.me - which happen to share a capacity and refill rate, so the
+   * collision would not even be visible from the numbers - would silently
+   * share one counter per address. Required, not optional, so a new rule
+   * cannot be wired up without picking a namespace: the type system is what
+   * makes the collision unconstructable rather than merely undocumented.
+   */
+  name: string
   bucket: BucketConfig
   /** Undefined means this rule does not apply to this request. */
   key: (req: Request) => string | undefined
@@ -19,8 +31,9 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
     const consumed: Array<{ key: string, bucket: BucketConfig }> = []
 
     for (const rule of rules) {
-      const key = rule.key(req)
-      if (key === undefined) continue
+      const rawKey = rule.key(req)
+      if (rawKey === undefined) continue
+      const key = `${rule.name}:${rawKey}`
 
       const decision = await limiter.consume(key, rule.bucket)
       if (decision.allowed) {
@@ -64,20 +77,3 @@ export const emailKey = (req: Request): string | undefined => {
 
 export const ipKey = (req: Request): string | undefined =>
   req.ip === undefined ? undefined : `ip:${req.ip}`
-
-/**
- * Both token bucket implementations key their storage purely on the string
- * this returns - they never see which named bucket in rate-limits.ts it came
- * from. `ipKey` alone therefore returns the identical `ip:<address>` for
- * every IP-keyed rule, so without a namespace the audit, auditRead, login,
- * signup and me buckets would all silently share one counter per address -
- * `auditRead` and `me` even share a capacity and refill rate, so that
- * collision would not be visible from the numbers alone. Wrap every rule's
- * key in this so each route gets its own storage space.
- */
-export const namespaced = (
-  name: string, key: (req: Request) => string | undefined
-) => (req: Request): string | undefined => {
-  const raw = key(req)
-  return raw === undefined ? undefined : `${name}:${raw}`
-}

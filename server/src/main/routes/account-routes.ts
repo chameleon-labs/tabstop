@@ -5,13 +5,13 @@ import {
   makeLoginController, makeLogoutController, makeMeController, makeSignupController
 } from '../factories/controllers/account/account-controller-factories.js'
 import { makeAuthMiddleware } from '../factories/middlewares/auth-middleware-factory.js'
-import { makeRateLimit, emailKey, ipKey, namespaced } from '../middlewares/rate-limit.js'
+import { makeRateLimit, emailKey, ipKey } from '../middlewares/rate-limit.js'
 import { makeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
 
 export default (router: Router): void => {
   router.post('/signup',
-    makeRateLimit(makeRateLimiter(), [{ bucket: RATE_LIMITS.signup, key: namespaced('signup', ipKey) }]),
+    makeRateLimit(makeRateLimiter(), [{ name: 'signup', bucket: RATE_LIMITS.signup, key: ipKey }]),
     adaptRoute(makeSignupController()))
 
   // Two buckets. Per-IP alone misses credential stuffing - one password
@@ -20,8 +20,8 @@ export default (router: Router): void => {
   // can become an early return that skips the dummy scrypt verify.
   router.post('/login',
     makeRateLimit(makeRateLimiter(), [
-      { bucket: RATE_LIMITS.login, key: namespaced('login', ipKey) },
-      { bucket: RATE_LIMITS.loginEmail, key: namespaced('loginEmail', emailKey) }
+      { name: 'login', bucket: RATE_LIMITS.login, key: ipKey },
+      { name: 'loginEmail', bucket: RATE_LIMITS.loginEmail, key: emailKey }
     ]),
     adaptRoute(makeLoginController()))
 
@@ -34,7 +34,7 @@ export default (router: Router): void => {
   // before rejecting it - so an unauthenticated caller could otherwise force
   // one indexed query per request.
   router.get('/me',
-    makeRateLimit(makeRateLimiter(), [{ bucket: RATE_LIMITS.me, key: namespaced('me', ipKey) }]),
+    makeRateLimit(makeRateLimiter(), [{ name: 'me', bucket: RATE_LIMITS.me, key: ipKey }]),
     adaptMiddleware(makeAuthMiddleware()),
     adaptRoute(makeMeController()))
 }

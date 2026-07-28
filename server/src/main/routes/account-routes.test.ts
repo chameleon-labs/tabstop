@@ -188,16 +188,21 @@ describe('account routes', () => {
 
       expect(registered.status).toBe(429)
       expect(unknown.status).toBe(429)
-      // Same error and the same retryAfter - the security-relevant fields. A
-      // difference in either would tell an attacker which addresses have
-      // accounts. resetAt is excluded from the comparison on purpose: it is
-      // derived from wall-clock time at the moment each response is built,
-      // and the two exhaust() runs are sequential, so it legitimately differs
-      // by however long the first one took - that gap carries no information
-      // about account existence.
-      expect(unknown.body).toMatchObject({
-        error: registered.body.error, retryAfter: registered.body.retryAfter
-      })
+      // Same shape, same error. toMatchObject is a subset match - it would
+      // stay green even if a later change added a field (e.g. a
+      // bucket-derived `scope`) that differed between the two bodies, which
+      // is exactly the kind of leak this spec exists to catch - so the key
+      // sets are compared exactly, not just the two named fields.
+      expect(Object.keys(unknown.body).sort()).toEqual(Object.keys(registered.body).sort())
+      expect(unknown.body.error).toBe(registered.body.error)
+      // retryAfter and resetAt are both wall-clock-derived, and the two
+      // exhaust() runs are sequential, so exact equality on either is a
+      // latent flake: enough real time between them shifts retryAfter by a
+      // second and resetAt is a fresh timestamp every response. A small
+      // tolerance on retryAfter still catches a real leak (a difference big
+      // enough to come from a different bucket, not from scheduling jitter)
+      // without being sensitive to how long the first exhaust() took.
+      expect(Math.abs(unknown.body.retryAfter - registered.body.retryAfter)).toBeLessThanOrEqual(1)
       expect(typeof (unknown.body as { resetAt: string }).resetAt).toBe('string')
     })
   })

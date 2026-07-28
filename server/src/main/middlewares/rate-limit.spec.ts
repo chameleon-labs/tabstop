@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express'
 import { describe, expect, it, vi } from 'vitest'
-import { makeRateLimit, emailKey, ipKey, namespaced } from './rate-limit.js'
+import { makeRateLimit, emailKey, ipKey } from './rate-limit.js'
 import type {
   BucketConfig, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
@@ -33,7 +33,7 @@ describe('rate limit middleware', () => {
     // and stops being assignable to the others, which is a vitest/TS
     // interaction rather than anything about the middleware under test.
     const next = vi.fn()
-    const sut = makeRateLimit(allowingLimiter(), [{ bucket, key: (req) => req.ip }])
+    const sut = makeRateLimit(allowingLimiter(), [{ name: 'ip', bucket, key: (req) => req.ip }])
 
     await sut(request(), mockRes() as unknown as Response, next)
 
@@ -47,7 +47,7 @@ describe('rate limit middleware', () => {
     }
     const res = mockRes()
     const next = vi.fn()
-    const sut = makeRateLimit(limiter, [{ bucket, key: (req) => req.ip }])
+    const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: (req) => req.ip }])
 
     await sut(request(), res as unknown as Response, next)
 
@@ -65,7 +65,7 @@ describe('rate limit middleware', () => {
       refund: vi.fn(async () => { /* no-op */ })
     }
     const res = mockRes()
-    const sut = makeRateLimit(limiter, [{ bucket, key: (req) => req.ip }])
+    const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: (req) => req.ip }])
 
     await sut(request(), res as unknown as Response, vi.fn())
 
@@ -83,7 +83,7 @@ describe('rate limit middleware', () => {
       refund: vi.fn(async () => { /* no-op */ })
     }
     const res = mockRes()
-    const sut = makeRateLimit(limiter, [{ bucket, key: (req) => req.ip }])
+    const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: (req) => req.ip }])
 
     await sut(request(), res as unknown as Response, vi.fn())
 
@@ -93,8 +93,8 @@ describe('rate limit middleware', () => {
   it('consumes every configured bucket', async () => {
     const limiter = allowingLimiter()
     const sut = makeRateLimit(limiter, [
-      { bucket, key: (req) => req.ip },
-      { bucket, key: (req) => `email:${String((req.body as { email: string }).email)}` }
+      { name: 'ip', bucket, key: (req) => req.ip },
+      { name: 'email', bucket, key: (req) => `email:${String((req.body as { email: string }).email)}` }
     ])
 
     await sut(request({ body: { email: 'a@b.com' } }), mockRes() as unknown as Response, vi.fn())
@@ -112,14 +112,17 @@ describe('rate limit middleware', () => {
       refund: vi.fn(async () => { /* no-op */ })
     }
     const sut = makeRateLimit(limiter, [
-      { bucket, key: () => 'ip-key' },
-      { bucket, key: () => 'email-key' }
+      { name: 'ip', bucket, key: () => 'ip-key' },
+      { name: 'email', bucket, key: () => 'email-key' }
     ])
 
     await sut(request(), mockRes() as unknown as Response, vi.fn())
 
-    expect(limiter.refund).toHaveBeenCalledWith('ip-key', bucket)
-    expect(limiter.refund).not.toHaveBeenCalledWith('email-key', bucket)
+    // The middleware itself prefixes the key with the rule's name (that is
+    // what closes the collision bug), so the refund call carries that same
+    // prefixed key, not the bare string the rule's `key` function returned.
+    expect(limiter.refund).toHaveBeenCalledWith('ip:ip-key', bucket)
+    expect(limiter.refund).not.toHaveBeenCalledWith('email:email-key', bucket)
   })
 
   it('skips a bucket whose key cannot be derived', async () => {
@@ -127,8 +130,8 @@ describe('rate limit middleware', () => {
     // limiter's - but the IP bucket must still do its work.
     const limiter = allowingLimiter()
     const sut = makeRateLimit(limiter, [
-      { bucket, key: (req) => req.ip },
-      { bucket, key: (req) => {
+      { name: 'ip', bucket, key: (req) => req.ip },
+      { name: 'email', bucket, key: (req) => {
         const email = (req.body as { email?: unknown }).email
         return typeof email === 'string' ? `email:${email}` : undefined
       } }
@@ -157,7 +160,7 @@ describe('rate limit middleware', () => {
   it('allows the request when no key at all can be derived', async () => {
     const limiter = allowingLimiter()
     const next = vi.fn()
-    const sut = makeRateLimit(limiter, [{ bucket, key: () => undefined }])
+    const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: () => undefined }])
 
     await sut(request(), mockRes() as unknown as Response, next)
 
@@ -165,18 +168,37 @@ describe('rate limit middleware', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
-  it('gives two rules on the same requester distinct storage keys', () => {
-    // Both token bucket implementations key their storage purely on this
-    // string, with no awareness of which BucketConfig it was called with. A
-    // bare ipKey returns the identical "ip:<address>" for every rule, so
-    // without a namespace, e.g. RATE_LIMITS.audit and RATE_LIMITS.auditRead
-    // would silently share one counter per address.
-    const req = request()
+  it("prefixes every rule's key with its own name before it reaches the limiter", async () => {
+    // Both token bucket implementations key their storage purely on the
+    // string handed to consume/refund - they never see the BucketConfig
+    // alongside it. `ipKey` alone returns the identical "ip:<address>" for
+    // every IP-keyed rule, so without this prefix, two differently-named
+    // rules built from the same key function (e.g. RATE_LIMITS.audit and
+    // RATE_LIMITS.auditRead, both keyed on ipKey) would silently share one
+    // counter per address. `name` is required on RateLimitRule and the
+    // prefix is applied inside makeRateLimit itself - not opt-in at the call
+    // site - so a new rule cannot be wired up without a namespace.
+    const limiter = allowingLimiter()
+    const sut = makeRateLimit(limiter, [{ name: 'audit', bucket, key: ipKey }])
 
-    expect(namespaced('audit', ipKey)(req)).not.toBe(namespaced('auditRead', ipKey)(req))
+    await sut(request(), mockRes() as unknown as Response, vi.fn())
+
+    expect(limiter.consume).toHaveBeenCalledWith('audit:ip:203.0.113.9', bucket)
   })
 
-  it('still reports no key when the wrapped key function reports none', () => {
-    expect(namespaced('audit', () => undefined)(request())).toBeUndefined()
+  it('gives two rules on the same requester distinct storage keys purely from their names', async () => {
+    const limiter = allowingLimiter()
+    const sut = makeRateLimit(limiter, [
+      { name: 'audit', bucket, key: ipKey },
+      { name: 'auditRead', bucket, key: ipKey }
+    ])
+
+    await sut(request(), mockRes() as unknown as Response, vi.fn())
+
+    const keysSeen = (limiter.consume as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0]
+    )
+    expect(keysSeen).toEqual(['audit:ip:203.0.113.9', 'auditRead:ip:203.0.113.9'])
+    expect(new Set(keysSeen).size).toBe(2)
   })
 })
