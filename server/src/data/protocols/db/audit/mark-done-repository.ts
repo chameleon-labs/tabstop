@@ -1,6 +1,8 @@
 import type { CountsByImpact } from '../../../../domain/models/impact.js'
 
 export type MarkDoneParams = {
+  /** Integer in [0, 100]. See `domain/services/score.ts` for the formula. */
+  score: number
   countsByImpact: CountsByImpact
   axeVersion: string
   durationMs: number
@@ -10,9 +12,6 @@ export type MarkDoneParams = {
 
 export interface MarkDoneRepository {
   /**
-   * Deliberately takes no score: scoring is #6, and this worker stores raw
-   * violations. `audits.score` stays null until that lands.
-   *
    * Fenced on the claim token. An attempt that paused past its lease can
    * resume after another worker has reclaimed and finished the audit, and an
    * unfenced write would then overwrite the new owner's result with a stale

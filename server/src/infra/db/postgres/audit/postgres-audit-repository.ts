@@ -151,6 +151,7 @@ export class PostgresAuditRepository implements
       .updateTable('audits')
       .set({
         status: 'done',
+        score: result.score,
         // Stringified because node-postgres serialises a plain object as JSON
         // but an array as a Postgres array literal. The column type requires a
         // string so the compiler enforces the rule uniformly across jsonb.

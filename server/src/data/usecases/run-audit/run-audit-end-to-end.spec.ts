@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { Kysely } from 'kysely'
 import { DbRunAudit } from './db-run-audit.js'
 import { PermanentAuditError } from '../../../domain/errors/permanent-audit-error.js'
+import { summariseViolations } from '../../../domain/services/score.js'
 import { PlaywrightAxeAuditor } from '../../../infra/audit/playwright-axe-auditor.js'
 import { startFixtureServer, type FixtureServer } from '../../../infra/audit/test/fixture-server.js'
 import { makeDatabase } from '../../../infra/db/postgres/helpers/postgres-helper.js'
@@ -86,14 +87,24 @@ describe('run-audit end to end', () => {
     expect(audit.axe_version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(audit.duration_ms).toBeGreaterThan(0)
     expect(audit.completed_at).toBeInstanceOf(Date)
-    // Scoring is #6; this worker never writes one.
-    expect(audit.score).toBeNull()
 
     const violations = await db.selectFrom('violations').selectAll()
       .where('audit_id', '=', auditId).execute()
     const ruleIds = violations.map((violation) => violation.rule_id)
     expect(ruleIds).toContain('image-alt')
     expect(ruleIds).toContain('label')
+
+    // The score has to come from the violations this run actually stored, not
+    // from a constant that happens to match.
+    const expected = summariseViolations(violations.map((violation) => ({
+      ruleId: violation.rule_id,
+      impact: violation.impact,
+      nodeCount: violation.nodes.length
+    })))
+    expect(audit.score).toBe(expected.score)
+    // Non-tautological: the fixture page has real violations, so a score of
+    // 100 would mean nothing was deducted for them.
+    expect(audit.score).toBeLessThan(100)
 
     // jsonb reorders keys, so compare structurally rather than as JSON text.
     const counts = audit.counts_by_impact

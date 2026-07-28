@@ -127,6 +127,7 @@ describe('audit routes', () => {
         nodes: [{ target: ['img'], html: '<img>' }]
       }])
       await audits.markDone(row.id, claimedAt, {
+        score: 90,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 1 },
         axeVersion: '4.12.1',
         durationMs: 1234,
