@@ -24,6 +24,33 @@ export const makeQueue = <TPayload>(name: string, connectionUrl: string): Payloa
     defaultJobOptions: DEFAULT_JOB_OPTIONS
   })
 
+/**
+ * Caps how many of this queue's jobs run at once across EVERY worker process.
+ *
+ * `concurrency` on the Worker is a per-process number. Two replicas of the
+ * worker configured with `AUDIT_CONCURRENCY=3` run six Chromium instances
+ * between them, so the cost backstop the setting exists to be is only as good
+ * as a replica count nothing enforces. This limit lives in Redis and every
+ * worker on the queue respects it, so the ceiling holds however many
+ * processes are consuming.
+ *
+ * Set at worker startup, which means the value is whatever the most recently
+ * started worker was configured with - correct while replicas share a
+ * deployment's environment, and the reason the per-process `concurrency` is
+ * still passed as well: that one bounds a single process even if this call
+ * never happened.
+ */
+export const setGlobalConcurrency = async (
+  name: string, connectionUrl: string, concurrency: number
+): Promise<void> => {
+  const queue = makeQueue(name, connectionUrl)
+  try {
+    await queue.setGlobalConcurrency(concurrency)
+  } finally {
+    await queue.close()
+  }
+}
+
 export const makeWorker = <TPayload>(
   name: string,
   connectionUrl: string,

@@ -2,7 +2,7 @@ import { UnrecoverableError } from 'bullmq'
 import { env } from './config/env.js'
 import { connectDatabase, disconnectDatabase } from './config/database.js'
 import { QUEUE_NAMES, type AuditPayload, type PingPayload } from './config/queue-names.js'
-import { makeWorker } from '../infra/queue/helpers/bullmq-helper.js'
+import { makeWorker, setGlobalConcurrency } from '../infra/queue/helpers/bullmq-helper.js'
 import { runWithTimeout } from '../infra/queue/run-with-timeout.js'
 import { PermanentAuditError } from '../domain/errors/permanent-audit-error.js'
 import {
@@ -24,6 +24,13 @@ const pingWorker = makeWorker<PingPayload>(QUEUE_NAMES.ping, env.redisUrl, async
     console.log(`ping received, requested at ${job.data.requestedAt}`)
   })
 })
+
+// Before the audit worker exists, because a Worker starts pulling jobs the
+// moment it is constructed. Every audit is ~30s of Chromium at 300-500MB, so
+// this is the cost backstop the per-IP rate limit is not: the limit bounds one
+// source, and this bounds the whole system regardless of how many sources or
+// how many worker replicas there are.
+await setGlobalConcurrency(QUEUE_NAMES.audit, env.redisUrl, env.auditConcurrency)
 
 const auditWorker = makeWorker<AuditPayload>(QUEUE_NAMES.audit, env.redisUrl, async (job) => {
   await runWithTimeout(env.auditJobTimeoutMs, async (signal) => {
@@ -77,7 +84,7 @@ for (const worker of workers) {
 await Promise.all(workers.map(async (worker) => { await worker.waitUntilReady() }))
 console.log(
   `Worker started, consuming "${QUEUE_NAMES.ping}" and "${QUEUE_NAMES.audit}" ` +
-  `(audit concurrency ${env.auditConcurrency})`
+  `(audit concurrency ${env.auditConcurrency}, enforced across all workers)`
 )
 
 const shutdown = (signal: string): void => {

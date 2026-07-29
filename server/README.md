@@ -93,7 +93,7 @@ await q.close()
 
 ### Rate limiting
 
-A Redis token bucket in front of `POST /api/audits`, `GET /api/audits/:uuid`, `/signup`, `/login` (per IP and, separately, per submitted email) and `GET /api/me`. `/logout` is deliberately unlimited so it stays idempotent. When Redis cannot answer, the limiter degrades to a per-instance in-memory bucket rather than rejecting — see `DECISIONS.md` for why.
+A Redis token bucket in front of `POST /api/audits`, `GET /api/audits/:uuid`, `/signup`, `/login` (per IP and, separately, per submitted email), `/logout` and `GET /api/me`. `/logout`'s bucket is deliberately the loosest of them — signing out is idempotent and someone with several tabs may fire it more than once, so the capacity sits far above any genuine client — but it is not unlimited: every call carrying a cookie is an indexed DELETE, and an anonymous caller can drive those as fast as it opens sockets. When Redis cannot answer, the limiter degrades to a per-instance in-memory bucket rather than rejecting — see `DECISIONS.md` for why.
 
 `TRUST_PROXY_HOPS` (default `0`) is how many reverse proxies sit in front of the process; Express reads the client IP from that many positions in `X-Forwarded-For`. It must be a real hop count, never `true` — see the comment in `main/config/app.ts`.
 
@@ -133,6 +133,8 @@ Auditing a user-supplied URL is an SSRF primitive, so the worker refuses private
 - The submission-time gate arrives with #9, in its `request-audit` usecase.
 
 Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300–500MB per context), `AUDIT_JOB_TIMEOUT_MS` (45s), `AUDIT_NAVIGATION_TIMEOUT_MS` (20s), `AUDIT_SETTLE_BUDGET_MS` (10s), `AUDIT_FALLBACK_SETTLE_MS` (1s).
+
+`AUDIT_CONCURRENCY` is applied **globally**, not per process: each worker passes it as its own `concurrency` and also writes it to the queue as BullMQ's global concurrency at startup, so N replicas run N × the limit only if the second mechanism fails. Because it is set at startup, the effective value is the one the most recently started worker was configured with.
 
 ## Schema
 
