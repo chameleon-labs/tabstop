@@ -1,6 +1,5 @@
-import { isIP } from 'node:net'
 import {
-  DEFAULT_URL_POLICY, bareHostname, parseAuditUrl, type UrlPolicy
+  bareHostname, parseAuditUrl, type UrlPolicy
 } from '../../../domain/services/url-safety.js'
 import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
 import type {
@@ -47,7 +46,10 @@ export class DbRequestAudit implements RequestAudit {
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
     private readonly auditQueue: AuditJobQueue,
     private readonly dnsResolver: DnsResolver,
-    private readonly urlPolicy: UrlPolicy = DEFAULT_URL_POLICY,
+    // Required, per the boundary main established: data/ must not name the
+    // concrete policy, because doing so meant importing node:net into a layer
+    // that has to stay free of the runtime. The composition root injects it.
+    private readonly urlPolicy: UrlPolicy,
     private readonly maxQueueDepth: number = DEFAULT_MAX_QUEUE_DEPTH
   ) {}
 
@@ -147,7 +149,7 @@ export class DbRequestAudit implements RequestAudit {
   private async resolvesSafely (url: URL): Promise<boolean> {
     const host = bareHostname(url)
     // A literal address was already checked by parseAuditUrl.
-    if (isIP(host) !== 0) return true
+    if (this.urlPolicy.isIpLiteral(host)) return true
 
     const addresses = await this.dnsResolver.resolve(host)
     // Empty means resolution failed: fail closed. And every address must be

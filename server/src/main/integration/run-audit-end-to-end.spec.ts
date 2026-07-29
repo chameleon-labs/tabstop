@@ -1,19 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { isBlockedAddress, type UrlPolicy } from '../../../domain/services/url-safety.js'
-import { NodeDnsResolver } from '../../../infra/net/node-dns-resolver.js'
+import type { UrlPolicy } from '../../domain/services/url-safety.js'
+import { DEFAULT_URL_POLICY, isBlockedAddress } from '../../infra/net/ip-address-policy.js'
+import { NodeDnsResolver } from '../../infra/net/node-dns-resolver.js'
 import { randomUUID } from 'node:crypto'
 import type { Kysely } from 'kysely'
-import { DbRunAudit } from './db-run-audit.js'
-import { PermanentAuditError } from '../../../domain/errors/permanent-audit-error.js'
-import { summariseViolations } from '../../../domain/services/score.js'
-import { PlaywrightAxeAuditor } from '../../../infra/audit/playwright-axe-auditor.js'
-import { startFixtureServer, type FixtureServer } from '../../../infra/audit/test/fixture-server.js'
-import { makeDatabase } from '../../../infra/db/postgres/helpers/postgres-helper.js'
-import type { Database } from '../../../infra/db/postgres/database.js'
-import { PostgresAuditRepository } from '../../../infra/db/postgres/audit/postgres-audit-repository.js'
+import { DbRunAudit } from '../../data/usecases/run-audit/db-run-audit.js'
+import { PermanentAuditError } from '../../domain/errors/permanent-audit-error.js'
+import { summariseViolations } from '../../domain/services/score.js'
+import { PlaywrightAxeAuditor } from '../../infra/audit/playwright-axe-auditor.js'
+import { startFixtureServer, type FixtureServer } from '../../infra/audit/test/fixture-server.js'
+import { makeDatabase } from '../../infra/db/postgres/helpers/postgres-helper.js'
+import type { Database } from '../../infra/db/postgres/database.js'
+import { PostgresAuditRepository } from '../../infra/db/postgres/audit/postgres-audit-repository.js'
 import {
   PostgresViolationRepository
-} from '../../../infra/db/postgres/violation/postgres-violation-repository.js'
+} from '../../infra/db/postgres/violation/postgres-violation-repository.js'
 
 /**
  * The acceptance criterion for #5, with nothing faked below the queue: a real
@@ -30,7 +31,10 @@ import {
 const allowingFixtureServer: UrlPolicy = {
   isAllowedPort: () => true,
   isBlockedAddress: (address) =>
-    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)
+    address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address),
+  // Not relaxed: recognising an address is not part of what these specs need
+  // to bend, so it stays the real implementation.
+  isIpLiteral: DEFAULT_URL_POLICY.isIpLiteral
 }
 
 describe('run-audit end to end', () => {

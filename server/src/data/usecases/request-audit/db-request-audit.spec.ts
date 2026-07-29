@@ -5,14 +5,31 @@ import {
 } from '../../test/index.js'
 import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
 import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
-import { DEFAULT_URL_POLICY } from '../../../domain/services/url-safety.js'
+import type { UrlPolicy } from '../../../domain/services/url-safety.js'
+
+/**
+ * A stub, not the real policy. This is a unit spec for the usecase's
+ * ORCHESTRATION - validate, resolve, insert, enqueue, and what it undoes when
+ * one of those fails - and the policy is a collaborator it is handed. Reaching
+ * into infra/ for the real one would put a driver-layer detail inside a data/
+ * spec and make these assertions depend on a range list that has nothing to do
+ * with what they are checking.
+ *
+ * Every range and port rule the real policy enforces is covered exhaustively
+ * beside that implementation, with no mocks at all.
+ */
+const stubPolicy: UrlPolicy = {
+  isAllowedPort: (port) => port === 80 || port === 443,
+  isBlockedAddress: (address) => !address.startsWith('93.184.216.'),
+  isIpLiteral: (host) => /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
+}
 
 const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const audits = mockAddAuditRepository()
   const deletes = mockDeleteQueuedAuditRepository()
   const queue = mockAuditQueue()
   const resolver = { resolve: vi.fn<DnsResolver['resolve']>(async () => addresses) }
-  const sut = new DbRequestAudit(audits, deletes, queue, resolver)
+  const sut = new DbRequestAudit(audits, deletes, queue, resolver, stubPolicy)
   return { sut, audits, deletes, queue, resolver }
 }
 
@@ -37,7 +54,7 @@ describe('DbRequestAudit queue depth', () => {
     const deletes = mockDeleteQueuedAuditRepository()
     const resolver = { resolve: vi.fn<DnsResolver['resolve']>(async () => ['93.184.216.34']) }
     const sut = new DbRequestAudit(
-      audits, deletes, queue, resolver, DEFAULT_URL_POLICY, maxDepth
+      audits, deletes, queue, resolver, stubPolicy, maxDepth
     )
     return { sut, audits, deletes, queue }
   }

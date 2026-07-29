@@ -1,6 +1,6 @@
 import express, { type Express } from 'express'
 import { env } from './env.js'
-import { setupMiddlewares } from './middlewares.js'
+import { setupErrorHandling, setupMiddlewares } from './middlewares.js'
 import { setupRoutes } from './routes.js'
 
 export const setupApp = (): Express => {
@@ -11,5 +11,6 @@ export const setupApp = (): Express => {
   app.set('trust proxy', env.trustProxyHops)
   setupMiddlewares(app)
   setupRoutes(app)
+  setupErrorHandling(app)
   return app
 }

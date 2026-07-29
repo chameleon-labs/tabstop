@@ -99,30 +99,27 @@ describe('audit routes', () => {
     })
 
     it('stores nothing for a rejected URL', async () => {
-      // Scoped to this literal, not a bare COUNT(*): specs share one
-      // database and run in parallel, so an unscoped count drifts from
-      // unrelated audits other files are inserting at the same moment and
-      // proves nothing about this submission either way. No test ever
-      // successfully submits this url - it is always rejected - so the count
-      // for it is expected to be (and stay) zero regardless of ordering.
+      // Both branches fixed this independently and each caught half of it;
+      // this keeps both halves.
       //
-      // `like` rather than an exact `=`, without reintroducing that same
-      // cross-spec race: a future regression that stored a normalised
-      // variant of this URL (e.g. with a trailing slash, or percent-decoded)
-      // would still match `=` on nothing and pass with the bug present. No
-      // other spec in this file ever submits a URL containing this
-      // substring, so widening the match does not pull in unrelated rows.
-      const countForUrl = async () => await db.selectFrom('audits')
-        .select(db.fn.countAll().as('n'))
-        .where('url', 'like', '%etc/passwd%')
+      // A unique marker, because the specs share one Postgres container and
+      // vitest runs files in parallel - a table-wide count reports whichever
+      // row another file inserted in the same instant, which is exactly how
+      // this assertion started flaking.
+      //
+      // And `like` on that marker rather than `=` on the whole url, because a
+      // regression that stored a NORMALISED variant - a trailing slash, a
+      // percent-decoded path - would match `=` on nothing and pass with the
+      // bug present. The marker is what keeps widening the match safe: no
+      // other spec can produce a row containing it.
+      const marker = randomUUID()
+
+      await submit(`file:///etc/passwd?${marker}`)
+
+      const stored = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
+        .where('url', 'like', `%${marker}%`)
         .executeTakeFirstOrThrow()
-
-      const before = await countForUrl()
-
-      await submit('file:///etc/passwd')
-
-      const after = await countForUrl()
-      expect(after.n).toEqual(before.n)
+      expect(Number(stored.n)).toBe(0)
     })
 
     it('answers 429 once the per-IP bucket is empty', async () => {
