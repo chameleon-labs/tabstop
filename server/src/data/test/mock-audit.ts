@@ -92,5 +92,5 @@ export const mockAuditQueue = () => ({
   has: vi.fn<AuditJobQueue['has']>(async () => false),
   // An empty queue by default: depth is not what most of these specs are
   // about, and a mock that saturated by accident would fail all of them.
-  waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => 0)
+  backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => 0)
 })

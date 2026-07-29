@@ -139,8 +139,8 @@ export class DbRequestAudit implements RequestAudit {
    */
   private async queueIsSaturated (): Promise<boolean> {
     try {
-      const waiting = await withTimeout(this.auditQueue.waitingCount(), ENQUEUE_TIMEOUT_MS)
-      return waiting >= this.maxQueueDepth
+      const backlog = await withTimeout(this.auditQueue.backlogCount(), ENQUEUE_TIMEOUT_MS)
+      return backlog >= this.maxQueueDepth
     } catch {
       return false
     }

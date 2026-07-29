@@ -39,11 +39,27 @@ export class BullMqAuditQueue implements AuditJobQueue {
   }
 
   /**
-   * Waiting only - not active, delayed or failed. Submission is asking how
-   * long the line in front of a new job would be, and a job already running
-   * is not in that line, nor is one scheduled for later.
+   * Waiting AND delayed - not active, not failed, not completed.
+   *
+   * Delayed is in here because in this queue it means one thing only: a job
+   * that threw and is inside its retry backoff. The queue's defaults are
+   * three attempts with exponential backoff from one second, and nothing
+   * enqueues an audit with a delay of its own, so every delayed job is
+   * accepted work that returns to the runnable line within a couple of
+   * seconds and takes a worker slot when it does. Counting waiting alone
+   * makes the depth dip below the truth for the length of that backoff.
+   *
+   * The window is small, so this is not the difference between a bounded and
+   * an unbounded queue - the retries come back and the cap re-engages either
+   * way. It is about which way an imprecise cost control should be wrong:
+   * undercounting fails open, and the whole point of the cap is that the
+   * expensive direction is the one to refuse.
+   *
+   * Active is left out: it is bounded by the workers' own concurrency, not by
+   * anything a submitter can drive, so it would add a constant to the number
+   * without telling submission anything it can act on.
    */
-  async waitingCount (): Promise<number> {
-    return await this.queue.getWaitingCount()
+  async backlogCount (): Promise<number> {
+    return await this.queue.getJobCountByTypes('waiting', 'delayed')
   }
 }

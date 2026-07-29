@@ -110,10 +110,16 @@ describe('BullMqJobQueue', () => {
 
 describe('BullMqAuditQueue', () => {
   let queue: PayloadQueue<AuditJob> | null = null
+  let worker: PayloadWorker<AuditJob> | null = null
 
   afterEach(async () => {
-    await queue?.close()
-    queue = null
+    try {
+      await worker?.close()
+    } finally {
+      await queue?.close()
+      worker = null
+      queue = null
+    }
   })
 
   // audits.id is a bigserial, so in production every audit id is all digits -
@@ -158,34 +164,59 @@ describe('BullMqAuditQueue', () => {
     expect(await sut.has('67890')).toBe(false)
   })
 
-  it('counts waiting jobs, and only waiting ones', async () => {
+  it('counts jobs that are waiting and jobs inside a retry backoff', async () => {
     // The whole queue cap rests on this number meaning what submission thinks
-    // it means: "how long is the line in front of a job added now". A delayed
-    // job is not in that line - it is not runnable yet - and counting it would
-    // make a queue of scheduled retries look like a saturated one and refuse
-    // submissions that the workers have capacity for.
+    // it means: how much accepted work is still owed a worker slot. A delayed
+    // job is owed one - in this queue "delayed" means "threw, and is inside
+    // its retry backoff", because nothing enqueues an audit with a delay of
+    // its own. Counting waiting alone hides those for the length of the
+    // backoff, which makes a cost control wrong in the direction that accepts
+    // more work.
     //
-    // Driven against real BullMQ rather than a fake, because the distinction
-    // between waiting and every other state is BullMQ's, not ours: getWaiting
-    // Count is the only thing that decides it, and a fake would just agree
+    // Driven against real BullMQ rather than a fake, because which state a
+    // job is in is BullMQ's decision, not ours: a fake would simply agree
     // with whichever method we happened to call.
     const name = `audit-${randomUUID()}`
     queue = makeQueue<AuditJob>(name, connectionUrl())
     const sut = new BullMqAuditQueue(queue)
 
-    expect(await sut.waitingCount()).toBe(0)
+    expect(await sut.backlogCount()).toBe(0)
 
     await sut.enqueueOnce({ auditId: '111' })
     await sut.enqueueOnce({ auditId: '222' })
-    expect(await sut.waitingCount()).toBe(2)
+    expect(await sut.backlogCount()).toBe(2)
 
-    // Not waiting: scheduled for later, so nothing is queued behind it.
+    // Not runnable yet, but accepted and coming back.
     await queue.add(name, { auditId: '333' }, { delay: 60_000 })
-    expect(await sut.waitingCount()).toBe(2)
+    expect(await sut.backlogCount()).toBe(3)
 
     // Deduped rather than counted twice, matching enqueueOnce's contract.
     await sut.enqueueOnce({ auditId: '111' })
-    expect(await sut.waitingCount()).toBe(2)
+    expect(await sut.backlogCount()).toBe(3)
+  })
+
+  it('leaves finished work out of the backlog', async () => {
+    // The other half of the boundary: a job that has run is not owed a slot,
+    // so a queue that has done a lot of work must not look saturated. Failed
+    // jobs are kept for a day by removeOnFail, so this would be a slow leak
+    // into the depth check if the count reached for them.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    worker = makeWorker<AuditJob>(name, connectionUrl(), async (job) => {
+      if (job.data.auditId === '555') throw new Error('permanent')
+    })
+    await worker.waitUntilReady()
+
+    await queue.add(name, { auditId: '444' }, { attempts: 1 })
+    await queue.add(name, { auditId: '555' }, { attempts: 1 })
+
+    const sut = new BullMqAuditQueue(queue)
+    await vi.waitFor(async () => {
+      expect(await sut.backlogCount()).toBe(0)
+    }, { timeout: 10_000 })
+
+    expect(await queue.getJobCountByTypes('completed')).toBe(1)
+    expect(await queue.getJobCountByTypes('failed')).toBe(1)
   })
 
   it('does not collide with the ids BullMQ assigns itself', async () => {

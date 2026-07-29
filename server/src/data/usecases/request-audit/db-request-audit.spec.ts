@@ -42,10 +42,10 @@ describe('DbRequestAudit queue depth', () => {
    * AUDIT_CONCURRENCY bounds how many audits run at once, not how many wait,
    * and each waiting one is a Redis job plus a row that a user is polling.
    */
-  const deepQueue = (waiting: number) => {
+  const deepQueue = (backlog: number) => {
     const queue = mockAuditQueue()
     return Object.assign(queue, {
-      waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => waiting)
+      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => backlog)
     })
   }
 
@@ -86,7 +86,7 @@ describe('DbRequestAudit queue depth', () => {
     // unmeasurable queue indistinguishable from a full one.
     const queue = mockAuditQueue()
     const failing = Object.assign(queue, {
-      waitingCount: vi.fn<AuditJobQueue['waitingCount']>(async () => {
+      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => {
         throw new Error('redis unreachable')
       })
     })
@@ -140,7 +140,7 @@ describe('DbRequestAudit queue depth', () => {
     const result = await sut.request({ url: 'file:///etc/passwd' })
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'blocked-scheme' })
-    expect(queue.waitingCount).not.toHaveBeenCalled()
+    expect(queue.backlogCount).not.toHaveBeenCalled()
   })
 })
 
