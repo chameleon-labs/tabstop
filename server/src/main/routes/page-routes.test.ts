@@ -98,6 +98,30 @@ describe('page routes', () => {
 
       expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401])
     })
+
+    it('meters an unauthenticated caller rather than letting it drive session lookups', async () => {
+      // The limiter has to run BEFORE the auth middleware, which looks a
+      // session up before rejecting it - otherwise an anonymous caller gets an
+      // indexed query per request, as fast as it can open sockets, and every
+      // bucket on this router sits behind the lookup it was meant to protect.
+      //
+      // This is the assertion that catches it, because the wrong order still
+      // answers 401 forever and looks perfectly healthy. Registering auth as a
+      // `router.use('/pages', ...)` above the routes is the tempting way to get
+      // it wrong: Express runs layers in registration order, so the prefix
+      // middleware wins wherever the limiters are written.
+      const ip = '172.21.0.2'
+      const probe = async (): Promise<number> =>
+        (await request(app).get('/api/pages').set('x-forwarded-for', ip)).status
+
+      const statuses: number[] = []
+      for (let index = 0; index <= RATE_LIMITS.pageRead.capacity; index++) {
+        statuses.push(await probe())
+      }
+
+      expect(statuses.at(0)).toBe(401)
+      expect(statuses.at(-1)).toBe(429)
+    })
   })
 
   describe('POST /api/pages', () => {

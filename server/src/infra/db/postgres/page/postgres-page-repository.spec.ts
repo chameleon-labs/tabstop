@@ -1,10 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { Kysely, PostgresDialect } from 'kysely'
+import { CompiledQuery, Kysely, PostgresDialect } from 'kysely'
 import pg from 'pg'
 import type { Database } from '../database.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
-import { PostgresPageRepository } from './postgres-page-repository.js'
+import { HISTORY_POINTS, PostgresPageRepository } from './postgres-page-repository.js'
+
+type IssuedQuery = { sql: string, parameters: readonly unknown[] }
+
+const connectionUrl = (): string => {
+  const url = process.env.DATABASE_URL
+  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
+  return url
+}
 
 /**
  * A second connection that records the SQL it issues.
@@ -13,16 +21,64 @@ import { PostgresPageRepository } from './postgres-page-repository.js'
  * factory, and a log option there would be a knob nothing turns. Building the
  * instance here keeps the instrumentation in the only place that wants it.
  */
-const makeCountingDatabase = (sink: string[]): Kysely<Database> => {
-  const url = process.env.DATABASE_URL
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
+const makeCountingDatabase = (sink: string[]): Kysely<Database> => new Kysely<Database>({
+  dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: connectionUrl() }) }),
+  log: (event) => {
+    if (event.level === 'query') sink.push(event.query.sql)
+  }
+})
 
-  return new Kysely<Database>({
-    dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: url }) }),
-    log: (event) => {
-      if (event.level === 'query') sink.push(event.query.sql)
+/** The same, keeping the parameters too, so a query can be re-run under EXPLAIN. */
+const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> => new Kysely<Database>({
+  dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: connectionUrl() }) }),
+  log: (event) => {
+    if (event.level === 'query') {
+      sink.push({ sql: event.query.sql, parameters: event.query.parameters })
     }
-  })
+  }
+})
+
+/**
+ * Rows read from one relation, across every node of an
+ * `EXPLAIN (ANALYZE, FORMAT JSON)` plan that scans it.
+ *
+ * Narrowed as it walks rather than typed: the plan tree is the planner's to
+ * change, and a type describing it would be a claim this spec cannot check.
+ *
+ * `Actual Rows` is reported PER LOOP, so an inner scan of a nested loop has to
+ * be multiplied by its loop count - which is the whole point here, since the
+ * lateral form runs one bounded scan per page and the total is what matters.
+ *
+ * Summing every node's rows instead was the first attempt and is meaningless:
+ * it multiplies the answer by the depth of the plan, so a Sort over a Nested
+ * Loop over a Limit counts the same thirty rows four times.
+ */
+const rowsReadFrom = (relation: string, node: unknown): number => {
+  if (Array.isArray(node)) {
+    return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0)
+  }
+  if (typeof node !== 'object' || node === null) return 0
+
+  const fields: Record<string, unknown> = { ...node }
+  const scanned = fields['Relation Name'] === relation
+  const rows = typeof fields['Actual Rows'] === 'number' ? fields['Actual Rows'] : 0
+  const loops = typeof fields['Actual Loops'] === 'number' ? fields['Actual Loops'] : 1
+  const here = scanned ? rows * loops : 0
+
+  return here + Object.entries(fields)
+    .filter(([key]) => key === 'Plans' || key === 'Plan')
+    .reduce<number>((total, [, value]) => total + rowsReadFrom(relation, value), 0)
+}
+
+const explainRowsRead = async (
+  db: Kysely<Database>, query: IssuedQuery, relation: string
+): Promise<number> => {
+  const explained = await db.executeQuery(CompiledQuery.raw(
+    `explain (analyze, format json) ${query.sql}`, [...query.parameters]
+  ))
+
+  if (explained.rows.length === 0) throw new Error('EXPLAIN returned no plan')
+  return rowsReadFrom(relation, explained.rows)
 }
 
 describe('PostgresPageRepository', () => {
@@ -294,6 +350,51 @@ describe('PostgresPageRepository', () => {
 
       expect(summaries[0]?.history).toHaveLength(30)
       expect(summaries[1]?.history.map((point) => point.score)).toEqual([42])
+    })
+
+    it('reads about thirty audit rows per page, not the whole history', async () => {
+      // The bound has to be on WORK, not only on output. `row_number() ...
+      // where rank <= 30` returns thirty rows per page and looks equivalent -
+      // Postgres 15+ even pushes the comparison into the window as a Run
+      // Condition - but the scan underneath still reads every finished audit
+      // the page has ever had. On a nightly monitor that means the dashboard,
+      // which is the polled endpoint, gets slower for as long as the account
+      // exists.
+      //
+      // Asserted by running EXPLAIN ANALYZE over the query the repository
+      // actually issued, so it cannot drift from a copy kept in the spec.
+      const issued: Array<{ sql: string, parameters: readonly unknown[] }> = []
+      const counting = makeRecordingDatabase(issued)
+      const repository = new PostgresPageRepository(counting)
+
+      try {
+        const userId = await makeUser()
+        const domain = newDomain()
+        const added = await sut.add({ userId, domain, url: `https://${domain}/`, limit: 10 })
+        if (added.outcome !== 'added') throw new Error('expected the page to be added')
+
+        const history = 200
+        for (let index = 0; index < history; index++) {
+          await addAudit(added.page.id, { status: 'done', score: index % 100 })
+        }
+
+        issued.length = 0
+        expect((await repository.loadSummariesForUser(userId))[0]?.history).toHaveLength(30)
+
+        const historyQuery = issued.find((query) => /\blateral\b/i.test(query.sql))
+        expect(historyQuery).toBeDefined()
+        if (historyQuery === undefined) return
+
+        const rowsRead = await explainRowsRead(counting, historyQuery, 'audits')
+
+        // Thirty for the one page. The window-function version reads all 201
+        // and grows from there, so any threshold between them separates the
+        // two; this one leaves room for a planner that reads a few extra rows
+        // getting past the status filter.
+        expect(rowsRead).toBeLessThan(HISTORY_POINTS * 2)
+      } finally {
+        await counting.destroy()
+      }
     })
 
     it('costs the same number of queries for ten pages as for one', async () => {

@@ -1,4 +1,4 @@
-import type { Router } from 'express'
+import type { RequestHandler, Router } from 'express'
 import { adaptMiddleware } from '../adapters/express-middleware-adapter.js'
 import { adaptRoute } from '../adapters/express-route-adapter.js'
 import {
@@ -6,50 +6,62 @@ import {
   makeUpdatePageController
 } from '../factories/controllers/page/page-controller-factories.js'
 import { makeAuthMiddleware } from '../factories/middlewares/auth-middleware-factory.js'
-import { makeRateLimit, ipKey } from '../middlewares/rate-limit.js'
+import { makeRateLimit, ipKey, type RateLimitRule } from '../middlewares/rate-limit.js'
 import { makeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
+import type { Controller } from '../../presentation/protocols/controller.js'
+
+/**
+ * Limit, then authenticate, then handle - as one unit, because the order is
+ * load-bearing and the middle step is easy to leave out.
+ *
+ * The order first. The auth middleware looks a session up before rejecting it,
+ * so the limiter has to run BEFORE it or an unauthenticated caller can drive
+ * one indexed query per request, unbounded. `/me` is wired this way for
+ * exactly that reason. The tempting shorthand - `router.use('/pages', auth)`
+ * above the routes, with a limiter on each - reads as if it does the same
+ * thing and does the opposite: Express runs layers in registration order, so
+ * the prefix `use` runs first and every page bucket sits behind the lookup it
+ * was meant to protect. That is what this file did until #47 review caught it.
+ *
+ * And the middle step. Every page belongs to somebody, so there is no
+ * anonymous case here to make room for - which means a route reaching
+ * `adaptRoute` without authentication is always a bug, never a choice. Putting
+ * auth inside this helper is what keeps that from depending on whoever adds
+ * the fifth route remembering a line.
+ */
+const guarded = (rule: RateLimitRule, controller: Controller): RequestHandler[] => [
+  makeRateLimit(makeRateLimiter(), [rule]),
+  adaptMiddleware(makeAuthMiddleware()),
+  adaptRoute(controller)
+]
 
 export default (router: Router): void => {
-  // One `use` for the whole prefix rather than the middleware repeated on each
-  // route. Every page belongs to somebody, so there is no anonymous case here
-  // to make room for - and a route added later cannot be published
-  // unauthenticated by somebody forgetting a line.
-  //
-  // The limiters below still run per route, and deliberately BEFORE this: the
-  // auth middleware looks a session up before rejecting it, so without them an
-  // unauthenticated caller could drive one indexed query per request.
-  router.use('/pages', adaptMiddleware(makeAuthMiddleware()))
-
-  // The tightest bucket on this router by a distance, because an accepted add
-  // is roughly thirty seconds of Chromium - the same cost the anonymous audit
-  // endpoint is metered for. The ten-page cap bounds how many an account can
-  // ever hold, but not how many times it can ask.
-  router.post('/pages',
-    makeRateLimit(
-      makeRateLimiter(), [{ name: 'pageAdd', bucket: RATE_LIMITS.pageAdd, key: ipKey }]
-    ),
-    adaptRoute(makeAddPageController()))
+  // The tightest bucket here by a distance, because an accepted add is roughly
+  // thirty seconds of Chromium - the same cost the anonymous audit endpoint is
+  // metered for. The ten-page cap bounds how many pages an account can HOLD,
+  // not how many times it can ask.
+  router.post('/pages', ...guarded(
+    { name: 'pageAdd', bucket: RATE_LIMITS.pageAdd, key: ipKey },
+    makeAddPageController()
+  ))
 
   // The dashboard's only call, so it is polled rather than requested once.
-  router.get('/pages',
-    makeRateLimit(
-      makeRateLimiter(), [{ name: 'pageRead', bucket: RATE_LIMITS.pageRead, key: ipKey }]
-    ),
-    adaptRoute(makeLoadPagesController()))
+  router.get('/pages', ...guarded(
+    { name: 'pageRead', bucket: RATE_LIMITS.pageRead, key: ipKey },
+    makeLoadPagesController()
+  ))
 
-  router.patch('/pages/:id',
-    makeRateLimit(
-      makeRateLimiter(), [{ name: 'pageUpdate', bucket: RATE_LIMITS.pageUpdate, key: ipKey }]
-    ),
-    adaptRoute(makeUpdatePageController()))
+  router.patch('/pages/:id', ...guarded(
+    { name: 'pageUpdate', bucket: RATE_LIMITS.pageUpdate, key: ipKey },
+    makeUpdatePageController()
+  ))
 
   // Cascades to the page's audits, their violations and their alert events, so
   // every public share link for that history stops resolving. #20 owns saying
   // so before the confirmation.
-  router.delete('/pages/:id',
-    makeRateLimit(
-      makeRateLimiter(), [{ name: 'pageDelete', bucket: RATE_LIMITS.pageDelete, key: ipKey }]
-    ),
-    adaptRoute(makeDeletePageController()))
+  router.delete('/pages/:id', ...guarded(
+    { name: 'pageDelete', bucket: RATE_LIMITS.pageDelete, key: ipKey },
+    makeDeletePageController()
+  ))
 }

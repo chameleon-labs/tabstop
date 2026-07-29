@@ -25,7 +25,15 @@ export const toPageView = (page: PageModel): PageView => ({
   createdAt: page.createdAt.toISOString()
 })
 
-/** The last run, whatever became of it. Null until the first one finishes. */
+/**
+ * The last run, whatever became of it - `queued` and `running` included, since
+ * the dashboard shows work in progress.
+ *
+ * Null means there is no audit row at all, which after #11 is close to
+ * unreachable: adding a page writes its first audit in the same transaction.
+ * It is NOT "no audit has finished yet" - a page added a second ago reports a
+ * `queued` audit here, so a consumer must not read null as "still waiting".
+ */
 export type LatestAuditView = {
   /** The public uuid, never the internal id. */
   auditId: string
