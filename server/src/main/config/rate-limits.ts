@@ -30,5 +30,30 @@ export const RATE_LIMITS = {
    */
   logout: { capacity: 30, refillPerHour: 120 },
   /** The auth middleware looks the session up before rejecting it. */
-  me: { capacity: 60, refillPerHour: 600 }
+  me: { capacity: 60, refillPerHour: 600 },
+  /**
+   * Adding a page is ~30s of Chromium, the same cost the anonymous audit
+   * bucket is sized for - so this is the tightest bucket on the pages router
+   * by a distance. The ten-page cap bounds how many an account can HOLD, not
+   * how many times it can ask: add, delete, add again is free of the cap and
+   * not free of the audit.
+   *
+   * Not tied to `audit`, whose capacity is an operator dial for anonymous
+   * traffic. A signed-in account's tenth page should not be refused because a
+   * deploy widened the anonymous allowance, or vice versa.
+   */
+  pageAdd: { capacity: 10, refillPerHour: 20 },
+  /**
+   * Pause/resume and delete: one indexed statement each.
+   *
+   * Two entries with identical numbers rather than one name on both routes,
+   * because the route table asserts that a name is used exactly once - a rule
+   * worth keeping strict, since the collisions it catches are typos. Separate
+   * counters are also the friendlier behaviour: a client that has been
+   * removing pages has not thereby spent its budget for pausing them.
+   */
+  pageUpdate: { capacity: 30, refillPerHour: 120 },
+  pageDelete: { capacity: 30, refillPerHour: 120 },
+  /** The dashboard's only call, and it is polled rather than fetched once. */
+  pageRead: { capacity: 60, refillPerHour: 600 }
 } as const satisfies Record<string, BucketConfig>
