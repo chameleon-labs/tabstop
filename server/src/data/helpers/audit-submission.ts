@@ -84,10 +84,26 @@ export const enqueueAudit = async (
 }
 
 /**
- * Whether the queue already holds this job. Bounded and best-effort: a queue
- * that cannot answer is treated as not holding it, so the caller is free to
- * clean up - a job that fails once with "audit no longer exists" is a better
- * outcome than a row nothing ever recovers.
+ * Whether the queue already holds this job. Bounded, and a queue that cannot
+ * answer is treated as NOT holding it - so the caller cleans up.
+ *
+ * That direction is deliberate and it is the one a reader will want to argue
+ * with, because an indeterminate answer does not prove absence: if the enqueue
+ * committed, lost its reply, and Redis then went away, this reports `failed`
+ * and the audit row is deleted under a job that exists. The two residuals are
+ * not symmetric, though, and the common case decides it.
+ *
+ * Failing toward cleanup, the stray job's next delivery finds no audit;
+ * `DbRunAudit` raises PermanentAuditError, so it fails ONCE, is not retried,
+ * and is gone. Failing the other way, the far more likely case - Redis is
+ * simply down, so nothing was ever enqueued - leaves a `queued` row that
+ * nothing will ever run: a client polling a 202 forever, a dashboard row stuck
+ * in progress, and no sweeper to reap either.
+ *
+ * So the rare interleaving costs one logged failure, and the common outage
+ * would cost a permanent lie. A confirmed `has === true` still keeps the row -
+ * what this refuses to do is treat "I could not measure" as "it is there",
+ * exactly as `queueIsSaturated` refuses to read it as "it is full".
  */
 const queueAlreadyHas = async (queue: AuditJobQueue, auditId: string): Promise<boolean> => {
   try {
