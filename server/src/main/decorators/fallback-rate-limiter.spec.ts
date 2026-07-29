@@ -64,17 +64,51 @@ describe('FallbackRateLimiter', () => {
     warn.mockRestore()
   })
 
-  it('returns to the primary once it recovers', async () => {
+  it('returns to the primary once it recovers, after the degraded window', async () => {
+    vi.useFakeTimers()
+    try {
+      const primary = mockLimiter()
+      const fallback = mockLimiter()
+      primary.consume.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      const sut = new FallbackRateLimiter(primary, fallback)
+
+      await sut.consume('a', bucket)
+
+      // Still inside the window: the primary is not retried yet, which is
+      // what keeps a dead Redis from charging every request its timeout.
+      await sut.consume('a', bucket)
+      expect(primary.consume).toHaveBeenCalledTimes(1)
+      expect(fallback.consume).toHaveBeenCalledTimes(2)
+
+      vi.advanceTimersByTime(5_000)
+      await sut.consume('a', bucket)
+
+      expect(primary.consume).toHaveBeenCalledTimes(2)
+      expect(fallback.consume).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('refunds to whichever backend served the consume', async () => {
+    // makeRateLimit takes a token from the per-IP bucket, then finds the
+    // per-email bucket empty, and gives the first one back. If Redis was down
+    // for the consume and up again by the refund - milliseconds later, which
+    // is exactly what a flapping connection looks like - a naive
+    // try-primary-first refund credits Redis for a token it never issued and
+    // leaves the memory bucket debited for good.
     const primary = mockLimiter()
     const fallback = mockLimiter()
     primary.consume.mockRejectedValueOnce(new Error('ECONNREFUSED'))
     const sut = new FallbackRateLimiter(primary, fallback)
 
-    await sut.consume('a', bucket)
-    await sut.consume('a', bucket)
+    await sut.consume('ip:1.2.3.4', bucket)
+    // The primary is healthy again by now, and must still not be the one
+    // refunded.
+    await sut.refund('ip:1.2.3.4', bucket)
 
-    expect(primary.consume).toHaveBeenCalledTimes(2)
-    expect(fallback.consume).toHaveBeenCalledTimes(1)
+    expect(fallback.refund).toHaveBeenCalledWith('ip:1.2.3.4', bucket, 1)
+    expect(primary.refund).not.toHaveBeenCalled()
   })
 
   it('falls back on refund too', async () => {
