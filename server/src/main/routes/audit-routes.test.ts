@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { Express } from 'express'
 import type { Kysely } from 'kysely'
 import { setupApp } from '../config/app.js'
+import { env } from '../config/env.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from '../config/database.js'
 import type { Database } from '../../infra/db/postgres/database.js'
 import { PostgresAuditRepository } from '../../infra/db/postgres/audit/postgres-audit-repository.js'
@@ -29,7 +30,19 @@ describe('audit routes', () => {
     await disconnectDatabase()
   })
 
-  const submit = async (url: string) => await request(app).post('/api/audits').send({ url })
+  // The audit bucket lives for the whole process and has a small capacity
+  // (default 5), so a fixed submitter IP would make the many unrelated specs
+  // below rate-limit each other. A fresh address per call keeps each of them
+  // independent; the two specs that deliberately exercise the limiter define
+  // their own local `submit` with a fixed or looped address instead.
+  let ipSeq = 0
+  const uniqueIp = (): string => {
+    ipSeq += 1
+    return `10.${(ipSeq >> 16) & 255}.${(ipSeq >> 8) & 255}.${ipSeq & 255}`
+  }
+
+  const submit = async (url: string) => await request(app).post('/api/audits')
+    .set('x-forwarded-for', uniqueIp()).send({ url })
 
   /**
    * A public literal address, so gate 1 short-circuits resolution: a hostname
@@ -81,23 +94,66 @@ describe('audit routes', () => {
     })
 
     it('rejects a request with no url at all', async () => {
-      expect((await request(app).post('/api/audits').send({})).status).toBe(400)
+      expect((await request(app).post('/api/audits').set('x-forwarded-for', uniqueIp())
+        .send({})).status).toBe(400)
     })
 
     it('stores nothing for a rejected URL', async () => {
-      // Scoped to the url under test rather than counting the whole table.
-      // Every spec in this suite shares one Postgres container and vitest runs
-      // files in parallel, so a table-wide count is a race with whichever
-      // other file happens to insert an audit in the same instant - it fails
-      // by reporting somebody else's row as this one's.
-      const rejected = `file:///etc/passwd?${randomUUID()}`
+      // Both branches fixed this independently and each caught half of it;
+      // this keeps both halves.
+      //
+      // A unique marker, because the specs share one Postgres container and
+      // vitest runs files in parallel - a table-wide count reports whichever
+      // row another file inserted in the same instant, which is exactly how
+      // this assertion started flaking.
+      //
+      // And `like` on that marker rather than `=` on the whole url, because a
+      // regression that stored a NORMALISED variant - a trailing slash, a
+      // percent-decoded path - would match `=` on nothing and pass with the
+      // bug present. The marker is what keeps widening the match safe: no
+      // other spec can produce a row containing it.
+      const marker = randomUUID()
 
-      await submit(rejected)
+      await submit(`file:///etc/passwd?${marker}`)
 
       const stored = await db.selectFrom('audits').select(db.fn.countAll().as('n'))
-        .where('url', '=', rejected)
+        .where('url', 'like', `%${marker}%`)
         .executeTakeFirstOrThrow()
       expect(Number(stored.n)).toBe(0)
+    })
+
+    it('answers 429 once the per-IP bucket is empty', async () => {
+      // Distinct IP per spec: the bucket is shared process-wide, so a fixed
+      // address would make these specs depend on each other's order.
+      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`
+      const submit = async () => await request(app)
+        .post('/api/audits').set('x-forwarded-for', ip).send({ url: auditableUrl() })
+
+      const statuses: number[] = []
+      for (let i = 0; i < env.auditRateCapacity + 1; i++) {
+        statuses.push((await submit()).status)
+      }
+
+      expect(statuses.at(-1)).toBe(429)
+      expect(statuses.slice(0, -1).every((status) => status === 202)).toBe(true)
+    })
+
+    it('ignores a forwarded address the proxy did not write', async () => {
+      // With one trusted hop, supertest's connection is the trusted proxy and
+      // the client-supplied entry to its left is not. If Express trusted the
+      // whole chain, each spoofed address would mint a fresh bucket and the
+      // limiter would be decorative.
+      const spoofed = async (address: string) => await request(app)
+        .post('/api/audits')
+        .set('x-forwarded-for', `${address}, 203.0.113.1`)
+        .send({ url: auditableUrl() })
+
+      const statuses: number[] = []
+      for (let i = 0; i < env.auditRateCapacity + 1; i++) {
+        statuses.push((await spoofed(`10.0.0.${i + 1}`)).status)
+      }
+
+      expect(statuses.at(-1)).toBe(429)
     })
   })
 

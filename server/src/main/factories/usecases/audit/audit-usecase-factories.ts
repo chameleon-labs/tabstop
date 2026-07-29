@@ -42,9 +42,11 @@ export const makeRequestAudit = (): RequestAudit => {
   // The policy is injected rather than defaulted inside the usecase: data/
   // must not name the concrete rule set, and a default there would have been
   // a `node:net` import in the layer that is supposed to be free of the
-  // runtime. The composition root is where a concrete belongs.
+  // runtime. The composition root is where a concrete belongs - and the same
+  // goes for the queue cap, which is operator configuration.
   return new DbRequestAudit(
-    audits, audits, getAuditQueue(), new NodeDnsResolver(), DEFAULT_URL_POLICY
+    audits, audits, getAuditQueue(), new NodeDnsResolver(),
+    DEFAULT_URL_POLICY, env.auditQueueMaxDepth
   )
 }
 

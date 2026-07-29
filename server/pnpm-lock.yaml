@@ -14,6 +14,12 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
+      ipaddr.js:
+        specifier: 1.9.1
+        version: 1.9.1
       kysely:
         specifier: ^0.29.4
         version: 0.29.4

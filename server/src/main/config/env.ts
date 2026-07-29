@@ -13,7 +13,15 @@ export type Env = {
   auditNavigationTimeoutMs: number
   auditSettleBudgetMs: number
   auditFallbackSettleMs: number
-  auditApiEnabled: boolean
+  /**
+   * How many reverse proxies sit in front of this process. Express takes the
+   * X-Forwarded-For entry that many positions from the right - the last one a
+   * client could not have written.
+   */
+  trustProxyHops: number
+  auditRateCapacity: number
+  auditRatePerHour: number
+  auditQueueMaxDepth: number
 }
 
 const DEFAULT_PORT = 3000
@@ -34,6 +42,32 @@ const DEFAULT_SESSION_TTL_DAYS = 30
  * than merely being an odd setting.
  */
 const MAX_SESSION_TTL_DAYS = 400
+
+/** Zero trusts nothing. #16 sets the real hop count for its topology. */
+const DEFAULT_TRUST_PROXY_HOPS = 0
+const MAX_TRUST_PROXY_HOPS = 8
+const DEFAULT_AUDIT_RATE_CAPACITY = 5
+const DEFAULT_AUDIT_RATE_PER_HOUR = 5
+/**
+ * The aggregate backstop the per-IP buckets cannot provide: those bound one
+ * source each, while the queue is shared by all of them. Roughly an hour of
+ * backlog at the default concurrency of one, so an accepted client still gets
+ * a result rather than a place in a line nobody reaches. The ceiling is what
+ * keeps a stray zero from removing the bound entirely.
+ */
+const DEFAULT_AUDIT_QUEUE_MAX_DEPTH = 100
+const MAX_AUDIT_QUEUE_MAX_DEPTH = 10_000
+/**
+ * This is the one dial documented as production-tunable, which is exactly
+ * why it needs a ceiling like every other numeric variable in this file:
+ * unlike a typo in a timeout, AUDIT_RATE_CAPACITY=50000 boots cleanly and
+ * silently removes the limit that makes deploying this endpoint safe. 1000
+ * is far beyond what MAX_AUDIT_CONCURRENCY (16 concurrent Chromium contexts)
+ * could ever sustain, so it still catches a stray extra zero without
+ * constraining any real deployment.
+ */
+const MAX_AUDIT_RATE_CAPACITY = 1000
+const MAX_AUDIT_RATE_PER_HOUR = 1000
 
 const DEFAULT_AUDIT_CONCURRENCY = 1
 /**
@@ -67,23 +101,6 @@ const required = (source: NodeJS.ProcessEnv, name: string): string => {
  * production ships insecure cookies if anyone forgets; defaulted to true, local
  * login fails silently over http. Neither failure announces itself.
  */
-/**
- * Defaults to FALSE, unlike the required booleans above.
- *
- * `POST /api/audits` is anonymous and has no rate limit until #8, and each
- * accepted request costs roughly thirty seconds of Chromium. A comment cannot
- * stop a deploy, so the route is simply absent unless somebody turns it on -
- * and #8 is what makes turning it on safe.
- */
-const optionalBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
-  const value = source[name]
-  if (value === undefined || value === '') return false
-  if (value !== 'true' && value !== 'false') {
-    throw new Error(`${name} must be "true" or "false", but was "${value}"`)
-  }
-  return value === 'true'
-}
-
 const requiredBoolean = (source: NodeJS.ProcessEnv, name: string): boolean => {
   const value = required(source, name)
   if (value !== 'true' && value !== 'false') {
@@ -134,6 +151,24 @@ const positiveIntegerOr = (
   const parsed = Number(raw)
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error(`${name} must be a positive integer, but was "${raw}"`)
+  }
+  if (parsed > maximum) {
+    throw new Error(`${name} must be at most ${maximum}, but was "${raw}"`)
+  }
+  return parsed
+}
+
+/**
+ * Mirrors positiveIntegerOr, but trustProxyHops has a meaningful zero - "no
+ * proxy in front of this process" - so the floor has to allow it.
+ */
+const nonNegativeIntegerOr = (
+  raw: string | undefined, fallback: number, name: string, maximum = Number.MAX_SAFE_INTEGER
+): number => {
+  if (raw === undefined || raw === '') return fallback
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer, but was "${raw}"`)
   }
   if (parsed > maximum) {
     throw new Error(`${name} must be at most ${maximum}, but was "${raw}"`)
@@ -221,7 +256,21 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     auditNavigationTimeoutMs,
     auditSettleBudgetMs,
     auditFallbackSettleMs,
-    auditApiEnabled: optionalBoolean(source, 'AUDIT_API_ENABLED')
+    trustProxyHops: nonNegativeIntegerOr(
+      source.TRUST_PROXY_HOPS, DEFAULT_TRUST_PROXY_HOPS, 'TRUST_PROXY_HOPS', MAX_TRUST_PROXY_HOPS
+    ),
+    auditRateCapacity: positiveIntegerOr(
+      source.AUDIT_RATE_CAPACITY, DEFAULT_AUDIT_RATE_CAPACITY, 'AUDIT_RATE_CAPACITY',
+      MAX_AUDIT_RATE_CAPACITY
+    ),
+    auditRatePerHour: positiveIntegerOr(
+      source.AUDIT_RATE_PER_HOUR, DEFAULT_AUDIT_RATE_PER_HOUR, 'AUDIT_RATE_PER_HOUR',
+      MAX_AUDIT_RATE_PER_HOUR
+    ),
+    auditQueueMaxDepth: positiveIntegerOr(
+      source.AUDIT_QUEUE_MAX_DEPTH, DEFAULT_AUDIT_QUEUE_MAX_DEPTH, 'AUDIT_QUEUE_MAX_DEPTH',
+      MAX_AUDIT_QUEUE_MAX_DEPTH
+    )
   }
 }
 
