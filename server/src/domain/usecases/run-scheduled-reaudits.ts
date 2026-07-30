@@ -59,16 +59,34 @@ export type ReauditRunSummary = {
   truncated: boolean
 }
 
+export type RunScheduledReauditsOptions = {
+  /**
+   * Stops the run at its next page.
+   *
+   * A full fan-out takes far longer than a worker's shutdown grace, so without
+   * this a deploy during the run is a force-exit - which can land between
+   * creating an audit row and queueing its job. Stopping cleanly leaves the
+   * remaining pages simply unscheduled, which is what the next run is for.
+   */
+  signal?: AbortSignal
+  /**
+   * Called with a snapshot of the summary so far, after the reclaim pass and
+   * after every batch.
+   *
+   * For the caller that has to report a run which never returned. A run
+   * interrupted partway - by the hard timeout, or by a repository throwing
+   * where the per-page catch cannot see it - has already scheduled real
+   * audits, and its counters are the only record of how many. Without this
+   * they go with the exception, the retry's own summary covers just the tail,
+   * and no log reconstructs the night.
+   */
+  report?: (summary: ReauditRunSummary) => void
+}
+
 export interface RunScheduledReaudits {
   /**
    * `now` is passed rather than read, so the UTC day this run belongs to is a
    * decision the caller makes once and every row of the run shares.
-   *
-   * `signal` stops the run at the next page. A full fan-out takes far longer
-   * than a worker's shutdown grace, so without it a deploy during the run is a
-   * force-exit - which can land between creating an audit row and queueing its
-   * job. Stopping cleanly leaves the remaining pages simply unscheduled, which
-   * is what the next run is for.
    */
-  run: (now: Date, signal?: AbortSignal) => Promise<ReauditRunSummary>
+  run: (now: Date, options?: RunScheduledReauditsOptions) => Promise<ReauditRunSummary>
 }

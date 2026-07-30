@@ -27,7 +27,7 @@ import type {
   DeleteQueuedAuditRepository
 } from '../../../../data/protocols/db/audit/delete-queued-audit-repository.js'
 import type {
-  ReclaimAbandonedAuditsRepository
+  ReclaimAbandonedAuditsRepository, StaleAudit
 } from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { Database } from '../database.js'
 import { toAuditModel } from './audit-mapper.js'
@@ -225,20 +225,39 @@ export class PostgresAuditRepository implements
       .execute()
   }
 
-  async loadStaleInFlight (olderThan: Date, limit: number): Promise<string[]> {
-    // Reads `audits_in_flight_page_idx`, which is partial on the two live
-    // statuses - so this scans the handful of unfinished audits rather than
-    // the table, however much history has accumulated.
-    const rows = await this.db
+  async loadStaleInFlight (
+    olderThan: Date, limit: number, after: StaleAudit | null
+  ): Promise<StaleAudit[]> {
+    // Reads `audits_in_flight_created_idx`, which is partial on the two live
+    // statuses and leads with `created_at` - so this walks the handful of
+    // unfinished audits in order and stops at the limit, rather than reading
+    // the whole live set and sorting it. The per-page index cannot serve this
+    // query at all: with `page_id` unconstrained there is no ordered path
+    // through it.
+    let statement = this.db
       .selectFrom('audits')
-      .select('id')
+      .select(['id', 'created_at'])
       .where('status', 'in', ['queued', 'running'])
       .where('created_at', '<', olderThan)
       .orderBy('created_at')
+      // The tiebreak the cursor needs. Two audits can share a timestamp -
+      // `now()` is transaction time, so a fan-out's rows routinely do - and a
+      // cursor that cannot tell them apart either repeats one or skips one.
+      .orderBy('id')
       .limit(limit)
-      .execute()
 
-    return rows.map((row) => row.id)
+    if (after !== null) {
+      // A row comparison, not two predicates: `created_at > x or (= x and id >
+      // y)` is the same thing written so the planner cannot use the index for
+      // it. This form matches the index's own ordering.
+      statement = statement.where(({ eb, refTuple, tuple }) =>
+        eb(refTuple('created_at', 'id'), '>', tuple(after.createdAt, after.auditId))
+      )
+    }
+
+    const rows = await statement.execute()
+
+    return rows.map((row) => ({ auditId: row.id, createdAt: row.created_at }))
   }
 
   async markAbandoned (auditId: string, error: string): Promise<boolean> {

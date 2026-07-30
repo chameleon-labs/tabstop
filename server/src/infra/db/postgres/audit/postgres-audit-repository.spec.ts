@@ -4,6 +4,9 @@ import type { Kysely } from 'kysely'
 import { makeDatabase } from '../helpers/postgres-helper.js'
 import { PostgresAuditRepository, claimLeaseFor } from './postgres-audit-repository.js'
 import type { Database } from '../database.js'
+import type {
+  StaleAudit
+} from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 
 describe('PostgresAuditRepository', () => {
   let db: Kysely<Database>
@@ -163,13 +166,18 @@ describe('PostgresAuditRepository', () => {
       return audit.id
     }
 
+    const staleIds = async (
+      olderThan: Date, limit = 1000, after: StaleAudit | null = null
+    ): Promise<string[]> =>
+      (await sut.loadStaleInFlight(olderThan, limit, after)).map((row) => row.auditId)
+
     it('offers unfinished audits older than the cutoff, in both live statuses', async () => {
       // Both, because either can be stranded: `queued` when an enqueue was
       // lost, `running` when the worker died holding it and its job is gone.
       const queued = await inFlightAudit('queued', hoursAgo(30))
       const running = await inFlightAudit('running', hoursAgo(30))
 
-      const stale = await sut.loadStaleInFlight(hoursAgo(12), 1000)
+      const stale = await staleIds(hoursAgo(12))
 
       expect(stale).toContain(queued)
       expect(stale).toContain(running)
@@ -187,7 +195,7 @@ describe('PostgresAuditRepository', () => {
         })
         .returning('id').executeTakeFirstOrThrow()
 
-      expect(await sut.loadStaleInFlight(hoursAgo(12), 1000)).not.toContain(done.id)
+      expect(await staleIds(hoursAgo(12))).not.toContain(done.id)
     })
 
     it('leaves recent unfinished audits alone', async () => {
@@ -196,7 +204,7 @@ describe('PostgresAuditRepository', () => {
       // abandoned, it has not started.
       const recent = await inFlightAudit('queued', hoursAgo(1))
 
-      expect(await sut.loadStaleInFlight(hoursAgo(12), 1000)).not.toContain(recent)
+      expect(await staleIds(hoursAgo(12))).not.toContain(recent)
     })
 
     it('offers the oldest first, since that is where the abandoned ones are', async () => {
@@ -206,16 +214,57 @@ describe('PostgresAuditRepository', () => {
       const older = await inFlightAudit('queued', hoursAgo(400))
       const newer = await inFlightAudit('queued', hoursAgo(300))
 
-      const stale = await sut.loadStaleInFlight(hoursAgo(200), 1000)
+      const stale = await staleIds(hoursAgo(200))
 
       expect(stale.indexOf(older)).toBeLessThan(stale.indexOf(newer))
     })
 
-    it('honours the limit, so one run cannot become an unbounded scan', async () => {
+    it('honours the limit, so one batch cannot become an unbounded scan', async () => {
       await inFlightAudit('queued', hoursAgo(30))
       await inFlightAudit('queued', hoursAgo(30))
 
-      expect(await sut.loadStaleInFlight(hoursAgo(12), 1)).toHaveLength(1)
+      expect(await staleIds(hoursAgo(12), 1)).toHaveLength(1)
+    })
+
+    // The two cursor specs below assert only about the rows they created.
+    // `loadStaleInFlight` is global by design - the reclaim pass reconciles
+    // every unfinished audit there is - so every other spec file's in-flight
+    // fixtures are in these results too, and one that asserted "mine is at the
+    // head" would be asserting the suite's insertion order.
+
+    it('resumes after the cursor rather than serving the same batch again', async () => {
+      // What stops the reclaim pass starving. Old candidates that are
+      // legitimately pending never change their `created_at`, so they hold the
+      // front of this list every night - without a cursor the orphan behind
+      // them is never examined, and its page is excluded from re-audits for
+      // good.
+      const firstAt = hoursAgo(500)
+      const first = await inFlightAudit('queued', firstAt)
+      const second = await inFlightAudit('queued', hoursAgo(499))
+
+      const next = await staleIds(hoursAgo(400), 1000, { auditId: first, createdAt: firstAt })
+
+      expect(next).toContain(second)
+      expect(next).not.toContain(first)
+    })
+
+    it('separates rows sharing a timestamp, which is why the cursor carries the id', async () => {
+      // `now()` is transaction time, so a fan-out's rows routinely share one.
+      // A cursor comparing `created_at` alone would place all three on the
+      // same side of it: resuming after the first would skip the other two
+      // entirely, and one of them may be the orphan this pass exists to find.
+      const sharedAt = hoursAgo(600)
+      const [first, ...rest] = [
+        await inFlightAudit('queued', sharedAt),
+        await inFlightAudit('queued', sharedAt),
+        await inFlightAudit('queued', sharedAt)
+      ]
+      if (first === undefined) return
+
+      const after = await staleIds(hoursAgo(550), 1000, { auditId: first, createdAt: sharedAt })
+
+      for (const auditId of rest) expect(after).toContain(auditId)
+      expect(after).not.toContain(first)
     })
 
     it('retires an abandoned audit as failed rather than deleting it', async () => {

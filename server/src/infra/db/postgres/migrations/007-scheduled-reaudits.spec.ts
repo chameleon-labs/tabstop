@@ -258,7 +258,9 @@ describe('audits.scheduled_for', () => {
     ])
     // Two access patterns, two indexes, each partial on the live statuses - so
     // both stay small and a finished audit drops out of both.
-    expect(rows.rows[0]?.indexdef).toContain('(created_at)')
+    // `id` trails it as the cursor's tiebreak, so the reclaim pass can page
+    // through rows that share a timestamp without repeating or skipping one.
+    expect(rows.rows[0]?.indexdef).toContain('(created_at, id)')
     expect(rows.rows[0]?.indexdef).toContain("status = ANY (ARRAY['queued'::text, 'running'::text])")
     expect(rows.rows[1]?.indexdef).toContain('(page_id)')
     expect(rows.rows[1]?.indexdef).toContain("status = ANY (ARRAY['queued'::text, 'running'::text])")

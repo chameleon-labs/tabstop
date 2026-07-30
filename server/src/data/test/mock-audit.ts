@@ -7,7 +7,7 @@ import type {
   DeleteQueuedAuditRepository
 } from '../protocols/db/audit/delete-queued-audit-repository.js'
 import type {
-  ReclaimAbandonedAuditsRepository
+  ReclaimAbandonedAuditsRepository, StaleAudit
 } from '../protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { AuditJob, AuditJobQueue } from '../protocols/queue/audit-job-queue.js'
 import type { AuditModel } from '../../domain/models/audit.js'
@@ -103,6 +103,24 @@ export const mockAddScheduledAuditRepository = () => ({
   loadStaleInFlight: vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(async () => []),
   markAbandoned: vi.fn<ReclaimAbandonedAuditsRepository['markAbandoned']>(async () => true)
 })
+
+/** A stale candidate, dated so a cursor can order it. */
+export const mockStaleAudit = (auditId: string, minutesAgo: number): StaleAudit => ({
+  auditId, createdAt: new Date(Date.UTC(2026, 6, 1, 0, minutesAgo))
+})
+
+/**
+ * Serves stale candidates through the cursor, so a paging spec exercises the
+ * loop rather than a stub that agrees with it. A mock returning the same first
+ * batch forever is exactly the starvation the loop exists to prevent, and
+ * would let it pass.
+ */
+export const mockPagedStaleAudits = (candidates: StaleAudit[]) =>
+  vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(
+    async (_olderThan, limit, after) => candidates
+      .filter((candidate) => after === null || candidate.createdAt > after.createdAt)
+      .slice(0, limit)
+  )
 
 export const mockDeleteQueuedAuditRepository = () => ({
   deleteIfQueued: vi.fn<DeleteQueuedAuditRepository['deleteIfQueued']>(

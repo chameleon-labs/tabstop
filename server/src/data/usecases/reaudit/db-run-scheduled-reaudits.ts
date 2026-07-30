@@ -1,6 +1,6 @@
 import { reauditDelayMs, utcDay, utcDayStart } from '../../../domain/services/reaudit-schedule.js'
 import type {
-  ReauditRunSummary, RunScheduledReaudits
+  ReauditRunSummary, RunScheduledReaudits, RunScheduledReauditsOptions
 } from '../../../domain/usecases/run-scheduled-reaudits.js'
 import { ENQUEUE_TIMEOUT_MS, enqueueAudit, withTimeout } from '../../helpers/audit-submission.js'
 import type {
@@ -10,7 +10,7 @@ import type {
   DeleteQueuedAuditRepository
 } from '../../protocols/db/audit/delete-queued-audit-repository.js'
 import type {
-  ReclaimAbandonedAuditsRepository
+  ReclaimAbandonedAuditsRepository, StaleAudit
 } from '../../protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type {
   DuePage, LoadDueReauditsRepository
@@ -55,7 +55,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     private readonly staleAfterMs: number
   ) {}
 
-  async run (now: Date, signal?: AbortSignal): Promise<ReauditRunSummary> {
+  async run (now: Date, options: RunScheduledReauditsOptions = {}): Promise<ReauditRunSummary> {
+    const { signal, report } = options
+
     // Computed once, so every row of this run carries the same day. Derived
     // per row instead, a fan-out crossing midnight would stamp two dates and
     // both halves would pass the constraint.
@@ -78,12 +80,17 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     // deciding, reasonably but wrongly here, that a second check can never be
     // true.
     const stopped = (): boolean => signal?.aborted ?? false
+    // A copy each time. The caller keeps the last one to report a run that
+    // never returned, and handing it the live object would leave it holding a
+    // reference that kept changing under it.
+    const publish = (): void => { report?.({ ...summary }) }
 
     // Before the worklist, so a page freed by the reclaim pass is scheduled
     // tonight rather than tomorrow.
     const reclaim = await this.reclaimAbandoned(now, stopped)
     summary.abandonedReclaimed = reclaim.reclaimed
     summary.reclaimFailures = reclaim.failed
+    publish()
 
     let after: string | null = null
 
@@ -135,6 +142,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       // flight and has dropped out of the predicate, so an offset would skip
       // exactly as many pages as this batch handled.
       after = batch[batch.length - 1]?.pageId ?? null
+      publish()
       if (rows.length <= wanted) break
     }
 
@@ -166,43 +174,68 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
   ): Promise<{ reclaimed: number, failed: number }> {
     const staleBefore = new Date(now.getTime() - this.staleAfterMs)
 
-    let candidates: string[]
-    try {
-      candidates = await this.audits.loadStaleInFlight(staleBefore, this.batchSize)
-    } catch {
-      // Never fatal. Reclaiming is maintenance; failing at it must not stop
-      // the night's actual work, and the same rows are still here tomorrow.
-      //
-      // Counted, though, and not as zero. Reporting "nothing needed
-      // reclaiming" for "I could not look" would hide the one failure mode
-      // this pass exists to prevent: rows that keep excluding their pages
-      // while every run reports a healthy night.
-      return { reclaimed: 0, failed: 1 }
-    }
-
     let reclaimed = 0
     let failed = 0
-    for (const auditId of candidates) {
+    let examined = 0
+    let after: StaleAudit | null = null
+
+    // PAGED, for the same reason the worklist is - and here the consequence of
+    // not paging is worse than falling behind.
+    //
+    // A single first batch starves. `created_at` never changes, so candidates
+    // that are old but legitimately pending hold the front of this list every
+    // night, and on a queue that has not drained within the stale window that
+    // is the normal state rather than an edge case. An orphan behind them is
+    // never examined, and its page is excluded from re-audits permanently -
+    // which is exactly what this pass exists to prevent, so a version of it
+    // that can be starved is a version that quietly does not work.
+    while (examined < this.maxPagesPerRun) {
       if (stopped()) break
 
-      const verdict = await this.queueVerdict(auditId)
-      if (verdict === 'pending') continue
-      if (verdict === 'unknown') {
-        // Skipped, exactly as `pending` is - but COUNTED, because they are
-        // not the same fact. An unreachable queue means no candidate was
-        // examined at all, and reporting that as a quiet night would rebuild
-        // the ambiguity this counter exists to remove, one level down from
-        // where it was removed.
-        failed += 1
-        continue
+      const wanted = Math.min(this.batchSize, this.maxPagesPerRun - examined)
+
+      let candidates: StaleAudit[]
+      try {
+        candidates = await this.audits.loadStaleInFlight(staleBefore, wanted, after)
+      } catch {
+        // Never fatal. Reclaiming is maintenance; failing at it must not stop
+        // the night's actual work, and the same rows are still here tomorrow.
+        //
+        // Counted, though, and not as zero. Reporting "nothing needed
+        // reclaiming" for "I could not look" would hide the one failure mode
+        // this pass exists to prevent: rows that keep excluding their pages
+        // while every run reports a healthy night.
+        return { reclaimed, failed: failed + 1 }
       }
 
-      try {
-        if (await this.audits.markAbandoned(auditId, ABANDONED_ERROR)) reclaimed += 1
-      } catch {
-        // The row stays unfinished and is a candidate again next run.
-        failed += 1
+      if (candidates.length === 0) break
+
+      for (const candidate of candidates) {
+        if (stopped()) return { reclaimed, failed }
+        examined += 1
+
+        const verdict = await this.queueVerdict(candidate.auditId)
+        if (verdict === 'pending') continue
+        if (verdict === 'unknown') {
+          // Skipped, exactly as `pending` is - but COUNTED, because they are
+          // not the same fact. An unreachable queue means no candidate was
+          // examined at all, and reporting that as a quiet night would rebuild
+          // the ambiguity this counter exists to remove, one level down from
+          // where it was removed.
+          failed += 1
+          continue
+        }
+
+        try {
+          if (await this.audits.markAbandoned(candidate.auditId, ABANDONED_ERROR)) reclaimed += 1
+        } catch {
+          // The row stays unfinished and is a candidate again next run.
+          failed += 1
+        }
       }
+
+      after = candidates[candidates.length - 1] ?? null
+      if (candidates.length < wanted) break
     }
 
     return { reclaimed, failed }

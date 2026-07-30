@@ -61,12 +61,17 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   // is when a stale backlog has built up and this pass is the thing meant to
   // clear it.
   //
+  // `id` trails it as the cursor's tiebreak: the pass pages through
+  // candidates, `created_at` is not unique - `now()` is transaction time, so a
+  // fan-out's rows share one - and a cursor that cannot tell two rows apart
+  // either repeats one or steps over it.
+  //
   // Both are partial on the two live statuses, so each holds a handful of
   // rows rather than the whole table and a finished audit drops out of both.
   // That is what makes a second index cheap enough to be worth having rather
   // than a compromise between two access patterns that serves neither.
   await sql`
-    create index audits_in_flight_created_idx on audits (created_at)
+    create index audits_in_flight_created_idx on audits (created_at, id)
       where status in ('queued','running')
   `.execute(db)
 }

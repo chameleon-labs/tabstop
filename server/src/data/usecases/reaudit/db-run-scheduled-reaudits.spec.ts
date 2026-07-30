@@ -4,7 +4,8 @@ import { reauditDelayMs } from '../../../domain/services/reaudit-schedule.js'
 import { ENQUEUE_TIMEOUT_MS } from '../../helpers/audit-submission.js'
 import {
   mockAddScheduledAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository,
-  mockAuditModel, mockLoadDueReauditsRepository, mockPagedDueReauditsRepository
+  mockAuditModel, mockLoadDueReauditsRepository, mockPagedDueReauditsRepository,
+  mockPagedStaleAudits, mockStaleAudit
 } from '../../test/index.js'
 import type { DuePage } from '../../protocols/db/page/load-due-reaudits-repository.js'
 
@@ -81,7 +82,7 @@ describe('DbRunScheduledReaudits', () => {
     await sut.run(NOW)
 
     expect(audits.loadStaleInFlight).toHaveBeenCalledWith(
-      new Date(NOW.getTime() - STALE_AFTER_MS), BATCH
+      new Date(NOW.getTime() - STALE_AFTER_MS), BATCH, null
     )
   })
 
@@ -299,7 +300,7 @@ describe('DbRunScheduledReaudits', () => {
     it('retires an old unfinished audit whose job the queue no longer holds', async () => {
       // The row that would otherwise hide its page from every future run.
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockResolvedValue(false)
 
       const summary = await sut.run(NOW)
@@ -313,7 +314,7 @@ describe('DbRunScheduledReaudits', () => {
       // every real pending audit is old too - retiring those would schedule
       // their pages again and pile a second night of work onto the backlog.
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockResolvedValue(true)
 
       const summary = await sut.run(NOW)
@@ -330,7 +331,7 @@ describe('DbRunScheduledReaudits', () => {
       // lookup is still pending afterwards, free to resume and mutate rows
       // outside the attempt that was supposed to have ended.
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockImplementation(async () => await new Promise<never>(() => {}))
 
       const startedAt = Date.now()
@@ -350,7 +351,7 @@ describe('DbRunScheduledReaudits', () => {
       // duplicates for their pages. A Redis blip during the nightly run must
       // not manufacture work out of healthy rows.
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockRejectedValue(new Error('redis is down'))
 
       const summary = await sut.run(NOW)
@@ -363,7 +364,7 @@ describe('DbRunScheduledReaudits', () => {
 
     it('reclaims before building the worklist, so a freed page is scheduled tonight', async () => {
       const { sut, audits, pages, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockResolvedValue(false)
 
       await sut.run(NOW)
@@ -374,7 +375,7 @@ describe('DbRunScheduledReaudits', () => {
 
     it('does not count a row another run had already retired', async () => {
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)])
       queue.isPending.mockResolvedValue(false)
       audits.markAbandoned.mockResolvedValueOnce(false)
 
@@ -400,7 +401,7 @@ describe('DbRunScheduledReaudits', () => {
       // reporting that as zero-and-zero says the pass looked and found nothing
       // owed, when in fact it could not look at all.
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7', 'audit-8'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1), mockStaleAudit('audit-8', 2)])
       queue.isPending.mockRejectedValue(new Error('redis is down'))
 
       const summary = await sut.run(NOW)
@@ -424,7 +425,7 @@ describe('DbRunScheduledReaudits', () => {
 
     it('counts a row it identified but could not retire', async () => {
       const { sut, audits, queue } = makeSut()
-      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7', 'audit-8'])
+      audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1), mockStaleAudit('audit-8', 2)])
       queue.isPending.mockResolvedValue(false)
       audits.markAbandoned.mockRejectedValueOnce(new Error('deadlock detected'))
 
@@ -436,6 +437,109 @@ describe('DbRunScheduledReaudits', () => {
     it('reports no failures on a night with nothing to reclaim', async () => {
       // The counterpart, without which the counter could be a constant.
       expect((await makeSut().sut.run(NOW)).reclaimFailures).toBe(0)
+    })
+
+    it('reaches an orphan sitting behind a batch of pending candidates', async () => {
+      // The starvation a single first batch produces, and the reason this
+      // pages. `created_at` never changes, so candidates that are old but
+      // legitimately pending hold the front of the list every night - the
+      // normal state of a queue that has not drained inside the stale window.
+      // Without paging, the orphan behind them is never examined and its page
+      // is excluded from re-audits permanently, which is precisely what this
+      // pass exists to prevent.
+      const pending = Array.from({ length: 5 }, (_v, i) => mockStaleAudit(`pending-${i}`, i))
+      const orphan = mockStaleAudit('orphan', 99)
+      const { sut, audits, queue } = makeSut({ batchSize: 5 })
+      audits.loadStaleInFlight.mockImplementation(mockPagedStaleAudits([...pending, orphan]))
+      queue.isPending.mockImplementation(async (auditId) => auditId !== 'orphan')
+
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).toHaveBeenCalledWith('orphan', expect.any(String))
+      expect(summary.abandonedReclaimed).toBe(1)
+    })
+
+    it('carries the cursor forward rather than reloading the same batch', async () => {
+      const pending = Array.from({ length: 4 }, (_v, i) => mockStaleAudit(`pending-${i}`, i))
+      const { sut, audits, queue } = makeSut({ batchSize: 2 })
+      audits.loadStaleInFlight.mockImplementation(mockPagedStaleAudits(pending))
+      queue.isPending.mockResolvedValue(true)
+
+      await sut.run(NOW)
+
+      expect(audits.loadStaleInFlight.mock.calls.map(([, , after]) => after?.auditId ?? null))
+        .toEqual([null, 'pending-1', 'pending-3'])
+    })
+
+    it('stops examining candidates at the run\'s ceiling', async () => {
+      // One Redis round trip per candidate, so an unbounded scan of a large
+      // stale backlog would be the night's whole budget spent on maintenance.
+      const many = Array.from({ length: 50 }, (_v, i) => mockStaleAudit(`stale-${i}`, i))
+      const { sut, audits, queue } = makeSut({ batchSize: 5, maxPagesPerRun: 10 })
+      audits.loadStaleInFlight.mockImplementation(mockPagedStaleAudits(many))
+      queue.isPending.mockResolvedValue(true)
+
+      await sut.run(NOW)
+
+      expect(queue.isPending).toHaveBeenCalledTimes(10)
+    })
+  })
+
+  describe('reporting progress', () => {
+    it('hands out counters as it goes, not only at the end', async () => {
+      // For the caller that has to report a run which never returns. An
+      // interrupted run has already scheduled real audits, and without this
+      // its counters leave with the exception - the retry's own summary then
+      // covers only the tail, so no log reconstructs the night.
+      const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 250))
+      const seen: number[] = []
+      const sut = new DbRunScheduledReaudits(
+        pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+        mockAuditQueue(), 100, MAX_PAGES, STALE_AFTER_MS
+      )
+
+      await sut.run(NOW, { report: (summary) => seen.push(summary.pagesConsidered) })
+
+      // After the reclaim pass, then after each of three batches.
+      expect(seen).toEqual([0, 100, 200, 250])
+    })
+
+    it('leaves the caller holding real counters when the run throws', async () => {
+      // The path that motivates the whole callback: a repository failing where
+      // the per-page catch cannot see it takes the summary with it.
+      const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 250))
+      pages.loadDueForReaudit.mockImplementationOnce(async (query) => await Promise.resolve(
+        pagesOn('example.test', 250).slice(0, query.limit)
+      ))
+      pages.loadDueForReaudit.mockRejectedValueOnce(new Error('the database went away'))
+      let latest: { pagesConsidered: number } | null = null
+      const sut = new DbRunScheduledReaudits(
+        pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+        mockAuditQueue(), 100, MAX_PAGES, STALE_AFTER_MS
+      )
+
+      await expect(sut.run(NOW, { report: (summary) => { latest = summary } }))
+        .rejects.toThrow('the database went away')
+
+      // Not zero, and not lost: the first batch really did schedule a hundred
+      // pages, and that is the only place the number survives.
+      expect(latest).toMatchObject({ pagesConsidered: 100 })
+    })
+
+    it('reports a copy, so the caller is not holding a moving target', async () => {
+      const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 250))
+      const snapshots: Array<{ pagesConsidered: number }> = []
+      const sut = new DbRunScheduledReaudits(
+        pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+        mockAuditQueue(), 100, MAX_PAGES, STALE_AFTER_MS
+      )
+
+      await sut.run(NOW, { report: (summary) => snapshots.push(summary) })
+
+      // Handing out the live object would leave every entry showing the final
+      // count - and the error path would report a number the run never
+      // actually reached at the moment it failed.
+      expect(snapshots.map((snapshot) => snapshot.pagesConsidered)).toEqual([0, 100, 200, 250])
     })
   })
 
@@ -457,7 +561,7 @@ describe('DbRunScheduledReaudits', () => {
         10, MAX_PAGES, STALE_AFTER_MS
       )
 
-      const summary = await sut.run(NOW, controller.signal)
+      const summary = await sut.run(NOW, { signal: controller.signal })
 
       expect(summary.pagesConsidered).toBe(1)
       expect(summary.truncated).toBe(true)
@@ -471,7 +575,7 @@ describe('DbRunScheduledReaudits', () => {
         10, MAX_PAGES, STALE_AFTER_MS
       )
 
-      const summary = await sut.run(NOW, AbortSignal.abort())
+      const summary = await sut.run(NOW, { signal: AbortSignal.abort() })
 
       expect(pages.loadDueForReaudit).not.toHaveBeenCalled()
       expect(summary).toMatchObject({ pagesConsidered: 0, truncated: true })

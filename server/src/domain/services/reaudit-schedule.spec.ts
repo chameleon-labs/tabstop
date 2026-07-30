@@ -42,9 +42,15 @@ describe('reauditDelayMs', () => {
 
   it('separates pages that share a domain', () => {
     // Probabilistically now rather than by construction, which is the cost of
-    // dropping positions. Cheap here: the worker runs one audit at a time
-    // under the global concurrency cap, so two pages in one slot queue behind
-    // each other rather than arriving at somebody's origin together.
+    // dropping positions - and NOT because a collision is harmless. At
+    // AUDIT_CONCURRENCY above one, which is a supported setting up to 16, two
+    // pages in one slot really can reach the same host together.
+    //
+    // It is acceptable because this function was never what guaranteed
+    // otherwise. Spreading the night's work and holding each page at a
+    // consistent hour is its job; making sure two audits of one host never
+    // overlap is #41's, at the worker - which is where it has to be, since a
+    // delay can only separate jobs that start on time.
     const slots = new Set(pageIds(20).map((pageId) => reauditDelayMs('example.test', pageId)))
 
     expect(slots.size).toBeGreaterThan(17)

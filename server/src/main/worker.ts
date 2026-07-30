@@ -20,6 +20,7 @@ import {
   REAUDIT_RUN_TIMEOUT_MS, REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
 } from './config/reaudit.js'
 import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
+import type { ReauditRunSummary } from '../domain/usecases/run-scheduled-reaudits.js'
 import { reauditRunFailure } from './jobs/reaudit-job-outcome.js'
 
 const PING_TIMEOUT_MS = 10_000
@@ -135,6 +136,12 @@ const reauditWorker = makeWorker<ReauditPayload>(
     // wants and none of them has - #52.
     const softDeadline = AbortSignal.timeout(REAUDIT_RUN_TIMEOUT_MS)
 
+    // The counters as of the last batch, kept for the path where the run
+    // never gets to return them. An interrupted run has already scheduled real
+    // audits; without this its numbers leave with the exception, the retry's
+    // own summary covers only the tail, and nothing reconstructs the night.
+    let progress: ReauditRunSummary | null = null
+
     const summary = await runWithTimeout(
       REAUDIT_RUN_TIMEOUT_MS + REAUDIT_HARD_STOP_MARGIN_MS,
       async (hardStop) => {
@@ -143,15 +150,20 @@ const reauditWorker = makeWorker<ReauditPayload>(
         const stop = AbortSignal.any([softDeadline, hardStop, reauditShutdown.signal])
         // The clock is read here rather than taken from the job, so a run
         // retried after an outage schedules for the day it actually runs on.
-        return await makeRunScheduledReaudits().run(new Date(), stop)
+        return await makeRunScheduledReaudits().run(new Date(), {
+          signal: stop,
+          report: (partial) => { progress = partial }
+        })
       }
     ).catch((error: unknown) => {
-      // The hard bound fired, or the run threw. Still emit a record, because
-      // a night that produced nothing but a stack trace is a night nobody can
-      // reconstruct - and this is the one an operator will come looking for.
+      // The hard bound fired, or the run threw. Still emit a record, with
+      // whatever counters it had reached - a night that produced nothing but a
+      // stack trace is a night nobody can reconstruct, and this is the one an
+      // operator will come looking for.
       console.log(JSON.stringify({
         event: 'reaudit-run',
         outcome: 'aborted',
+        ...(progress ?? {}),
         reason: error instanceof Error ? error.message : String(error),
         attempt: job.attemptsMade + 1,
         durationMs: Date.now() - startedAt
