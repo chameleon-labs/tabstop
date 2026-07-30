@@ -5,6 +5,9 @@ import {
   DeletePageController
 } from '../../../../presentation/controllers/page/delete-page-controller.js'
 import {
+  LoadPageHistoryController
+} from '../../../../presentation/controllers/page/load-page-history-controller.js'
+import {
   LoadPagesController
 } from '../../../../presentation/controllers/page/load-pages-controller.js'
 import {
@@ -12,10 +15,10 @@ import {
 } from '../../../../presentation/controllers/page/update-page-controller.js'
 import type { Controller } from '../../../../presentation/protocols/controller.js'
 import {
-  makeAddPage, makeDeletePage, makeLoadPages, makeUpdatePage
+  makeAddPage, makeDeletePage, makeLoadPageHistory, makeLoadPages, makeUpdatePage
 } from '../../usecases/page/page-usecase-factories.js'
 import {
-  makeAddPageValidation, makeUpdatePageValidation
+  makeAddPageValidation, makeLoadPageHistoryValidation, makeUpdatePageValidation
 } from '../../validation/page-validation-factory.js'
 
 export const makeAddPageController = (): Controller =>
@@ -23,6 +26,11 @@ export const makeAddPageController = (): Controller =>
 
 export const makeLoadPagesController = (): Controller =>
   new LoadPagesController(makeLoadPages()) as Controller
+
+export const makeLoadPageHistoryController = (): Controller =>
+  new LoadPageHistoryController(
+    makeLoadPageHistoryValidation(), makeLoadPageHistory()
+  ) as Controller
 
 export const makeUpdatePageController = (): Controller =>
   new UpdatePageController(makeUpdatePageValidation(), makeUpdatePage()) as Controller

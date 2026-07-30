@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { CompiledQuery, Kysely, PostgresDialect } from 'kysely'
+import { Kysely, PostgresDialect } from 'kysely'
 import pg from 'pg'
 import type { Database } from '../database.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
 import { HISTORY_POINTS, PostgresPageRepository } from './postgres-page-repository.js'
-
-type IssuedQuery = { sql: string, parameters: readonly unknown[] }
+import {
+  explainPlanText, explainRowsRead, makeRecordingDatabase, queryMatching, type IssuedQuery
+} from '../test/explain.js'
 
 const connectionUrl = (): string => {
   const url = process.env.DATABASE_URL
@@ -15,11 +16,9 @@ const connectionUrl = (): string => {
 }
 
 /**
- * A second connection that records the SQL it issues.
- *
- * `makeDatabase` deliberately exposes no logging hook - it is the production
- * factory, and a log option there would be a knob nothing turns. Building the
- * instance here keeps the instrumentation in the only place that wants it.
+ * A counting connection stays local: only this file cares about round trips,
+ * and it needs the SQL alone. The EXPLAIN tooling next to it is shared, since
+ * the history spec wants it too.
  */
 const makeCountingDatabase = (sink: string[]): Kysely<Database> => new Kysely<Database>({
   dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: connectionUrl() }) }),
@@ -27,59 +26,6 @@ const makeCountingDatabase = (sink: string[]): Kysely<Database> => new Kysely<Da
     if (event.level === 'query') sink.push(event.query.sql)
   }
 })
-
-/** The same, keeping the parameters too, so a query can be re-run under EXPLAIN. */
-const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> => new Kysely<Database>({
-  dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: connectionUrl() }) }),
-  log: (event) => {
-    if (event.level === 'query') {
-      sink.push({ sql: event.query.sql, parameters: event.query.parameters })
-    }
-  }
-})
-
-/**
- * Rows read from one relation, across every node of an
- * `EXPLAIN (ANALYZE, FORMAT JSON)` plan that scans it.
- *
- * Narrowed as it walks rather than typed: the plan tree is the planner's to
- * change, and a type describing it would be a claim this spec cannot check.
- *
- * `Actual Rows` is reported PER LOOP, so an inner scan of a nested loop has to
- * be multiplied by its loop count - which is the whole point here, since the
- * lateral form runs one bounded scan per page and the total is what matters.
- *
- * Summing every node's rows instead was the first attempt and is meaningless:
- * it multiplies the answer by the depth of the plan, so a Sort over a Nested
- * Loop over a Limit counts the same thirty rows four times.
- */
-const rowsReadFrom = (relation: string, node: unknown): number => {
-  if (Array.isArray(node)) {
-    return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0)
-  }
-  if (typeof node !== 'object' || node === null) return 0
-
-  const fields: Record<string, unknown> = { ...node }
-  const scanned = fields['Relation Name'] === relation
-  const rows = typeof fields['Actual Rows'] === 'number' ? fields['Actual Rows'] : 0
-  const loops = typeof fields['Actual Loops'] === 'number' ? fields['Actual Loops'] : 1
-  const here = scanned ? rows * loops : 0
-
-  return here + Object.entries(fields)
-    .filter(([key]) => key === 'Plans' || key === 'Plan')
-    .reduce<number>((total, [, value]) => total + rowsReadFrom(relation, value), 0)
-}
-
-const explainRowsRead = async (
-  db: Kysely<Database>, query: IssuedQuery, relation: string
-): Promise<number> => {
-  const explained = await db.executeQuery(CompiledQuery.raw(
-    `explain (analyze, format json) ${query.sql}`, [...query.parameters]
-  ))
-
-  if (explained.rows.length === 0) throw new Error('EXPLAIN returned no plan')
-  return rowsReadFrom(relation, explained.rows)
-}
 
 describe('PostgresPageRepository', () => {
   let db: Kysely<Database>
@@ -381,7 +327,7 @@ describe('PostgresPageRepository', () => {
         issued.length = 0
         expect((await repository.loadSummariesForUser(userId))[0]?.history).toHaveLength(30)
 
-        const historyQuery = issued.find((query) => /\blateral\b/i.test(query.sql))
+        const historyQuery = queryMatching(issued, /\blateral\b/i)
         expect(historyQuery).toBeDefined()
         if (historyQuery === undefined) return
 
@@ -440,6 +386,130 @@ describe('PostgresPageRepository', () => {
 
       expect(summaries[0]?.history).toEqual([])
       expect(summaries[0]?.latestAudit?.status).toBe('queued')
+    })
+  })
+
+  describe('loadHistoryForUser', () => {
+    const daysAgo = (days: number): Date => new Date(Date.now() - days * 86_400_000)
+
+    /** An audit at a chosen moment, which the window specs need to control. */
+    const addAuditAt = async (
+      pageId: string, at: Date, values: { status: 'done' | 'failed', score?: number }
+    ): Promise<void> => {
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: values.status,
+        score: values.score ?? null,
+        created_at: at
+      }).execute()
+    }
+
+    const pageWithHistory = async (): Promise<{ userId: string, pageId: string }> => {
+      const userId = await makeUser()
+      const domain = newDomain()
+      const added = await sut.add({ userId, domain, url: `https://${domain}/`, limit: 10 })
+      if (added.outcome !== 'added') throw new Error('expected the page to be added')
+      // The first audit is queued and dated now; the specs below add their own.
+      await db.deleteFrom('audits').where('id', '=', added.firstAudit.id).execute()
+      return { userId, pageId: added.page.id }
+    }
+
+    it('returns the page and its audits oldest first', async () => {
+      const { userId, pageId } = await pageWithHistory()
+      await addAuditAt(pageId, daysAgo(3), { status: 'done', score: 60 })
+      await addAuditAt(pageId, daysAgo(1), { status: 'done', score: 80 })
+      await addAuditAt(pageId, daysAgo(2), { status: 'done', score: 70 })
+
+      const history = await sut.loadHistoryForUser(pageId, userId, daysAgo(90))
+
+      // Ascending, so the chart renders in array order - the opposite of what
+      // `order by created_at desc` habit produces.
+      expect(history?.audits.map((audit) => audit.score)).toEqual([60, 70, 80])
+      expect(history?.page.id).toBe(pageId)
+    })
+
+    it('keeps failed audits as points, with a null score', async () => {
+      // Dropping them would make an outage look like continuity; scoring them
+      // zero would make it look like a catastrophic regression. The gap is the
+      // information.
+      const { userId, pageId } = await pageWithHistory()
+      await addAuditAt(pageId, daysAgo(2), { status: 'done', score: 90 })
+      await addAuditAt(pageId, daysAgo(1), { status: 'failed' })
+
+      const history = await sut.loadHistoryForUser(pageId, userId, daysAgo(90))
+
+      expect(history?.audits.map((audit) => [audit.status, audit.score]))
+        .toEqual([['done', 90], ['failed', null]])
+    })
+
+    it('excludes audits older than the window', async () => {
+      const { userId, pageId } = await pageWithHistory()
+      await addAuditAt(pageId, daysAgo(40), { status: 'done', score: 10 })
+      await addAuditAt(pageId, daysAgo(5), { status: 'done', score: 20 })
+
+      const history = await sut.loadHistoryForUser(pageId, userId, daysAgo(30))
+
+      expect(history?.audits.map((audit) => audit.score)).toEqual([20])
+    })
+
+    it('returns the page with no audits rather than null for a quiet window', async () => {
+      // An empty chart and a missing page are different answers: one renders
+      // an empty state for a real page, the other is a 404.
+      const { userId, pageId } = await pageWithHistory()
+      await addAuditAt(pageId, daysAgo(40), { status: 'done', score: 10 })
+
+      const history = await sut.loadHistoryForUser(pageId, userId, daysAgo(30))
+
+      expect(history?.page.id).toBe(pageId)
+      expect(history?.audits).toEqual([])
+    })
+
+    it('returns null for a page belonging to somebody else', async () => {
+      const { pageId } = await pageWithHistory()
+      const bob = await makeUser()
+
+      expect(await sut.loadHistoryForUser(pageId, bob, daysAgo(90))).toBeNull()
+    })
+
+    it('returns null for an id no bigint column could hold', async () => {
+      const userId = await makeUser()
+
+      expect(await sut.loadHistoryForUser('not-a-number', userId, daysAgo(90))).toBeNull()
+      expect(await sut.loadHistoryForUser('99999999999999999999', userId, daysAgo(90))).toBeNull()
+    })
+
+    it('reads the audits through audits_page_created_idx', async () => {
+      // The acceptance criterion on #12, asserted rather than assumed. The
+      // index is declared (page_id, created_at desc) and this query wants
+      // ascending, which is exactly the shape a planner quietly abandons - and
+      // a sequential scan here is invisible until the table is large.
+      //
+      // Seeded first: on a handful of rows Postgres will correctly prefer a
+      // sequential scan, so a spec that asserted the index without enough data
+      // would be asserting the opposite of what it means.
+      const issued: IssuedQuery[] = []
+      const recording = makeRecordingDatabase(issued)
+      const repository = new PostgresPageRepository(recording)
+
+      try {
+        const { userId, pageId } = await pageWithHistory()
+        for (let index = 0; index < 400; index++) {
+          await addAuditAt(pageId, daysAgo(index % 80), { status: 'done', score: index % 100 })
+        }
+
+        issued.length = 0
+        await repository.loadHistoryForUser(pageId, userId, daysAgo(30))
+
+        const auditQuery = queryMatching(issued, /from "audits"/i)
+        expect(auditQuery).toBeDefined()
+        if (auditQuery === undefined) return
+
+        expect(await explainPlanText(recording, auditQuery))
+          .toContain('audits_page_created_idx')
+      } finally {
+        await recording.destroy()
+      }
     })
   })
 

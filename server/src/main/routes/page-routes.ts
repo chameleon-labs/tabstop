@@ -2,8 +2,8 @@ import type { RequestHandler, Router } from 'express'
 import { adaptMiddleware } from '../adapters/express-middleware-adapter.js'
 import { adaptRoute } from '../adapters/express-route-adapter.js'
 import {
-  makeAddPageController, makeDeletePageController, makeLoadPagesController,
-  makeUpdatePageController
+  makeAddPageController, makeDeletePageController, makeLoadPageHistoryController,
+  makeLoadPagesController, makeUpdatePageController
 } from '../factories/controllers/page/page-controller-factories.js'
 import { makeAuthMiddleware } from '../factories/middlewares/auth-middleware-factory.js'
 import { makeRateLimit, ipKey, type RateLimitRule } from '../middlewares/rate-limit.js'
@@ -50,6 +50,14 @@ export default (router: Router): void => {
   router.get('/pages', ...guarded(
     { name: 'pageRead', bucket: RATE_LIMITS.pageRead, key: ipKey },
     makeLoadPagesController()
+  ))
+
+  // The trend chart's data (#21). Registered before the parameterless routes'
+  // siblings only by convention - Express matches on the full path, so
+  // `/pages/:id/history` and `/pages/:id` cannot shadow each other.
+  router.get('/pages/:id/history', ...guarded(
+    { name: 'pageHistory', bucket: RATE_LIMITS.pageHistory, key: ipKey },
+    makeLoadPageHistoryController()
   ))
 
   router.patch('/pages/:id', ...guarded(
