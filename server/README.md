@@ -106,6 +106,8 @@ await q.close()
 
 A Redis token bucket in front of `POST /api/audits`, `GET /api/audits/:uuid`, `/signup`, `/login` (per IP and, separately, per submitted email), `/logout` and `GET /api/me`. `/logout`'s bucket is deliberately the loosest of them — signing out is idempotent and someone with several tabs may fire it more than once, so the capacity sits far above any genuine client — but it is not unlimited: every call carrying a cookie is an indexed DELETE, and an anonymous caller can drive those as fast as it opens sockets. When Redis cannot answer, the limiter degrades to a per-instance in-memory bucket rather than rejecting — see `DECISIONS.md` for why.
 
+**A connection that is merely still opening is not an outage.** The client is built with `enableOfflineQueue: false` so a dead Redis rejects instead of hanging, and ioredis draws no distinction between dead and not-yet-connected — so a command issued before the socket is writable used to fail, degrading the first request a process served for no reason but its own timing. `RedisTokenBucket` waits up to `READY_TIMEOUT_MS` for the connection first. An outage costs one such wait per degraded window, not one per request, because the first failure puts the limiter on its fallback for the next five seconds.
+
 `TRUST_PROXY_HOPS` (default `0`) is how many reverse proxies sit in front of the process; Express reads the client IP from that many positions in `X-Forwarded-For`. It must be a real hop count, never `true` — see the comment in `main/config/app.ts`.
 
 Every bucket except the anonymous audit one is a constant in `main/config/rate-limits.ts`. The audit bucket is env-configurable because it is the cost dial: `AUDIT_RATE_CAPACITY` (default `5`) and `AUDIT_RATE_PER_HOUR` (default `5`).

@@ -6,6 +6,22 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-07-31 — a connection still opening is not an outage, and quiet tests are a feature
+
+The rate limiter degraded on the first request every process served, and had done since #8. Its client is built with `enableOfflineQueue: false` — the option that makes a dead Redis reject rather than hang, which is what the whole degrade-don't-refuse design rests on — and **ioredis draws no distinction between dead and not yet connected.** A socket takes a few milliseconds to become writable; until it does, every command fails with "Stream isn't writeable and enableOfflineQueue options is false". So the first request lost a race it should never have been in, and `FallbackRateLimiter` then served the next five seconds from a per-process bucket instead of the shared one.
+
+**Deterministic, not a flake.** Constructing the client and issuing a command in the same tick reproduces it every time, locally, with the exact message CI logs — which is also why it looked like a CI-only problem: locally the first request usually arrives late enough to win.
+
+`RedisTokenBucket` now waits for the connection before its command. ioredis offers unbounded queueing or none, so this is the middle: queue briefly, then fail. A second is far longer than a connection needs, and an outage costs one wait per degraded window rather than one per request, because the first failure moves the limiter onto its fallback for five seconds. `end` fails immediately, since a closed client will never be ready.
+
+**The wait is shared across a burst**, for the reason `CoalescingDnsResolver` coalesces and one more this class cannot avoid: each wait attaches `ready` and `error` listeners, and Node warns past ten. A burst arriving at startup — which is exactly when a connection is still opening — printed `MaxListenersExceededWarning` to stderr, reintroducing the noise the change exists to remove. Caught in review; confirmed by removing the coalescing, which prints *"11 ready listeners added to [Commander]"*. The shared promise is cleared on settlement rather than memoised, so a client that dropped and reconnected waits for its own `ready` instead of remembering the last one.
+
+Rejected: waiting once at startup instead. It is the obvious shape and it fixes only production — every route spec builds the app directly rather than through `server.ts`, so the half of this that made rate-limit assertions unreliable would have survived. A fix that a caller has to remember is one the tests do not get.
+
+**The three expected log lines are now silenced and asserted** in the specs that cause them. They were never bugs: a stubbed limiter throwing, a stubbed primary refusing, and the session sweeper reporting a pass that found nothing — the last of which is deliberate, since a maintenance task that only speaks up when it has work is one nobody notices has stopped. The cost was not the noise itself but that it read exactly like the genuine degradation above, which is how that one survived so long unexamined. Silencing without asserting was rejected outright: it would delete the only cover those decisions have.
+
+**Not claimed:** that this fixes the `account-routes.test.ts` flakes. Eight baseline runs on `main` and six on the branch all passed, so the local signal is too weak to confirm or rule it out; CI is where it showed. Recorded on #50 rather than asserted here.
+
 ## 2026-07-30 — the nightly re-audit, and dedupe on intent rather than on a timestamp
 
 Every page with `monitoring_enabled` is audited once per UTC day, fanned out at 02:00 UTC by a BullMQ job scheduler in the worker and spread over a six-hour window. This is the promise the product is actually making; without it tabstop is a one-off audit tool with an account system.

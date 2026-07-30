@@ -8,13 +8,44 @@ const mockSessions = (
 ) => ({ deleteExpired: vi.fn<DeleteExpired>(deleteExpired) })
 
 describe('startSessionSweeper', () => {
+  /**
+   * The sweeper reports every pass, including the ones that find nothing -
+   * deliberately, since a maintenance task that only speaks up when it has
+   * work is one nobody notices has stopped running. Right in production, pure
+   * noise here, where several specs drive a dozen passes apiece.
+   *
+   * Silenced AND asserted rather than merely silenced: the logging is the
+   * feature, so hiding it without checking it would remove the only cover
+   * that decision has.
+   */
+  let log: ReturnType<typeof vi.spyOn>
+
   beforeEach(() => {
     vi.useFakeTimers()
+    log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
   })
 
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('reports a pass that found nothing, so a sweeper that stopped is noticeable', async () => {
+    const sweeper = startSessionSweeper(mockSessions(), 1000)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(log).toHaveBeenCalledWith('Session sweep removed 0 expired session(s)')
+    sweeper.stop()
+  })
+
+  it('reports how many it removed', async () => {
+    const sweeper = startSessionSweeper(mockSessions(async () => 7), 1000)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(log).toHaveBeenCalledWith('Session sweep removed 7 expired session(s)')
+    sweeper.stop()
   })
 
   it('does not sweep on boot', async () => {
