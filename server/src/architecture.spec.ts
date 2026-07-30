@@ -6,25 +6,28 @@ import { describe, expect, it } from 'vitest'
 const SRC = fileURLToPath(new URL('.', import.meta.url))
 
 /**
- * Every way a file can name a dependency. There are three, and the rules below
- * are only as total as this list.
+ * The ways a file names a dependency, matched by hand.
+ *
+ * By hand because the alternative is not available: TypeScript 7 is the
+ * native port and exposes no `createSourceFile`, so there is no AST to walk
+ * without adding a second parser. That makes this an enumeration, and an
+ * enumeration is only ever as good as the list - which has now been wrong
+ * three times, each time in a form nobody was writing until somebody did:
  *
  * 1. A clause with `from`, on one line or several. Matching `[^\n;]*?` between
  *    `import` and `from` saw only the single-line form - and this codebase
  *    wraps constantly, because a protocol name plus a four-deep relative path
  *    does not fit the line limit. 109 of 967 specifiers were invisible.
- *    Found when a multi-line `bullmq` import made the vendor list report the
- *    file that has always imported it as no longer doing so.
- *
  * 2. A side-effect import, `import './x.js'`, which has no clause at all.
- *
  * 3. A dynamic `import('./x.js')`, which is not a statement and can appear
- *    anywhere in a file.
+ *    anywhere in a file - including with a second argument, since
+ *    `import('./x.json', { with: { type: 'json' } })` is the attributes form.
  *
- * The last two carry the same coupling as the first - a domain module doing
- * either has taken on a runtime dependency - so leaving them out would let any
- * source bypass every rule here by writing its import differently. Nothing
- * does that today; the point of this file is that nothing can.
+ * So this claims coverage of those forms and no more. Each carries the same
+ * coupling - a domain module doing any of them has taken on a dependency - so
+ * a form left out is a way to bypass every rule below by writing an import
+ * differently. Nothing does that today; the point of this file is that nothing
+ * can, and the point of this comment is that "nothing can" rests on a list.
  *
  * The character class in the first pattern is what keeps a newline-tolerant
  * match honest. An import clause holds identifiers, braces, commas, `*`, `as`
@@ -35,7 +38,10 @@ const SRC = fileURLToPath(new URL('.', import.meta.url))
 const IMPORT_PATTERNS = [
   /(?:^|\n)\s*(?:import|export)\s+[\w\s{},*]*?from\s+['"]([^'"]+)['"]/g,
   /(?:^|\n)\s*import\s+['"]([^'"]+)['"]/g,
-  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+  // `[,)]` rather than `)`: the specifier can be followed by import
+  // attributes, and requiring the call to close straight after it missed
+  // every dynamic import that carries them.
+  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*[,)]/g
 ]
 
 const specifiersIn = (source: string): string[] =>
@@ -144,6 +150,16 @@ describe('the import scanner the rules rest on', () => {
       '  const { makeDatabase } = await import(\'../../infra/db/postgres/helpers/x.js\')',
       '}'
     ].join('\n'))).toEqual(['../../infra/db/postgres/helpers/x.js'])
+  })
+
+  it('reads a dynamic import that carries attributes', () => {
+    // `import(specifier, options)` is as valid as the one-argument form, so a
+    // pattern demanding `)` straight after the specifier reads a whole valid
+    // syntax as absent - and a `data/` module could import a driver this way
+    // while satisfying every rule below.
+    expect(specifiers(
+      'const config = await import(\'../../infra/config.json\', { with: { type: \'json\' } })'
+    )).toEqual(['../../infra/config.json'])
   })
 
   it('does not mistake a word ending in import for one', () => {

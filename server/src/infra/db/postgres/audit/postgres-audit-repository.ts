@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely'
+import { sql, type Kysely, type SqlBool } from 'kysely'
 import type { AuditModel } from '../../../../domain/models/audit.js'
 import type {
   AddAuditParams,
@@ -236,7 +236,12 @@ export class PostgresAuditRepository implements
     // through it.
     let statement = this.db
       .selectFrom('audits')
-      .select(['id', 'created_at'])
+      // `created_at` as TEXT, not as the parsed column. node-postgres turns a
+      // timestamptz into a JavaScript Date, which holds milliseconds where
+      // Postgres holds microseconds - so a cursor built from the parsed value
+      // sits just below the row it came from, and the next batch serves that
+      // row again. Letting the database render it keeps every digit.
+      .select(['id', sql<string>`created_at::text`.as('cursor_at')])
       .where('status', 'in', ['queued', 'running'])
       .where('created_at', '<', olderThan)
       .orderBy('created_at')
@@ -250,14 +255,20 @@ export class PostgresAuditRepository implements
       // A row comparison, not two predicates: `created_at > x or (= x and id >
       // y)` is the same thing written so the planner cannot use the index for
       // it. This form matches the index's own ordering.
-      statement = statement.where(({ eb, refTuple, tuple }) =>
-        eb(refTuple('created_at', 'id'), '>', tuple(after.createdAt, after.auditId))
+      //
+      // The timestamp goes back as the text Postgres produced, cast
+      // explicitly so it is parsed at full precision rather than inferred.
+      // Written as raw SQL because the typed tuple builder insists the value
+      // match the column's PARSED type - a Date - which is the very thing that
+      // loses the microseconds this cursor exists to keep.
+      statement = statement.where(
+        sql<SqlBool>`(created_at, id) > (${after.createdAt}::timestamptz, ${after.auditId}::bigint)`
       )
     }
 
     const rows = await statement.execute()
 
-    return rows.map((row) => ({ auditId: row.id, createdAt: row.created_at }))
+    return rows.map((row) => ({ auditId: row.id, createdAt: row.cursor_at }))
   }
 
   async markAbandoned (auditId: string, error: string): Promise<boolean> {

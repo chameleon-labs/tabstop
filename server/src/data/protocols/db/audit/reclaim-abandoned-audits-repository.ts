@@ -1,7 +1,21 @@
 export type StaleAudit = {
   auditId: string
-  /** Carried so the caller can resume from it; not otherwise interesting. */
-  createdAt: Date
+  /**
+   * The row's `created_at` as the DATABASE renders it, carried only so the
+   * caller can resume from it.
+   *
+   * Text, and deliberately not a `Date`. Postgres keeps `timestamptz` to
+   * microseconds and a JavaScript Date holds milliseconds, so a Date cursor
+   * is a value slightly BELOW the row it came from - which makes
+   * `created_at > cursor` true of that row and serves it again at the head of
+   * the next batch. Round instead of truncating and the error changes sides:
+   * the cursor overshoots and a row in between is skipped, which is worse,
+   * since the row skipped may be the orphan the pass is looking for.
+   *
+   * Opaque to everything above this protocol. Nothing reads it, orders by it,
+   * or parses it; it goes back to `loadStaleInFlight` exactly as it came out.
+   */
+  createdAt: string
 }
 
 export interface ReclaimAbandonedAuditsRepository {

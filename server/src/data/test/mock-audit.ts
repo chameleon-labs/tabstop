@@ -104,9 +104,16 @@ export const mockAddScheduledAuditRepository = () => ({
   markAbandoned: vi.fn<ReclaimAbandonedAuditsRepository['markAbandoned']>(async () => true)
 })
 
-/** A stale candidate, dated so a cursor can order it. */
+/**
+ * A stale candidate, dated so a cursor can order it.
+ *
+ * The timestamp is text because the real cursor is: Postgres renders it and
+ * the caller hands it straight back, so a `Date` would lose the microseconds
+ * that keep the cursor strictly past the row it came from. Zero-padded so
+ * these sort the way the database's own values do.
+ */
 export const mockStaleAudit = (auditId: string, minutesAgo: number): StaleAudit => ({
-  auditId, createdAt: new Date(Date.UTC(2026, 6, 1, 0, minutesAgo))
+  auditId, createdAt: `2026-07-01 00:${String(minutesAgo).padStart(2, '0')}:00.000000+00`
 })
 
 /**

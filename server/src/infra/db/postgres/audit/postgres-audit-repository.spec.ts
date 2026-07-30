@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 import { makeDatabase } from '../helpers/postgres-helper.js'
 import { PostgresAuditRepository, claimLeaseFor } from './postgres-audit-repository.js'
 import type { Database } from '../database.js'
@@ -226,11 +226,23 @@ describe('PostgresAuditRepository', () => {
       expect(await staleIds(hoursAgo(12), 1)).toHaveLength(1)
     })
 
-    // The two cursor specs below assert only about the rows they created.
+    // The cursor specs below assert only about the rows they created.
     // `loadStaleInFlight` is global by design - the reclaim pass reconciles
     // every unfinished audit there is - so every other spec file's in-flight
     // fixtures are in these results too, and one that asserted "mine is at the
     // head" would be asserting the suite's insertion order.
+    //
+    // They also take the cursor from a real load rather than building one, so
+    // it carries whatever the repository actually emits. A hand-built cursor
+    // is a second implementation of the thing under test, and this is exactly
+    // where the two would disagree: the database's microseconds do not survive
+    // a JavaScript Date.
+    const cursorFor = async (auditId: string, olderThan: Date): Promise<StaleAudit> => {
+      const rows = await sut.loadStaleInFlight(olderThan, 10_000, null)
+      const found = rows.find((row) => row.auditId === auditId)
+      if (found === undefined) throw new Error(`${auditId} was not offered as a candidate`)
+      return found
+    }
 
     it('resumes after the cursor rather than serving the same batch again', async () => {
       // What stops the reclaim pass starving. Old candidates that are
@@ -238,14 +250,40 @@ describe('PostgresAuditRepository', () => {
       // front of this list every night - without a cursor the orphan behind
       // them is never examined, and its page is excluded from re-audits for
       // good.
-      const firstAt = hoursAgo(500)
-      const first = await inFlightAudit('queued', firstAt)
+      const first = await inFlightAudit('queued', hoursAgo(500))
       const second = await inFlightAudit('queued', hoursAgo(499))
 
-      const next = await staleIds(hoursAgo(400), 1000, { auditId: first, createdAt: firstAt })
+      const next = await staleIds(hoursAgo(400), 1000, await cursorFor(first, hoursAgo(400)))
 
       expect(next).toContain(second)
       expect(next).not.toContain(first)
+    })
+
+    it('does not serve a row again as its own successor', async () => {
+      // Postgres keeps `timestamptz` to microseconds; a JavaScript Date holds
+      // milliseconds. Carry the cursor as a Date and the value sent back is
+      // smaller than the value stored, so `created_at > cursor` is true of the
+      // row the cursor came FROM and it arrives again at the head of the next
+      // batch. With a small batch that repeats forever, spending the run's
+      // whole ceiling re-reading one row while the abandoned audits behind it
+      // are never reached.
+      const pageId = await makePage()
+      // Microseconds a Date cannot hold, which is what makes the round trip
+      // lossy. Every real row has them - `now()` is microsecond-resolution -
+      // so this is the ordinary case rather than a contrived one.
+      const cutoff = new Date('2026-07-02T00:00:00Z')
+      const inserted = await db.insertInto('audits')
+        .values({
+          page_id: pageId,
+          url: 'https://micro.test/',
+          status: 'queued',
+          created_at: sql<Date>`timestamptz '2026-07-01 00:00:00.123456+00'`
+        })
+        .returning('id').executeTakeFirstOrThrow()
+
+      const next = await staleIds(cutoff, 1000, await cursorFor(inserted.id, cutoff))
+
+      expect(next).not.toContain(inserted.id)
     })
 
     it('separates rows sharing a timestamp, which is why the cursor carries the id', async () => {
@@ -261,7 +299,7 @@ describe('PostgresAuditRepository', () => {
       ]
       if (first === undefined) return
 
-      const after = await staleIds(hoursAgo(550), 1000, { auditId: first, createdAt: sharedAt })
+      const after = await staleIds(hoursAgo(550), 1000, await cursorFor(first, hoursAgo(550)))
 
       for (const auditId of rest) expect(after).toContain(auditId)
       expect(after).not.toContain(first)
