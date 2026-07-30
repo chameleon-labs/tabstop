@@ -1,17 +1,17 @@
 import {
-  AddPageController
+  AddPageController, type AddPageRequest
 } from '../../../../presentation/controllers/page/add-page-controller.js'
 import {
-  DeletePageController
+  DeletePageController, type DeletePageRequest
 } from '../../../../presentation/controllers/page/delete-page-controller.js'
 import {
-  LoadPageHistoryController
+  LoadPageHistoryController, type LoadPageHistoryRequest
 } from '../../../../presentation/controllers/page/load-page-history-controller.js'
 import {
-  LoadPagesController
+  LoadPagesController, type LoadPagesRequest
 } from '../../../../presentation/controllers/page/load-pages-controller.js'
 import {
-  UpdatePageController
+  UpdatePageController, type UpdatePageRequest
 } from '../../../../presentation/controllers/page/update-page-controller.js'
 import type { Controller } from '../../../../presentation/protocols/controller.js'
 import {
@@ -21,19 +21,17 @@ import {
   makeAddPageValidation, makeLoadPageHistoryValidation, makeUpdatePageValidation
 } from '../../validation/page-validation-factory.js'
 
-export const makeAddPageController = (): Controller =>
-  new AddPageController(makeAddPageValidation(), makeAddPage()) as Controller
+export const makeAddPageController = (): Controller<AddPageRequest> =>
+  new AddPageController(makeAddPageValidation(), makeAddPage())
 
-export const makeLoadPagesController = (): Controller =>
-  new LoadPagesController(makeLoadPages()) as Controller
+export const makeLoadPagesController = (): Controller<LoadPagesRequest> =>
+  new LoadPagesController(makeLoadPages())
 
-export const makeLoadPageHistoryController = (): Controller =>
-  new LoadPageHistoryController(
-    makeLoadPageHistoryValidation(), makeLoadPageHistory()
-  ) as Controller
+export const makeLoadPageHistoryController = (): Controller<LoadPageHistoryRequest> =>
+  new LoadPageHistoryController(makeLoadPageHistoryValidation(), makeLoadPageHistory())
 
-export const makeUpdatePageController = (): Controller =>
-  new UpdatePageController(makeUpdatePageValidation(), makeUpdatePage()) as Controller
+export const makeUpdatePageController = (): Controller<UpdatePageRequest> =>
+  new UpdatePageController(makeUpdatePageValidation(), makeUpdatePage())
 
-export const makeDeletePageController = (): Controller =>
-  new DeletePageController(makeDeletePage()) as Controller
+export const makeDeletePageController = (): Controller<DeletePageRequest> =>
+  new DeletePageController(makeDeletePage())

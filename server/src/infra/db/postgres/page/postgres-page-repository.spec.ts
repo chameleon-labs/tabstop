@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { Kysely, PostgresDialect } from 'kysely'
+import { Kysely, PostgresDialect, sql } from 'kysely'
 import pg from 'pg'
 import type { Database } from '../database.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
@@ -298,7 +298,7 @@ describe('PostgresPageRepository', () => {
       expect(summaries[1]?.history.map((point) => point.score)).toEqual([42])
     })
 
-    it('reads about thirty audit rows per page, not the whole history', async () => {
+    it('reads about thirty audit rows for a page with two thousand', async () => {
       // The bound has to be on WORK, not only on output. `row_number() ...
       // where rank <= 30` returns thirty rows per page and looks equivalent -
       // Postgres 15+ even pushes the comparison into the window as a Run
@@ -307,11 +307,16 @@ describe('PostgresPageRepository', () => {
       // which is the polled endpoint, gets slower for as long as the account
       // exists.
       //
-      // Asserted by running EXPLAIN ANALYZE over the query the repository
-      // actually issued, so it cannot drift from a copy kept in the spec.
-      const issued: Array<{ sql: string, parameters: readonly unknown[] }> = []
-      const counting = makeRecordingDatabase(issued)
-      const repository = new PostgresPageRepository(counting)
+      // Counted across EVERY query the load issued, not just the one matching
+      // some pattern. That matters: the first version of this spec found the
+      // history query by searching for `lateral`, so replacing the lateral
+      // with the window function made the search fail and the "did we find it"
+      // guard went red before the count was ever compared. It looked
+      // mutation-checked and was not - and the row counter it relied on was
+      // itself returning 0 for every input.
+      const issued: IssuedQuery[] = []
+      const recording = makeRecordingDatabase(issued)
+      const repository = new PostgresPageRepository(recording)
 
       try {
         const userId = await makeUser()
@@ -319,27 +324,36 @@ describe('PostgresPageRepository', () => {
         const added = await sut.add({ userId, domain, url: `https://${domain}/`, limit: 10 })
         if (added.outcome !== 'added') throw new Error('expected the page to be added')
 
-        const history = 200
-        for (let index = 0; index < history; index++) {
-          await addAudit(added.page.id, { status: 'done', score: index % 100 })
-        }
+        const history = 2000
+        await sql`
+          insert into audits (page_id, url, status, score, created_at)
+          select ${added.page.id}::bigint, 'https://bulk.test/', 'done', (i % 100),
+                 now() - (i || ' hours')::interval
+          from generate_series(1, ${history}) i
+        `.execute(db)
+        // Without this the planner still thinks the page has one audit, picks
+        // a bitmap scan with a top-N sort, and reads all 2000 rows even from
+        // the lateral - which is a fact about missing statistics rather than
+        // about the query. Production has them from autovacuum; a spec that
+        // bulk-inserts has to ask.
+        await sql`analyze audits`.execute(db)
 
         issued.length = 0
         expect((await repository.loadSummariesForUser(userId))[0]?.history).toHaveLength(30)
 
-        const historyQuery = queryMatching(issued, /\blateral\b/i)
-        expect(historyQuery).toBeDefined()
-        if (historyQuery === undefined) return
+        const queries = [...issued]
+        let rowsRead = 0
+        for (const query of queries) {
+          rowsRead += await explainRowsRead(recording, query, 'audits')
+        }
 
-        const rowsRead = await explainRowsRead(counting, historyQuery, 'audits')
-
-        // Thirty for the one page. The window-function version reads all 201
-        // and grows from there, so any threshold between them separates the
-        // two; this one leaves room for a planner that reads a few extra rows
-        // getting past the status filter.
+        // Thirty for the history plus one for the latest-audit lookup. The
+        // window-function version reads all 2000, so the gap is two orders of
+        // magnitude and any threshold between them separates the two.
+        expect(rowsRead).toBeGreaterThan(0)
         expect(rowsRead).toBeLessThan(HISTORY_POINTS * 2)
       } finally {
-        await counting.destroy()
+        await recording.destroy()
       }
     })
 

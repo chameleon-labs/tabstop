@@ -41,10 +41,24 @@ export const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> =>
     }
   })
 
-/** The first recorded query whose SQL matches, so a spec can name what it means. */
+/**
+ * The first recorded query whose SQL matches, so a spec can name what it means.
+ *
+ * EXPLAIN runs are skipped because the helpers below issue theirs through the
+ * same recording connection, so they land in the sink too - and a spec that
+ * looked one up a second time would end up asking the database to explain an
+ * explain, which is a syntax error rather than a useful failure.
+ *
+ * Prefer counting across every recorded query where a spec can: a search
+ * pattern couples the assertion to the query's SHAPE, so a rewrite makes the
+ * lookup fail rather than making the measurement disagree - and a lookup that
+ * fails first is a guard, not a measurement.
+ */
 export const queryMatching = (
   issued: IssuedQuery[], pattern: RegExp
-): IssuedQuery | undefined => issued.find((query) => pattern.test(query.sql))
+): IssuedQuery | undefined => issued.find(
+  (query) => !/^\s*explain\b/i.test(query.sql) && pattern.test(query.sql)
+)
 
 /**
  * Rows read from one relation, across every node of an
@@ -57,9 +71,24 @@ export const queryMatching = (
  * be multiplied by its loop count - which is the whole point, since a lateral
  * runs one bounded scan per outer row and the total is what matters.
  *
- * Summing every node's rows instead was the first attempt and is meaningless:
- * it multiplies the answer by the depth of the plan, so a Sort over a Nested
- * Loop over a Limit counts the same thirty rows four times.
+ * Two earlier versions of this were wrong, in opposite directions, and the
+ * second is the more instructive.
+ *
+ * Summing every node's rows regardless of relation multiplies the answer by
+ * the depth of the plan: a Sort over a Nested Loop over a Limit counts the
+ * same thirty rows four times.
+ *
+ * Fixing that by descending only through `Plan` and `Plans` reached nothing at
+ * all. The document is `[{ "QUERY PLAN": [{ "Plan": ... }] }]`, so the walk
+ * stopped at the very first key and every caller got 0 - turning "this query
+ * reads fewer than N rows" into an assertion that holds for any query
+ * whatsoever. It survived a mutation check because the mutation changed the
+ * query's SHAPE as well, so the spec's "did we find the query" guard went red
+ * first and the count never proved anything. A count-based assertion has to be
+ * mutation-checked against a change that leaves the query FINDABLE.
+ *
+ * Hence: descend through every value, and attribute rows only where a node
+ * names the relation.
  */
 const rowsReadFrom = (relation: string, node: unknown): number => {
   if (Array.isArray(node)) {
@@ -68,14 +97,15 @@ const rowsReadFrom = (relation: string, node: unknown): number => {
   if (typeof node !== 'object' || node === null) return 0
 
   const fields: Record<string, unknown> = { ...node }
+  // Only scan nodes carry `Relation Name`, so descending everywhere cannot
+  // double-count - a Sort above an Index Scan contributes nothing of its own.
   const scanned = fields['Relation Name'] === relation
   const rows = typeof fields['Actual Rows'] === 'number' ? fields['Actual Rows'] : 0
   const loops = typeof fields['Actual Loops'] === 'number' ? fields['Actual Loops'] : 1
   const here = scanned ? rows * loops : 0
 
-  return here + Object.entries(fields)
-    .filter(([key]) => key === 'Plans' || key === 'Plan')
-    .reduce<number>((total, [, value]) => total + rowsReadFrom(relation, value), 0)
+  return here + Object.values(fields)
+    .reduce<number>((total, value) => total + rowsReadFrom(relation, value), 0)
 }
 
 export const explainRowsRead = async (

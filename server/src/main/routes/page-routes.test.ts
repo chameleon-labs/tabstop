@@ -93,6 +93,25 @@ describe('page routes', () => {
     return session.user_id
   }
 
+  /**
+   * A page owned by this session, created through the repository.
+   *
+   * Not through `POST /api/pages`, because an accepted add enqueues to a live
+   * Redis with a 2s timeout and three retries - so a spec that only needs an
+   * owned page to exist pays for the queue, and enough of them in one file
+   * turns a busy container into a 30s timeout that reports as whatever spec
+   * happened to be running. Specs that are ABOUT creating a page still go
+   * through the API; these are about what you can then do with one.
+   */
+  const seedPage = async (cookie: string): Promise<{ pageId: string, url: string }> => {
+    const url = auditableUrl()
+    const added = await new PostgresPageRepository(db).add({
+      userId: await accountIdFor(cookie), domain: '93.184.216.34', url, limit: 100
+    })
+    if (added.outcome !== 'added') throw new Error(`expected a page, got ${added.outcome}`)
+    return { pageId: added.page.id, url }
+  }
+
   const addPage = async (cookie: string, url: string): Promise<request.Response> =>
     await request(app).post('/api/pages')
       .set('x-forwarded-for', uniqueIp()).set('cookie', cookie).send({ url })
@@ -437,9 +456,7 @@ describe('page routes', () => {
 
     /** A page with three finished audits and one failure, oldest to newest. */
     const pageWithTrend = async (cookie: string): Promise<string> => {
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
-      const url = added.body.url as string
+      const { pageId, url } = await seedPage(cookie)
 
       // The page's own first audit is queued and undated by these specs; the
       // trend below is what the assertions read.
@@ -531,13 +548,17 @@ describe('page routes', () => {
       // Beats the global no-store middleware, which is the point of the
       // allowlist on adaptRoute.
       expect(response.headers['cache-control']).toBe('private, max-age=60')
+      // BOTH variants survive. `Vary` is a list and the CORS middleware has
+      // already put `origin` in it; asserting only `Cookie` here passed while
+      // the adapter was overwriting the header and quietly dropping Origin
+      // from the cache key.
       expect(response.headers.vary).toContain('Cookie')
+      expect(response.headers.vary?.toLowerCase()).toContain('origin')
     })
 
     it('returns an empty point list rather than 404 for a page with no audits in range', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
+      const { pageId } = await seedPage(cookie)
       await db.deleteFrom('audits').where('page_id', '=', pageId).execute()
 
       const response = await historyOf(cookie, pageId, '?days=1')

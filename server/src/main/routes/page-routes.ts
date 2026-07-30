@@ -30,7 +30,9 @@ import type { Controller } from '../../presentation/protocols/controller.js'
  * auth inside this helper is what keeps that from depending on whoever adds
  * the fifth route remembering a line.
  */
-const guarded = (rule: RateLimitRule, controller: Controller): RequestHandler[] => [
+const guarded = <TRequest>(
+  rule: RateLimitRule, controller: Controller<TRequest>
+): RequestHandler[] => [
   makeRateLimit(makeRateLimiter(), [rule]),
   adaptMiddleware(makeAuthMiddleware()),
   adaptRoute(controller)

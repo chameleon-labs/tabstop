@@ -199,6 +199,49 @@ describe('adaptMiddleware', () => {
     expect(response.headers['cache-control']).toBe('public, max-age=60')
   })
 
+  it('adds to Vary rather than replacing what the middleware stack declared', async () => {
+    // Vary is a LIST, and cors.ts appends `origin` to it with a comment saying
+    // that overwriting would drop a variant added elsewhere. This adapter WAS
+    // that elsewhere: it applied every controller header with res.set, so a
+    // controller asking to vary on Cookie silently removed Origin from the
+    // cache key - and a credentialed CORS response cached without varying on
+    // Origin is one that can be served to the wrong origin.
+    const controller: Controller = {
+      async handle (): Promise<HttpResponse> {
+        return { statusCode: 200, body: {}, headers: { vary: 'Cookie' } }
+      }
+    }
+    const app = express()
+    app.use((_req, res, next) => { res.append('vary', 'origin'); next() })
+    app.post('/probe', adaptRoute(controller))
+
+    const response = await request(app).post('/probe').send({})
+
+    const vary = response.headers.vary ?? ''
+    expect(vary).toContain('origin')
+    expect(vary).toContain('Cookie')
+  })
+
+  it('still lets a controller replace cache-control outright', async () => {
+    // The counterpart to the rule above, and why the adapter cannot simply
+    // append everything: cache-control is a single directive set rather than a
+    // list, so a controller opting into caching has to BEAT the global
+    // no-store, not accumulate alongside it.
+    const controller: Controller = {
+      async handle (): Promise<HttpResponse> {
+        return {
+          statusCode: 200, body: {}, headers: { 'cache-control': 'private, max-age=60' }
+        }
+      }
+    }
+    const app = express()
+    app.use((_req, res, next) => { res.set('cache-control', 'no-store'); next() })
+    app.post('/probe', adaptRoute(controller))
+
+    expect((await request(app).post('/probe').send({})).headers['cache-control'])
+      .toBe('private, max-age=60')
+  })
+
   it('leaves the default alone when a controller asks for nothing', async () => {
     const app = express()
     app.use((_req, res, next) => { res.set('cache-control', 'no-store'); next() })

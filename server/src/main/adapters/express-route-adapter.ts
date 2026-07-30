@@ -39,7 +39,19 @@ export const applyCookies = (res: Response, cookies: CookieDirective[] | undefin
   }
 }
 
-export const adaptRoute = (controller: Controller) => {
+/**
+ * Generic, so a controller can declare the request shape it expects without
+ * every factory casting it back to `Controller<unknown>`.
+ *
+ * `Controller.handle` is a property rather than a method, so under
+ * `strictFunctionTypes` its parameter is contravariant and
+ * `Controller<AddPageRequest>` is NOT assignable to `Controller<unknown>` -
+ * which is why five factories carried an `as Controller`. Those casts each
+ * silenced the check at a call site that had no way to justify it. Taking the
+ * type parameter here moves the one genuinely unavoidable assertion to the
+ * only place that can explain it: see below.
+ */
+export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
   return async (req: Request, res: Response): Promise<void> => {
     // Client-supplied input first, then everything WE established - cookies we
     // parsed, then whatever the auth middleware put in res.locals. Both must
@@ -55,13 +67,21 @@ export const adaptRoute = (controller: Controller) => {
     // Logout needs the cookie without sitting behind the auth middleware, so
     // that it stays idempotent (204 on an absent or dead session) rather than
     // answering 401.
+    //
+    // The one cast in this layer, and the only place in the codebase that can
+    // account for it: this object is assembled at runtime from a body, a query
+    // string and a params bag that the framework types as `any`, so no static
+    // check upstream of here means anything. Every controller re-validates
+    // what it reads - `typeof request.id !== 'string'` is a 404, a zod schema
+    // is a 400 - so the assertion is a claim about SHAPE that each consumer
+    // then verifies, not a claim about trustworthiness that nobody checks.
     const httpRequest = {
       ...req.body,
       ...req.query,
       ...req.params,
       cookies: parseCookies(req.headers.cookie),
       ...res.locals
-    }
+    } as TRequest
 
     const httpResponse = await controller.handle(httpRequest)
 
@@ -76,8 +96,18 @@ export const adaptRoute = (controller: Controller) => {
     // middleware just set. Caching is the only thing a controller legitimately
     // owns here.
     for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
-      if (!CONTROLLER_HEADERS.has(name.toLowerCase())) continue
-      res.set(name, value)
+      const header = name.toLowerCase()
+      if (!CONTROLLER_HEADERS.has(header)) continue
+
+      // `vary` is a LIST, and the middleware stack has already contributed to
+      // it - cors.ts appends `origin`, with a comment saying overwriting would
+      // drop a variant added elsewhere. This was that elsewhere: `res.set`
+      // replaced the whole header, so a controller asking to vary on Cookie
+      // silently removed Origin from the cache key. `cache-control` is the
+      // opposite case - a single directive set that a controller opting into
+      // caching has to be able to replace outright.
+      if (header === 'vary') res.append(header, value)
+      else res.set(header, value)
     }
 
     res.status(httpResponse.statusCode).json(httpResponse.body)
