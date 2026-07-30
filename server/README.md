@@ -17,7 +17,14 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-`GET /api/health` (including a Postgres reachability probe) and the account slice — signup, login, logout and `GET /api/me` — exist so far. A BullMQ queue and a separate worker process are also wired up: the worker consumes the `ping` heartbeat queue, and jobs are currently enqueued by the test suite and by hand — nothing in production enqueues one yet. A scheduled producer arrives with cron support. No real job (the audit worker) exists yet. See `../DECISIONS.md` for stack decisions and `docs/superpowers/specs/` for designs.
+Four slices exist:
+
+- **Health** — `GET /api/health`, including a Postgres reachability probe.
+- **Accounts** — signup, login, logout and `GET /api/me`, on server-side sessions.
+- **Audits** — `POST /api/audits` (anonymous, one-off) and the public `GET /api/audits/:uuid`. A BullMQ queue and a separate worker process run them with Playwright Chromium and vendored axe-core.
+- **Pages** — `POST/GET /api/pages` and `PATCH/DELETE /api/pages/:id`, all behind the auth middleware. Adding a page creates its `Site` if needed, enforces the per-account cap, and starts a first audit; `GET` answers the whole dashboard — latest audit, score, previous score and a bounded sparkline — in a fixed number of queries.
+
+Not built yet: the daily re-audit scheduler, regression detection, alert email, and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
 
 ## Stack
 

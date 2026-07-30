@@ -78,3 +78,27 @@ export const parseAuditUrl = (raw: string, policy: UrlPolicy): UrlSafetyResult =
 
   return { safe: true, url }
 }
+
+/**
+ * The canonical form a monitored page is stored and deduplicated under.
+ *
+ * `URL` has already done most of the work by the time this runs - the host is
+ * lowercased, a default port is dropped, and an empty path becomes `/`, which
+ * is what stops `example.com` and `example.com/` being two pages. What it does
+ * NOT drop is the fragment, and a fragment is never sent to the server: two
+ * urls differing only by one audit identically, so storing both would double
+ * the cost and send two of every alert.
+ *
+ * The query string is kept. It routinely selects a different page, and
+ * guessing which parameters are decorative is not something a monitor should
+ * do on the user's behalf.
+ *
+ * A one-off anonymous audit deliberately does not go through this - it has no
+ * uniqueness to enforce, and normalising the url a caller pasted would make
+ * the result page disagree with what they typed.
+ */
+export const canonicalPageUrl = (url: URL): string => {
+  const canonical = new URL(url.toString())
+  canonical.hash = ''
+  return canonical.toString()
+}

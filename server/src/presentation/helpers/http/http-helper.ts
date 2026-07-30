@@ -55,6 +55,24 @@ export const conflict = (error: Error): HttpResponse<{ error: string }> => ({
   body: { error: error.message }
 })
 
+/**
+ * A conflict the client has to BRANCH on rather than only display - "you are
+ * at your limit" wants an upgrade prompt, "you already track this" wants a
+ * link to the page - so it carries a stable machine-readable `code` and
+ * whatever the branch needs to render.
+ *
+ * `error` keeps meaning what it means on every other response: the sentence to
+ * show a person. Overloading it with the code instead, as #11's sketch did,
+ * would make one endpoint's `error` field a different kind of thing from all
+ * the others and break any generic client handler.
+ */
+export const codedConflict = (
+  code: string, error: Error, details: Record<string, number | string> = {}
+): HttpResponse<{ code: string, error: string }> => ({
+  statusCode: 409,
+  body: { code, error: error.message, ...details }
+})
+
 export const serverError = (error: Error): HttpResponse<{ error: string }> => ({
   statusCode: 500,
   body: { error: new ServerError(error).message }

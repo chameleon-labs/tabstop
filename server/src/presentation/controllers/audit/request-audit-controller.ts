@@ -1,8 +1,8 @@
-import type { UrlRejection } from '../../../domain/services/url-safety.js'
 import type { RequestAudit } from '../../../domain/usecases/request-audit.js'
 import {
   accepted, badRequest, serverError, serviceUnavailable
 } from '../../helpers/http/http-helper.js'
+import { REJECTION_MESSAGES } from '../../helpers/url-rejection-message.js'
 import type { Controller } from '../../protocols/controller.js'
 import type { HttpResponse } from '../../protocols/http.js'
 
@@ -12,19 +12,6 @@ export type RequestAuditRequest = {
 
 /** How long a client should wait before polling. Widening it needs no frontend deploy. */
 const POLL_AFTER_MS = 2000
-
-/**
- * `blocked-address` reuses the worker's wording deliberately. A submission-time
- * rejection and an audit-time one must read identically, or the difference
- * tells an attacker which internal addresses exist.
- */
-const REJECTION_MESSAGES: Readonly<Record<UrlRejection, string>> = {
-  'invalid-url': 'That does not look like a URL',
-  'blocked-scheme': 'Only http and https addresses can be audited',
-  'blocked-port': 'Only standard web ports can be audited',
-  'blocked-address': "That address can't be audited",
-  'blocked-credentials': 'Remove the username and password from that URL'
-}
 
 export class RequestAuditController implements Controller<RequestAuditRequest> {
   constructor (private readonly requestAudit: RequestAudit) {}

@@ -192,6 +192,8 @@ describe('layer dependencies', () => {
           // never saw it.
           'infra/db/postgres/migrations/index.ts',
           'infra/db/postgres/migrations/migrator.ts',
+          'infra/db/postgres/page/page-mapper.ts',
+          'infra/db/postgres/page/postgres-page-repository.ts',
           'infra/db/postgres/session/postgres-session-repository.ts',
           'infra/db/postgres/session/session-mapper.ts',
           'infra/db/postgres/violation/postgres-violation-repository.ts',
