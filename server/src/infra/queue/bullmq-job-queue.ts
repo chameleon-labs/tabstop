@@ -64,12 +64,18 @@ export class BullMqAuditQueue implements AuditJobQueue {
    * the wrong thing.
    *
    * What counting waiting alone gives up is the retry-backoff window the old
-   * comment was protecting: a job that threw is uncounted for a second or two.
+   * comment was protecting: a job that threw is uncounted until it comes back.
    * That undercounts, which is the direction this comment already argued an
    * imprecise cost control should be wrong - and the delayed jobs are not
    * lost, they enter `waiting` as their time arrives, so a genuinely saturated
    * worker still refuses submissions. What changed is only that work scheduled
    * into the future stops being charged as if it were queued now.
+   *
+   * The residual is real and bounded: against a handler that fails fast, the
+   * queue can hold roughly `attempts` times the cap in work that is coming
+   * back. Pinned by a spec rather than left as a claim. Separating the two
+   * kinds of delay needs the scheduler's off this queue entirely, which is
+   * #51 - not something to smuggle into the count here.
    *
    * Active is left out for the reason it always was: it is bounded by the
    * workers' own concurrency rather than by anything a submitter can drive.

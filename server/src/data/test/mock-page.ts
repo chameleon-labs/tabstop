@@ -73,9 +73,26 @@ export const mockDuePages = (): DuePage[] => [
   { pageId: 'page-2', url: 'https://other.test/b', domain: 'other.test' }
 ]
 
+/**
+ * One batch and no more, so a spec that does not care about paging gets a run
+ * that terminates. `after` is honoured rather than ignored: a mock that
+ * returned the same batch forever would let a broken cursor pass.
+ */
 export const mockLoadDueReauditsRepository = () => ({
   loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(
-    async () => mockDuePages()
+    async (query) => query.after === null ? mockDuePages() : []
+  )
+})
+
+/**
+ * A repository holding `pages`, served in id order through the cursor - so a
+ * paging spec exercises the loop rather than a stub that agrees with it.
+ */
+export const mockPagedDueReauditsRepository = (pages: DuePage[]) => ({
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(
+    async (query) => pages
+      .filter((page) => query.after === null || page.pageId > query.after)
+      .slice(0, query.limit)
   )
 })
 

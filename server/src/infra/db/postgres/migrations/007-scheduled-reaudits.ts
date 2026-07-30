@@ -34,16 +34,18 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   `.execute(db)
 
   // The eligibility query's other half: skip a page that already has a queued
-  // or running audit. Without an index that check reads every audit the page
-  // has ever had, to find none - a cost that grows for as long as the account
-  // is a customer, paid once per page per night.
+  // or running audit, and only if that audit is recent enough to still be
+  // real. Without an index the check reads every audit the page has ever had,
+  // to find none - a cost that grows for as long as the account is a customer,
+  // paid once per page per night.
   //
   // Partial on the two live statuses, so it holds a handful of rows rather
-  // than the whole table, and a finished audit drops out of it. `page_id` is
-  // the only column it needs: the predicate is in the index definition, so
-  // matching rows are found by page alone.
+  // than the whole table, and a finished audit drops out of it. `created_at`
+  // is in the index rather than left to a filter because the query bounds it:
+  // an unfinished audit older than the grace window is one nothing is going to
+  // finish, and it must stop hiding its page.
   await sql`
-    create index audits_in_flight_page_idx on audits (page_id)
+    create index audits_in_flight_page_idx on audits (page_id, created_at)
       where status in ('queued','running')
   `.execute(db)
 }

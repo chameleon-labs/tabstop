@@ -3,25 +3,37 @@ import { DbRunScheduledReaudits } from './db-run-scheduled-reaudits.js'
 import { reauditDelayMs } from '../../../domain/services/reaudit-schedule.js'
 import {
   mockAddScheduledAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository,
-  mockLoadDueReauditsRepository
+  mockLoadDueReauditsRepository, mockPagedDueReauditsRepository
 } from '../../test/index.js'
 import type { DuePage } from '../../protocols/db/page/load-due-reaudits-repository.js'
 
+const BATCH = 100
 const MAX_PAGES = 500
+const GRACE_MS = 12 * 60 * 60 * 1000
 const NOW = new Date('2026-08-01T02:00:00Z')
 
-const makeSut = (maxPagesPerRun = MAX_PAGES) => {
+const makeSut = (limits: { batchSize?: number, maxPagesPerRun?: number } = {}) => {
   const pages = mockLoadDueReauditsRepository()
   const audits = mockAddScheduledAuditRepository()
   const deletes = mockDeleteQueuedAuditRepository()
   const queue = mockAuditQueue()
-  const sut = new DbRunScheduledReaudits(pages, audits, deletes, queue, maxPagesPerRun)
+  const sut = new DbRunScheduledReaudits(
+    pages, audits, deletes, queue,
+    limits.batchSize ?? BATCH, limits.maxPagesPerRun ?? MAX_PAGES, GRACE_MS
+  )
   return { sut, pages, audits, deletes, queue }
 }
 
+/**
+ * Ids are zero-padded because the cursor compares them, and the paged mock
+ * compares them as strings: unpadded, `page-9` sorts after `page-10` and the
+ * spec would be exercising a cursor the database would never produce.
+ */
 const pagesOn = (domain: string, count: number): DuePage[] =>
   Array.from({ length: count }, (_value, index) => ({
-    pageId: `page-${index}`, url: `https://${domain}/${index}`, domain
+    pageId: `page-${String(index).padStart(4, '0')}`,
+    url: `https://${domain}/${index}`,
+    domain
   }))
 
 describe('DbRunScheduledReaudits', () => {
@@ -54,7 +66,35 @@ describe('DbRunScheduledReaudits', () => {
     await sut.run(new Date('2026-08-01T23:30:00Z'))
 
     expect(pages.loadDueForReaudit).toHaveBeenCalledWith(
-      new Date('2026-08-01T00:00:00.000Z'), MAX_PAGES
+      expect.objectContaining({ dayStart: new Date('2026-08-01T00:00:00.000Z') })
+    )
+  })
+
+  it('stops treating an unfinished audit as in flight once it is old enough', async () => {
+    // The floor that keeps a lost enqueue from ending a page's monitoring. A
+    // `queued` row nothing will ever run stays in flight forever, and while it
+    // does, its page is absent from every future worklist - silently, with
+    // nothing failing anywhere.
+    const { sut, pages } = makeSut()
+
+    await sut.run(NOW)
+
+    expect(pages.loadDueForReaudit).toHaveBeenCalledWith(
+      expect.objectContaining({ inFlightSince: new Date(NOW.getTime() - GRACE_MS) })
+    )
+  })
+
+  it('asks for one row more than it means to use', async () => {
+    // So "was anything left" is answered by the query. A batch that comes back
+    // exactly full cannot tell a run that was cut short from one that ended on
+    // the boundary, and guessing wrong in the reassuring direction is how a
+    // truncated night reports itself as complete.
+    const { sut, pages } = makeSut({ batchSize: 100 })
+
+    await sut.run(NOW)
+
+    expect(pages.loadDueForReaudit).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 101, after: null })
     )
   })
 
@@ -165,17 +205,114 @@ describe('DbRunScheduledReaudits', () => {
     expect(queue.enqueueOnce).toHaveBeenCalledTimes(1)
   })
 
-  it('reports a run the per-run cap cut short', async () => {
-    // Silently auditing the first N pages and dropping the rest is the failure
-    // mode of an invisible scheduler: nothing errors, some customers simply
-    // stop being monitored.
-    const { sut, pages } = makeSut(2)
-    pages.loadDueForReaudit.mockResolvedValueOnce(pagesOn('example.test', 2))
+  it('keeps paging until every due page is scheduled', async () => {
+    // The whole point of the loop. A single capped query drops everything past
+    // the cap - and because the cut is by page id, it drops the SAME pages
+    // every night, so those accounts quietly stop being monitored while the
+    // run reports success.
+    const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 250))
+    const audits = mockAddScheduledAuditRepository()
+    const sut = new DbRunScheduledReaudits(
+      pages, audits, mockDeleteQueuedAuditRepository(), mockAuditQueue(),
+      100, MAX_PAGES, GRACE_MS
+    )
 
     const summary = await sut.run(NOW)
 
-    expect(pages.loadDueForReaudit).toHaveBeenCalledWith(expect.any(Date), 2)
+    expect(summary.pagesConsidered).toBe(250)
+    expect(audits.addScheduled).toHaveBeenCalledTimes(250)
+    expect(summary.truncated).toBe(false)
+  })
+
+  it('advances the cursor past the last page of each batch', async () => {
+    // Keyset, never an offset: every page the run schedules gains an audit in
+    // flight and leaves the predicate, so an offset would step over exactly as
+    // many pages as the previous batch handled - auditing a third of them and
+    // reporting a clean night.
+    const all = pagesOn('example.test', 250)
+    const pages = mockPagedDueReauditsRepository(all)
+    const sut = new DbRunScheduledReaudits(
+      pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+      mockAuditQueue(), 100, MAX_PAGES, GRACE_MS
+    )
+
+    await sut.run(NOW)
+
+    expect(pages.loadDueForReaudit.mock.calls.map(([query]) => query.after))
+      .toEqual([null, 'page-0099', 'page-0199'])
+  })
+
+  it('does not call a full final batch truncated', async () => {
+    // The off-by-one this asks the query to settle. With exactly as many due
+    // pages as the batch holds, inferring "there must be more" from a full
+    // batch reports a complete run as cut short - and an alert that fires on a
+    // healthy night is one that gets muted.
+    const all = pagesOn('example.test', 100)
+    const pages = mockPagedDueReauditsRepository(all)
+    const sut = new DbRunScheduledReaudits(
+      pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+      mockAuditQueue(), 100, MAX_PAGES, GRACE_MS
+    )
+
+    const summary = await sut.run(NOW)
+
+    expect(summary.pagesConsidered).toBe(100)
+    expect(summary.truncated).toBe(false)
+  })
+
+  it('reports a run its circuit breaker cut short', async () => {
+    // Not the normal path any more - the run pages through everything. This
+    // fires when the ceiling is reached with pages still due, which means the
+    // eligibility predicate is not excluding what it should rather than that
+    // the product got popular.
+    const all = pagesOn('example.test', 250)
+    const pages = mockPagedDueReauditsRepository(all)
+    const sut = new DbRunScheduledReaudits(
+      pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+      mockAuditQueue(), 100, 200, GRACE_MS
+    )
+
+    const summary = await sut.run(NOW)
+
+    expect(summary.pagesConsidered).toBe(200)
     expect(summary.truncated).toBe(true)
+  })
+
+  it('keeps one domain\'s stagger running across a batch boundary', async () => {
+    // Positions are counted for the whole run, not per batch. Reset at each
+    // boundary, the first page of every batch would land on its domain's base
+    // offset - so the pages that straddle a boundary arrive together at the
+    // origin the stagger exists to protect.
+    const all = pagesOn('example.test', 4)
+    const pages = mockPagedDueReauditsRepository(all)
+    const queue = mockAuditQueue()
+    const sut = new DbRunScheduledReaudits(
+      pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
+      queue, 2, MAX_PAGES, GRACE_MS
+    )
+
+    await sut.run(NOW)
+
+    expect(queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)).toEqual([
+      reauditDelayMs('example.test', 0),
+      reauditDelayMs('example.test', 1),
+      reauditDelayMs('example.test', 2),
+      reauditDelayMs('example.test', 3)
+    ])
+  })
+
+  it('counts a page whose cleanup also failed, and moves on', async () => {
+    // Both the enqueue and the delete failing leaves a `queued` row with no
+    // job. Retrying the delete here cannot help - the outage that failed it
+    // fails the retry - so the run records the failure and the row's exclusion
+    // expires with the in-flight grace window instead of lasting forever.
+    const { sut, queue, deletes } = makeSut()
+    queue.enqueueOnce.mockRejectedValue(new Error('redis is down'))
+    deletes.deleteIfQueued.mockRejectedValue(new Error('the database is down too'))
+
+    const summary = await sut.run(NOW)
+
+    expect(summary).toMatchObject({ failed: 2, auditsEnqueued: 0 })
   })
 
   it('reports a night with nothing to do rather than staying silent', async () => {

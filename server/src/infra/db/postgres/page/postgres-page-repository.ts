@@ -16,7 +16,7 @@ import type {
   DeletePageRepository
 } from '../../../../data/protocols/db/page/delete-page-repository.js'
 import type {
-  DuePage, LoadDueReauditsRepository
+  DuePage, DuePageQuery, LoadDueReauditsRepository
 } from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
 import type {
   LoadPageHistoryRepository
@@ -135,29 +135,32 @@ export class PostgresPageRepository implements
   }
 
   /**
-   * The nightly run's worklist: every monitored page with nothing already in
-   * flight and nothing audited yet today (#13).
+   * One batch of the nightly run's worklist: monitored pages with nothing
+   * recently in flight and nothing audited yet today (#13).
    *
    * Two `not exists` clauses rather than a left join and a filter, because
    * each is answered by an index that stops at the first matching row instead
    * of building a result to discard.
    *
    * The first reads `audits_in_flight_page_idx`, which is partial on `status
-   * in ('queued','running')` so it holds only live work. Without it this check
-   * walks a page's entire audit history to find nothing - a cost that grows
-   * for as long as the account is a customer, paid once per page per night.
+   * in ('queued','running')` so it holds only live work, and carries
+   * `created_at` so the staleness floor is answered by the same scan. Without
+   * the index this check walks a page's entire audit history to find nothing -
+   * a cost that grows for as long as the account is a customer, paid once per
+   * page per night. Without the floor, a `queued` row left behind by a lost
+   * enqueue hides its page from every future night, permanently.
    *
    * The second reads `audits_page_created_idx` on its leading columns. It
    * keys on `created_at`, not on `scheduled_for`: a page somebody audited
    * manually an hour ago should not be fetched again tonight, and that is a
    * cost control the unique index deliberately does not enforce.
    *
-   * `limit` is a memory bound, not a policy. If it ever truncates, the same
-   * tail is cut every night - so it is set far above any real fan-out and the
-   * caller reports a truncated run as the operational event it is.
+   * The order is `pages.id` because the cursor is, and because a run that does
+   * stop early should stop somewhere reproducible rather than wherever the
+   * planner felt like ending.
    */
-  async loadDueForReaudit (dayStart: Date, limit: number): Promise<DuePage[]> {
-    const rows = await this.db.selectFrom('pages')
+  async loadDueForReaudit (query: DuePageQuery): Promise<DuePage[]> {
+    let statement = this.db.selectFrom('pages')
       .innerJoin('sites', 'sites.id', 'pages.site_id')
       .select(['pages.id as page_id', 'pages.url', 'sites.domain'])
       .where('pages.monitoring_enabled', '=', true)
@@ -166,18 +169,24 @@ export class PostgresPageRepository implements
           .select('audits.id')
           .whereRef('audits.page_id', '=', 'pages.id')
           .where('audits.status', 'in', ['queued', 'running'])
+          .where('audits.created_at', '>=', query.inFlightSince)
       )))
       .where((eb) => eb.not(eb.exists(
         eb.selectFrom('audits')
           .select('audits.id')
           .whereRef('audits.page_id', '=', 'pages.id')
-          .where('audits.created_at', '>=', dayStart)
+          .where('audits.created_at', '>=', query.dayStart)
       )))
-      // So a run that hits the cap is at least reproducible: the planner's
-      // preferred order would otherwise decide who gets monitored.
       .orderBy('pages.id')
-      .limit(limit)
-      .execute()
+      .limit(query.limit)
+
+    if (query.after !== null) {
+      // Strictly greater, so the cursor cannot re-serve the page it points at.
+      // The value is one this method returned, so it needs no id guard.
+      statement = statement.where('pages.id', '>', query.after)
+    }
+
+    const rows = await statement.execute()
 
     return rows.map((row) => ({ pageId: row.page_id, url: row.url, domain: row.domain }))
   }

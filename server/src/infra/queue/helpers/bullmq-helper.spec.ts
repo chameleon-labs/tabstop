@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { makeQueue, makeWorker, setGlobalConcurrency } from './bullmq-helper.js'
+import {
+  makeQueue, makeWorker, setGlobalConcurrency, upsertDailySchedule
+} from './bullmq-helper.js'
 import type { PayloadQueue, PayloadWorker } from './bullmq-helper.js'
 
 type TestPayload = { value: string }
@@ -100,5 +102,86 @@ describe('setGlobalConcurrency', () => {
     expect(await peakConcurrency({
       workerCount: 3, jobCount: 9, globalConcurrency: 2
     })).toBe(2)
+  })
+})
+
+/**
+ * The registration nothing else covers.
+ *
+ * The nightly run's own specs drive the usecase directly, so all of them pass
+ * with no schedule registered at all: a cron that never fires, a timezone
+ * silently dropped, or a template that loses its retry options would ship
+ * green. Everything here reads the schedule back out of Redis rather than
+ * trusting the call not to have thrown.
+ */
+describe('upsertDailySchedule', () => {
+  let queue: PayloadQueue<TestPayload> | null = null
+
+  afterEach(async () => {
+    await queue?.close()
+    queue = null
+  })
+
+  const CRON = '0 2 * * *'
+
+  const scheduleQueue = (): PayloadQueue<TestPayload> => {
+    queue = makeQueue<TestPayload>(`schedule-${randomUUID()}`, connectionUrl())
+    return queue
+  }
+
+  it('registers a recurring job with the cron and timezone it was given', async () => {
+    const target = scheduleQueue()
+
+    await upsertDailySchedule(target, 'daily-reaudit', CRON, 'UTC')
+
+    const schedulers = await target.getJobSchedulers()
+    expect(schedulers).toHaveLength(1)
+    expect(schedulers[0]?.key).toBe('daily-reaudit')
+    expect(schedulers[0]?.pattern).toBe(CRON)
+    // The timezone is the difference between "every 24h in UTC" - which is
+    // what the day-boundary dedupe assumes - and "whenever the worker host
+    // thinks 02:00 is", which moves the run twice a year on a host with DST.
+    expect(schedulers[0]?.tz).toBe('UTC')
+  })
+
+  it('queues the first run rather than only recording the schedule', async () => {
+    // A registration that stored a pattern and produced no job would satisfy
+    // every assertion above.
+    const target = scheduleQueue()
+
+    await upsertDailySchedule(target, 'daily-reaudit', CRON, 'UTC')
+
+    expect(await target.getJobCountByTypes('delayed')).toBe(1)
+  })
+
+  it('carries the job options the template was given', async () => {
+    // The fan-out's retry policy lives here rather than in the queue defaults,
+    // because a minute of backoff is right for it and wrong for an audit
+    // somebody is waiting on. Dropped silently, a run that hit a Redis blip
+    // would retry twice inside three seconds and give up.
+    const target = scheduleQueue()
+
+    await upsertDailySchedule(target, 'daily-reaudit', CRON, 'UTC', {
+      attempts: 3, backoff: { type: 'exponential', delay: 60_000 }
+    })
+
+    const [job] = await target.getDelayed()
+    expect(job?.opts.attempts).toBe(3)
+    expect(job?.opts.backoff).toEqual({ type: 'exponential', delay: 60_000 })
+  })
+
+  it('updates the schedule in place rather than adding a second one', async () => {
+    // This runs on every worker boot. If it added rather than replaced, a
+    // deploy that changed the cron would leave both schedules registered and
+    // the fan-out would fire twice a night - which the day-scoped unique index
+    // absorbs, silently, so nothing would ever surface the mistake.
+    const target = scheduleQueue()
+
+    await upsertDailySchedule(target, 'daily-reaudit', CRON, 'UTC')
+    await upsertDailySchedule(target, 'daily-reaudit', '30 3 * * *', 'UTC')
+
+    const schedulers = await target.getJobSchedulers()
+    expect(schedulers).toHaveLength(1)
+    expect(schedulers[0]?.pattern).toBe('30 3 * * *')
   })
 })

@@ -4,7 +4,7 @@ import { sql, type Kysely } from 'kysely'
 import {
   DbRunScheduledReaudits
 } from '../../data/usecases/reaudit/db-run-scheduled-reaudits.js'
-import { reauditDelayMs } from '../../domain/services/reaudit-schedule.js'
+import { reauditDelayMs, utcDay, utcDayStart } from '../../domain/services/reaudit-schedule.js'
 import { PostgresAuditRepository } from '../../infra/db/postgres/audit/postgres-audit-repository.js'
 import type { Database } from '../../infra/db/postgres/database.js'
 import { makeDatabase } from '../../infra/db/postgres/helpers/postgres-helper.js'
@@ -27,8 +27,23 @@ describe('daily re-audit scheduler', () => {
   let queue: PayloadQueue<AuditJob>
   let sut: DbRunScheduledReaudits
 
-  const NOW = new Date('2026-08-01T02:00:00Z')
+  /**
+   * The real clock, not a fixed instant.
+   *
+   * A pinned date drifts away from the fixtures, which are written with the
+   * database's `now()`, and the run reads both: a `NOW` two days ahead put
+   * every earlier test's queued audit outside the in-flight grace window, so
+   * pages that were mid-flight looked abandoned and were scheduled again.
+   * The day arithmetic is asserted against `utcDay(NOW)` rather than a literal
+   * for the same reason.
+   */
+  const NOW = new Date()
+  const TOMORROW = new Date(NOW.getTime() + 86_400_000)
+  // Smaller than the fixtures any one test creates, so the paging loop runs
+  // for real rather than being one batch every time.
+  const BATCH_SIZE = 2
   const MAX_PAGES = 5000
+  const GRACE_MS = 12 * 60 * 60 * 1000
 
   /**
    * Its OWN database, which no other spec in this suite needs.
@@ -78,7 +93,9 @@ describe('daily re-audit scheduler', () => {
       new PostgresAuditRepository(db),
       new PostgresAuditRepository(db),
       new BullMqAuditQueue(queue),
-      MAX_PAGES
+      BATCH_SIZE,
+      MAX_PAGES,
+      GRACE_MS
     )
   })
 
@@ -130,7 +147,7 @@ describe('daily re-audit scheduler', () => {
 
     const summary = await sut.run(NOW)
 
-    expect(summary.scheduledFor).toBe('2026-08-01')
+    expect(summary.scheduledFor).toBe(utcDay(NOW))
     const audits = await auditsFor(pageId)
     expect(audits).toHaveLength(1)
     expect(audits[0]?.status).toBe('queued')
@@ -157,9 +174,12 @@ describe('daily re-audit scheduler', () => {
 
   it('produces no duplicates even when the eligibility check cannot see the first run', async () => {
     // The layer underneath. Two runs overlapping in time both select the page
-    // before either inserts - impossible to arrange by timing here, so it is
-    // arranged directly: the first run's audit is marked done, which puts the
-    // page back in the worklist exactly as an unlucky interleaving would.
+    // before either inserts - impossible to arrange by timing here, so the
+    // state it produces is arranged directly: an audit already stamped with
+    // today's `scheduled_for` that the eligibility query does not exclude. The
+    // row is finished and dated before the day boundary, so neither clause
+    // hides its page and the run reaches the insert exactly as the losing half
+    // of an overlap would.
     //
     // `skippedDuplicate` can only come from the insert being refused, so this
     // asserts the constraint rather than the query. Mutation-checked by
@@ -171,7 +191,12 @@ describe('daily re-audit scheduler', () => {
     const { pageId } = await monitoredPage()
 
     await sut.run(NOW)
-    await db.updateTable('audits').set({ status: 'done', score: 90 })
+    await db.updateTable('audits')
+      .set({
+        status: 'done',
+        score: 90,
+        created_at: new Date(utcDayStart(NOW).getTime() - 3_600_000)
+      })
       .where('page_id', '=', pageId).execute()
 
     const second = await sut.run(NOW)
@@ -188,7 +213,7 @@ describe('daily re-audit scheduler', () => {
     await sut.run(NOW)
     await db.updateTable('audits').set({ status: 'done', score: 90 })
       .where('page_id', '=', pageId).execute()
-    await sut.run(new Date('2026-08-02T02:00:00Z'))
+    await sut.run(TOMORROW)
 
     expect(await auditsFor(pageId)).toHaveLength(2)
   })

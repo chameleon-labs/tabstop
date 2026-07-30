@@ -36,7 +36,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     private readonly audits: AddScheduledAuditRepository,
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
     private readonly auditQueue: AuditJobQueue,
-    private readonly maxPagesPerRun: number
+    private readonly batchSize: number,
+    private readonly maxPagesPerRun: number,
+    private readonly inFlightGraceMs: number
   ) {}
 
   async run (now: Date): Promise<ReauditRunSummary> {
@@ -44,27 +46,62 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     // per row instead, a fan-out crossing midnight would stamp two dates and
     // both halves would pass the constraint.
     const scheduledFor = utcDay(now)
-    const due = await this.duePages.loadDueForReaudit(utcDayStart(now), this.maxPagesPerRun)
+    const dayStart = utcDayStart(now)
+    const inFlightSince = new Date(now.getTime() - this.inFlightGraceMs)
 
     const summary = {
       scheduledFor,
-      pagesConsidered: due.length,
+      pagesConsidered: 0,
       auditsEnqueued: 0,
       skippedDuplicate: 0,
       failed: 0,
-      truncated: due.length >= this.maxPagesPerRun
+      truncated: false
     }
 
     // How many pages of this domain the run has already placed, so several
-    // pages on one host are serialised rather than arriving together.
+    // pages on one host are serialised rather than arriving together. Held
+    // across batches, or a domain straddling a batch boundary would restart
+    // its stagger and put two of its pages on the same instant.
     const placed = new Map<string, number>()
+    let after: string | null = null
 
-    for (const page of due) {
-      const position = placed.get(page.domain) ?? 0
-      placed.set(page.domain, position + 1)
+    // Paged rather than fetched whole. The batch bounds memory; the loop is
+    // what keeps the promise, because a single capped query silently drops
+    // every page past the cap - and since the cut is by page id, it drops the
+    // SAME pages every night. Those accounts would stop being monitored with
+    // nothing failing anywhere.
+    for (;;) {
+      const remaining = this.maxPagesPerRun - summary.pagesConsidered
+      if (remaining <= 0) {
+        summary.truncated = true
+        break
+      }
 
-      const outcome = await this.schedule(page, position, scheduledFor)
-      summary[outcome] += 1
+      const wanted = Math.min(this.batchSize, remaining)
+      // One more row than the batch, so "is there another page" is answered by
+      // the query. Inferring it from a full batch cannot tell a run that was
+      // cut short from one that ended on exactly the batch size.
+      const rows = await this.duePages.loadDueForReaudit({
+        dayStart, inFlightSince, limit: wanted + 1, after
+      })
+
+      const batch = rows.slice(0, wanted)
+      if (batch.length === 0) break
+
+      for (const page of batch) {
+        const position = placed.get(page.domain) ?? 0
+        placed.set(page.domain, position + 1)
+
+        const outcome = await this.schedule(page, position, scheduledFor)
+        summary[outcome] += 1
+        summary.pagesConsidered += 1
+      }
+
+      // Keyset, not an offset: every page just scheduled has an audit in
+      // flight and has dropped out of the predicate, so an offset would skip
+      // exactly as many pages as this batch handled.
+      after = batch[batch.length - 1]?.pageId ?? null
+      if (rows.length <= wanted) break
     }
 
     return summary
@@ -106,10 +143,17 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     )
 
     if (enqueued === 'failed') {
-      // The row must go. A queued audit nothing will ever run renders on the
-      // dashboard as permanently in progress, and it would keep this page out
-      // of the eligibility query - so a lost enqueue would cost the page every
-      // future night as well, not just this one.
+      // The row should go: a queued audit nothing will ever run renders on the
+      // dashboard as permanently in progress, and while it exists it keeps
+      // this page out of the worklist.
+      //
+      // Swallowing a failed delete is safe only because that exclusion is time
+      // bounded. If both the enqueue and the cleanup fail, the row survives -
+      // and the eligibility query ignores unfinished audits older than the
+      // grace window, so the page returns to the worklist on its own instead
+      // of being hidden by a row nothing will ever finish. Retrying the
+      // deletion here could not close that gap anyway: the same outage that
+      // failed it would fail the retry.
       //
       // `unknown` deliberately does not land here: the queue may have taken
       // the job and lost the reply, and deleting the row then would leave a

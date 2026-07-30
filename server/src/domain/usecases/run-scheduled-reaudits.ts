@@ -22,7 +22,13 @@ export type ReauditRunSummary = {
   skippedDuplicate: number
   /** Pages whose audit could not be created or queued. Their rows are removed. */
   failed: number
-  /** Whether the per-run cap cut the list short, so some pages went unaudited. */
+  /**
+   * Whether the run hit its circuit breaker with pages still due.
+   *
+   * Normally false however many pages there are: the run pages through the
+   * whole worklist. True means something is wrong with the eligibility
+   * predicate rather than that the product got popular, so it is an alert.
+   */
   truncated: boolean
 }
 

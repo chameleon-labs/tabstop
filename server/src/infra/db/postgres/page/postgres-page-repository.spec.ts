@@ -8,6 +8,9 @@ import { HISTORY_POINTS, PostgresPageRepository } from './postgres-page-reposito
 import {
   explainPlanText, explainRowsRead, makeRecordingDatabase, queryMatching, type IssuedQuery
 } from '../test/explain.js'
+import type {
+  DuePage
+} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
 
 const connectionUrl = (): string => {
   const url = process.env.DATABASE_URL
@@ -530,6 +533,32 @@ describe('PostgresPageRepository', () => {
   describe('loadDueForReaudit', () => {
     const MIDNIGHT_TODAY = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
     const NO_CAP = 10_000
+    /** Twelve hours back, matching the grace window the scheduler passes. */
+    const IN_FLIGHT_SINCE = new Date(Date.now() - 12 * 60 * 60 * 1000)
+
+    const due = async (
+      overrides: {
+        limit?: number, after?: string | null, inFlightSince?: Date, dayStart?: Date
+      } = {}
+    ): Promise<DuePage[]> => await sut.loadDueForReaudit({
+      dayStart: overrides.dayStart ?? MIDNIGHT_TODAY,
+      inFlightSince: overrides.inFlightSince ?? IN_FLIGHT_SINCE,
+      limit: overrides.limit ?? NO_CAP,
+      after: overrides.after ?? null
+    })
+
+    /**
+     * A day boundary no audit can be on the far side of, which switches the
+     * "audited today" clause off - so a spec about the in-flight clause is
+     * testing the in-flight clause. Without it a fixture dated a few hours ago
+     * is excluded by whichever clause fires first, and after midday that is the
+     * wrong one, so the assertion passes without exercising what it names.
+     *
+     * In the FUTURE, not the past. The clause reads `created_at >= dayStart`,
+     * so an old boundary matches every audit ever written and excludes every
+     * page that has one - the opposite of switching it off.
+     */
+    const NO_DAY_BOUNDARY = new Date('3000-01-01T00:00:00.000Z')
 
     /**
      * A monitored page with NO audits at all.
@@ -560,15 +589,13 @@ describe('PostgresPageRepository', () => {
      * about the pages a spec created, never about the whole result.
      */
     const dueIds = async (limit = NO_CAP): Promise<Set<string>> => new Set(
-      (await sut.loadDueForReaudit(MIDNIGHT_TODAY, limit)).map((page) => page.pageId)
+      (await due({ limit })).map((page) => page.pageId)
     )
 
     it('returns a monitored page with the domain its jitter keys on', async () => {
       const { pageId, domain, url } = await monitoredPage()
 
-      const due = await sut.loadDueForReaudit(MIDNIGHT_TODAY, NO_CAP)
-
-      expect(due).toContainEqual({ pageId, url, domain })
+      expect(await due()).toContainEqual({ pageId, url, domain })
     })
 
     it('skips a page whose monitoring is paused', async () => {
@@ -586,10 +613,47 @@ describe('PostgresPageRepository', () => {
       await addAudit(queued.pageId, { status: 'queued' })
       await addAudit(running.pageId, { status: 'running' })
 
-      const due = await dueIds()
+      const ids = await dueIds()
 
-      expect(due).not.toContain(queued.pageId)
-      expect(due).not.toContain(running.pageId)
+      expect(ids).not.toContain(queued.pageId)
+      expect(ids).not.toContain(running.pageId)
+    })
+
+    it('stops honouring an unfinished audit once it is older than the grace window', async () => {
+      // The bound that keeps a lost enqueue from ending a page's monitoring.
+      // A `queued` row with no job behind it stays in flight forever, and
+      // while it does its page is absent from every future worklist - silently,
+      // with nothing failing anywhere. Without this floor, one blip during one
+      // night's fan-out stops that page being monitored for good.
+      const { pageId } = await monitoredPage()
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'queued',
+        created_at: new Date(Date.now() - 36 * 60 * 60 * 1000)
+      }).execute()
+
+      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
+
+      expect(ids).toContain(pageId)
+    })
+
+    it('still honours an unfinished audit inside the window', async () => {
+      // The counterpart, and the reason the window is twelve hours rather than
+      // something shorter: a page whose scheduled audit is sitting out its
+      // six-hour jitter delay has a legitimately queued row, and treating that
+      // as abandoned would audit it twice a night.
+      const { pageId } = await monitoredPage()
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'queued',
+        created_at: new Date(Date.now() - 4 * 60 * 60 * 1000)
+      }).execute()
+
+      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
+
+      expect(ids).not.toContain(pageId)
     })
 
     it('skips a page already audited today, however that audit came about', async () => {
@@ -634,11 +698,52 @@ describe('PostgresPageRepository', () => {
       expect(await dueIds()).toContain(pageId)
     })
 
-    it('never returns more pages than the cap allows', async () => {
+    it('never returns more pages than the batch allows', async () => {
       await monitoredPage()
       await monitoredPage()
 
-      expect(await sut.loadDueForReaudit(MIDNIGHT_TODAY, 1)).toHaveLength(1)
+      expect(await due({ limit: 1 })).toHaveLength(1)
+    })
+
+    it('starts after the cursor, so the caller can page through', async () => {
+      // Keyset, and it has to be: the run mutates what it is paging over -
+      // every page it schedules gains an audit in flight and leaves the
+      // predicate - so an offset would step over exactly as many pages as the
+      // previous batch handled.
+      const first = await monitoredPage()
+      const second = await monitoredPage()
+      const ordered = [first.pageId, second.pageId].sort(
+        (left, right) => Number(BigInt(left) - BigInt(right))
+      )
+      const lower = ordered[0] ?? ''
+      const higher = ordered[1] ?? ''
+
+      const ids = new Set((await due({ after: lower })).map((page) => page.pageId))
+
+      expect(ids).toContain(higher)
+      expect(ids).not.toContain(lower)
+    })
+
+    it('pages through the whole worklist without repeating or skipping a page', async () => {
+      // The property the run depends on, asserted end to end rather than
+      // inferred from the two rules above: walking one page at a time has to
+      // arrive at every row exactly once.
+      const mine = new Set(await Promise.all(
+        [0, 1, 2].map(async () => (await monitoredPage()).pageId)
+      ))
+
+      const seen: string[] = []
+      let after: string | null = null
+      for (;;) {
+        const batch = await due({ limit: 1, after })
+        const page = batch[0]
+        if (page === undefined) break
+        if (mine.has(page.pageId)) seen.push(page.pageId)
+        after = page.pageId
+      }
+
+      expect(new Set(seen)).toEqual(mine)
+      expect(seen).toHaveLength(mine.size)
     })
 
     // There is deliberately NO assertion here about how much of `audits` this

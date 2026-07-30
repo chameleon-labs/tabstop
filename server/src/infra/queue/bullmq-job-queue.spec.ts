@@ -241,6 +241,44 @@ describe('BullMqAuditQueue', () => {
     }
   })
 
+  it('does not count a job inside its retry backoff, which is the cost of the rule above', async () => {
+    // The residual, pinned rather than argued about.
+    //
+    // Excluding delayed jobs excludes retries too - BullMQ puts a job that
+    // threw into the same set as one deliberately scheduled, and nothing in
+    // the count can tell them apart. So while a job is inside its backoff the
+    // depth under-reads, and the admission check sees room that a moment
+    // earlier it did not. Against a handler failing fast the queue can hold
+    // several times the cap in work that is coming back.
+    //
+    // Accepted, not overlooked. It errs toward accepting rather than refusing,
+    // which is the direction this file has always argued an imprecise cost
+    // control should be wrong in; the backoff is seconds while a scheduled
+    // delay is hours; and the retried jobs re-enter `waiting` and are counted
+    // again, so the queue still spikes and drains rather than growing without
+    // limit. Telling the two apart needs the scheduler's delay off this queue
+    // entirely - measured and tracked separately, not smuggled in here.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    worker = makeWorker<AuditJob>(name, connectionUrl(), async () => {
+      throw new Error('transient')
+    })
+    await worker.waitUntilReady()
+    const sut = new BullMqAuditQueue(queue)
+
+    await queue.add(name, { auditId: '999' }, {
+      jobId: 'audit-999', attempts: 2, backoff: { type: 'fixed', delay: 5_000 }
+    })
+
+    await vi.waitFor(async () => {
+      expect(await queue?.getJobCountByTypes('delayed')).toBe(1)
+    }, { timeout: 10_000 })
+
+    // Owed a worker slot, and invisible to the check that decides whether to
+    // accept more work.
+    expect(await sut.backlogCount()).toBe(0)
+  })
+
   it('hands the delay to BullMQ rather than sleeping on it', async () => {
     // A fan-out that waited out its own jitter would hold the run open for six
     // hours and lose every page it had not reached if the worker restarted.
