@@ -184,7 +184,18 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     let failed = 0
     for (const auditId of candidates) {
       if (stopped()) break
-      if (await this.queueStillHolds(auditId)) continue
+
+      const verdict = await this.queueVerdict(auditId)
+      if (verdict === 'pending') continue
+      if (verdict === 'unknown') {
+        // Skipped, exactly as `pending` is - but COUNTED, because they are
+        // not the same fact. An unreachable queue means no candidate was
+        // examined at all, and reporting that as a quiet night would rebuild
+        // the ambiguity this counter exists to remove, one level down from
+        // where it was removed.
+        failed += 1
+        continue
+      }
 
       try {
         if (await this.audits.markAbandoned(auditId, ABANDONED_ERROR)) reclaimed += 1
@@ -209,7 +220,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
    * would manufacture duplicate work out of healthy rows. Waiting a day to
    * reclaim a genuinely dead one is much the cheaper mistake.
    */
-  private async queueStillHolds (auditId: string): Promise<boolean> {
+  private async queueVerdict (auditId: string): Promise<'pending' | 'gone' | 'unknown'> {
     try {
       // BOUNDED, because a `catch` alone does not implement "fails closed" -
       // an unreachable Redis does not reject here, it hangs. BullMQ configures
@@ -218,9 +229,18 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       // would stall the fan-out until the job timeout, and the lookup would
       // still be pending afterwards - free to resume and start mutating rows
       // outside the attempt that was supposed to have ended.
-      return await withTimeout(this.auditQueue.has(auditId), ENQUEUE_TIMEOUT_MS)
+      //
+      // `isPending`, not `has`: a terminal job is a record BullMQ keeps for a
+      // while, not work that is coming.
+      const pending = await withTimeout(this.auditQueue.isPending(auditId), ENQUEUE_TIMEOUT_MS)
+      return pending ? 'pending' : 'gone'
     } catch {
-      return true
+      // Three outcomes rather than a boolean, because "the queue says no" and
+      // "the queue did not answer" call for the same ACTION and different
+      // bookkeeping. Both leave the row alone - reclaiming a live audit
+      // schedules a duplicate, so a Redis blip must not manufacture work out
+      // of healthy rows - but only one of them is a quiet night.
+      return 'unknown'
     }
   }
 

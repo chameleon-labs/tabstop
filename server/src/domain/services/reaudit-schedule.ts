@@ -78,11 +78,22 @@ const fnv1a = (value: string): number => {
  * compare.
  *
  * The cost of dropping positions is that two pages on one domain can now land
- * in the same slot rather than being guaranteed apart. That is a cheap loss
- * here: with 360 slots a same-domain pair collides a few percent of the time,
- * and the global concurrency cap means the worker runs one audit at a time
- * regardless - so "arriving together" is a queue position, not two
- * simultaneous requests to somebody's origin.
+ * in the same slot rather than being guaranteed apart: with 360 slots a
+ * same-domain pair collides a few percent of the time.
+ *
+ * That is acceptable because this was never the mechanism enforcing
+ * per-origin politeness, and the earlier claim that it was - resting on the
+ * worker running one audit at a time - was true only of the DEFAULT
+ * concurrency. `AUDIT_CONCURRENCY` goes to 16, and at anything above one two
+ * colliding jobs really can reach the same host together.
+ *
+ * What this function does is spread the night's work so a run does not arrive
+ * as a spike, and hold each page at a consistent hour so its trend line stays
+ * comparable. Guaranteeing that no two audits of one host overlap is #41's
+ * job, at the worker where the audit actually runs - and it has to be, since
+ * a delay can only separate jobs that start on time. Note this key is the
+ * hostname, so it does not even group `a.example.com` with `b.example.com`,
+ * which #41 explicitly must.
  */
 export const reauditDelayMs = (
   domain: string,

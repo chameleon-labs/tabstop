@@ -296,6 +296,65 @@ describe('BullMqAuditQueue', () => {
     expect(elapsed).toBeLessThan(5_000)
   })
 
+  it('reports a job that has finished as no longer pending, though it still exists', async () => {
+    // The distinction the reclaim pass turns on. A terminal job lingers -
+    // removeOnFail keeps a failed one for a day, and the cleanup only runs
+    // when the queue is otherwise busy - so `has` answers "a record exists"
+    // long after anything is going to run. Read as "work is coming", that
+    // retention becomes the length of time an audit whose job died without
+    // writing a status keeps its page out of the nightly worklist.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    worker = makeWorker<AuditJob>(name, connectionUrl(), async () => {
+      throw new Error('permanent')
+    })
+    await worker.waitUntilReady()
+    const sut = new BullMqAuditQueue(queue)
+
+    await queue.add(name, { auditId }, { jobId: `audit-${auditId}`, attempts: 1 })
+
+    await vi.waitFor(async () => {
+      expect(await queue?.getJobCountByTypes('failed')).toBe(1)
+    }, { timeout: 10_000 })
+
+    // The record is still there, which is exactly why the two questions
+    // cannot share an answer.
+    expect(await sut.has(auditId)).toBe(true)
+    expect(await sut.isPending(auditId)).toBe(false)
+  })
+
+  it('reports a job that has not run yet as pending', async () => {
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId })
+
+    expect(await sut.isPending(auditId)).toBe(true)
+  })
+
+  it('reports a job waiting out a long delay as pending', async () => {
+    // The scheduler's own jobs spend hours here. Read as "not pending", the
+    // reclaim pass would retire the audits of every page it had just
+    // scheduled.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId }, { delayMs: 3_600_000 })
+
+    expect(await sut.isPending(auditId)).toBe(true)
+  })
+
+  it('reports an audit the queue never took as neither held nor pending', async () => {
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    expect(await sut.has('404')).toBe(false)
+    expect(await sut.isPending('404')).toBe(false)
+  })
+
   it('still finds a delayed job, so its audit row is never deleted from under it', async () => {
     // has() is what turns an unconfirmed enqueue into `unknown` rather than
     // `failed`. If it could not see a delayed job, a scheduler retry would

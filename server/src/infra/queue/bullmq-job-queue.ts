@@ -47,6 +47,29 @@ export class BullMqAuditQueue implements AuditJobQueue {
   }
 
   /**
+   * The states in which BullMQ still owes this job a worker.
+   *
+   * `completed` and `failed` are the ones deliberately absent: both are
+   * terminal, and both linger - `removeOnComplete` keeps a job for an hour,
+   * `removeOnFail` for a day, and the cleanup only runs when the queue is
+   * otherwise busy. Anything reading "a record exists" as "work is coming"
+   * inherits that retention as a delay.
+   *
+   * `unknown` is treated as pending: BullMQ returns it for a job it found but
+   * could not place, which is not evidence that nothing will run it.
+   */
+  private static readonly PENDING_STATES = new Set([
+    'waiting', 'waiting-children', 'prioritized', 'active', 'delayed', 'unknown'
+  ])
+
+  async isPending (auditId: string): Promise<boolean> {
+    const job = await this.queue.getJob(jobIdFor(auditId))
+    if (job === undefined) return false
+
+    return BullMqAuditQueue.PENDING_STATES.has(await job.getState())
+  }
+
+  /**
    * Waiting only - not delayed, not active, not failed, not completed.
    *
    * This counted `delayed` as well, on a premise that was true when it was

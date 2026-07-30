@@ -300,7 +300,7 @@ describe('DbRunScheduledReaudits', () => {
       // The row that would otherwise hide its page from every future run.
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockResolvedValue(false)
+      queue.isPending.mockResolvedValue(false)
 
       const summary = await sut.run(NOW)
 
@@ -314,7 +314,7 @@ describe('DbRunScheduledReaudits', () => {
       // their pages again and pile a second night of work onto the backlog.
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockResolvedValue(true)
+      queue.isPending.mockResolvedValue(true)
 
       const summary = await sut.run(NOW)
 
@@ -331,7 +331,7 @@ describe('DbRunScheduledReaudits', () => {
       // outside the attempt that was supposed to have ended.
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockImplementation(async () => await new Promise<never>(() => {}))
+      queue.isPending.mockImplementation(async () => await new Promise<never>(() => {}))
 
       const startedAt = Date.now()
       const summary = await sut.run(NOW)
@@ -351,18 +351,20 @@ describe('DbRunScheduledReaudits', () => {
       // not manufacture work out of healthy rows.
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockRejectedValue(new Error('redis is down'))
+      queue.isPending.mockRejectedValue(new Error('redis is down'))
 
       const summary = await sut.run(NOW)
 
       expect(audits.markAbandoned).not.toHaveBeenCalled()
       expect(summary.abandonedReclaimed).toBe(0)
+      // Still counted, so the skip is not mistaken for nothing to do.
+      expect(summary.reclaimFailures).toBe(1)
     })
 
     it('reclaims before building the worklist, so a freed page is scheduled tonight', async () => {
       const { sut, audits, pages, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockResolvedValue(false)
+      queue.isPending.mockResolvedValue(false)
 
       await sut.run(NOW)
 
@@ -373,7 +375,7 @@ describe('DbRunScheduledReaudits', () => {
     it('does not count a row another run had already retired', async () => {
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
-      queue.has.mockResolvedValue(false)
+      queue.isPending.mockResolvedValue(false)
       audits.markAbandoned.mockResolvedValueOnce(false)
 
       expect((await sut.run(NOW)).abandonedReclaimed).toBe(0)
@@ -389,6 +391,22 @@ describe('DbRunScheduledReaudits', () => {
 
       expect(summary.abandonedReclaimed).toBe(0)
       expect(summary.auditsEnqueued).toBe(2)
+    })
+
+    it('counts a candidate it could not check, rather than calling it a quiet night', async () => {
+      // The same ambiguity `reclaimFailures` was added to remove, one level
+      // down. An unreachable queue leaves every candidate untouched - which is
+      // right, since reclaiming a live audit schedules a duplicate - but
+      // reporting that as zero-and-zero says the pass looked and found nothing
+      // owed, when in fact it could not look at all.
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7', 'audit-8'])
+      queue.isPending.mockRejectedValue(new Error('redis is down'))
+
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).not.toHaveBeenCalled()
+      expect(summary).toMatchObject({ abandonedReclaimed: 0, reclaimFailures: 2 })
     })
 
     it('reports a failure to look rather than passing it off as nothing to do', async () => {
@@ -407,7 +425,7 @@ describe('DbRunScheduledReaudits', () => {
     it('counts a row it identified but could not retire', async () => {
       const { sut, audits, queue } = makeSut()
       audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7', 'audit-8'])
-      queue.has.mockResolvedValue(false)
+      queue.isPending.mockResolvedValue(false)
       audits.markAbandoned.mockRejectedValueOnce(new Error('deadlock detected'))
 
       const summary = await sut.run(NOW)

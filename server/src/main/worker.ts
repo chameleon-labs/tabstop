@@ -119,9 +119,20 @@ const reauditWorker = makeWorker<ReauditPayload>(
     // the handler finished, so a run bounded only by it would produce no
     // record at all in exactly the case somebody most wants one.
     //
-    // The hard bound stays because the soft one assumes the loop is running.
-    // A run wedged in a query that never returns checks no signals, and
-    // something has to stop it holding a worker and a connection all night.
+    // The hard bound stays because the soft one assumes the loop is running:
+    // a run wedged in a query that never returns checks no signals, and
+    // something has to end the attempt.
+    //
+    // It ends the ATTEMPT, not necessarily the work, and the difference is
+    // worth being precise about. `runWithTimeout` aborts a signal and gives
+    // up; the queries underneath receive no signal and the pool sets no
+    // statement timeout, so a lock-stalled statement keeps its connection and
+    // its loop can resume after BullMQ has already started the retry. What
+    // bounds the damage then is not this timer but the unique index and the
+    // eligibility query: the zombie and the retry cannot both schedule the
+    // same page, they can only divide the work between them. A real bound
+    // needs a statement timeout on the pool, which every job in this process
+    // wants and none of them has - #52.
     const softDeadline = AbortSignal.timeout(REAUDIT_RUN_TIMEOUT_MS)
 
     const summary = await runWithTimeout(

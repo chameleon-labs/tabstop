@@ -115,6 +115,10 @@ export const mockAuditQueue = () => ({
   // Absent by default: the interesting case is a queue that lost the reply
   // but did accept the job, and each spec opts into that explicitly.
   has: vi.fn<AuditJobQueue['has']>(async () => false),
+  // Pending by default, which is the opposite default to `has` and for the
+  // opposite reason: the reclaim path acts when a job is GONE, so a mock that
+  // reported absence would have every spec retiring rows incidentally.
+  isPending: vi.fn<AuditJobQueue['isPending']>(async () => true),
   // An empty queue by default: depth is not what most of these specs are
   // about, and a mock that saturated by accident would fail all of them.
   backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => 0)
