@@ -5,7 +5,25 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = fileURLToPath(new URL('.', import.meta.url))
 
-const IMPORT_PATTERN = /(?:^|\n)\s*(?:import|export)\b[^\n;]*?from\s+['"]([^'"]+)['"]/g
+/**
+ * Every import specifier in a file, INCLUDING clauses written across several
+ * lines.
+ *
+ * The previous version matched `[^\n;]*?` between `import` and `from`, so it
+ * saw only single-line imports - and this codebase wraps constantly, because
+ * a protocol name plus a four-deep relative path does not fit the line limit.
+ * The rules below were therefore reading a fraction of the imports they claim
+ * to be total over, silently: a layer violation written across two lines was
+ * invisible. Found when a multi-line `bullmq` import made the vendor list
+ * report the file that has always imported it as no longer doing so.
+ *
+ * The character class is what keeps a newline-tolerant match honest. An
+ * import clause holds identifiers, braces, commas, `*`, `as` and `type` and
+ * nothing else, so a non-greedy match cannot run out of an `export const` and
+ * across arbitrary code to find some later `from` - which `[\s\S]*?` would do
+ * in a file with no semicolons to stop it.
+ */
+const IMPORT_PATTERN = /(?:^|\n)\s*(?:import|export)\s+[\w\s{},*]*?from\s+['"]([^'"]+)['"]/g
 
 const sourceFiles = async (directory: string): Promise<string[]> => {
   const entries = await readdir(join(SRC, directory), { recursive: true, withFileTypes: true })
@@ -68,6 +86,46 @@ const vendorRoot = (specifier: string): string =>
  * cost of keeping them is a second per run and the benefit is that the
  * boundary is a fact rather than an aspiration.
  */
+describe('the import scanner the rules rest on', () => {
+  const specifiers = (source: string): string[] =>
+    [...source.matchAll(IMPORT_PATTERN)].map((match) => match[1] ?? '')
+
+  it('reads an import clause written across several lines', () => {
+    // 109 of this codebase's 967 import specifiers are written this way,
+    // because a protocol name plus a four-deep relative path does not fit the
+    // line limit. Every one of them was invisible to the rules below until
+    // this pattern stopped matching `[^\n;]`.
+    expect(specifiers([
+      'import type {',
+      '  DeleteQueuedAuditRepository',
+      '} from \'../protocols/db/audit/delete-queued-audit-repository.js\''
+    ].join('\n'))).toEqual(['../protocols/db/audit/delete-queued-audit-repository.js'])
+  })
+
+  it('reads the single-line forms too', () => {
+    expect(specifiers([
+      'import { Queue } from \'bullmq\'',
+      'import type { Database } from \'./database.js\'',
+      'import * as migration from \'./001-initial-schema.js\'',
+      'export { toAuditModel } from \'./audit-mapper.js\''
+    ].join('\n'))).toEqual(['bullmq', './database.js', './001-initial-schema.js', './audit-mapper.js'])
+  })
+
+  it('does not run out of a declaration and across code to a later import', () => {
+    // The hazard of letting the match cross newlines. This codebase writes no
+    // semicolons, so nothing but the character class stops `[\s\S]*?` running
+    // from `export const` to whatever `from '...'` appears next - which would
+    // attribute an import to a file at a position where there is none.
+    expect(specifiers([
+      'export const forbids = (...layers: string[]) => {',
+      '  return (specifier: string): boolean => !pattern.test(specifier)',
+      '}',
+      '',
+      'import { Worker } from \'bullmq\''
+    ].join('\n'))).toEqual(['bullmq'])
+  })
+})
+
 describe('layer dependencies', () => {
   it('keeps domain/ free of every import that is not domain', async () => {
     // Not even node: builtins. A domain service reaching for the runtime is
@@ -188,6 +246,7 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/004-violation-impact-nullable.ts',
           'infra/db/postgres/migrations/005-audit-claimed-at.ts',
           'infra/db/postgres/migrations/006-sessions-expires-at-index.ts',
+          'infra/db/postgres/migrations/007-scheduled-reaudits.ts',
           // Reached only through `kysely/migration`, so the exact-name match
           // never saw it.
           'infra/db/postgres/migrations/index.ts',

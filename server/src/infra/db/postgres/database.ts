@@ -71,6 +71,17 @@ export interface AuditsTable {
   settled: Generated<boolean>
   /** When the current attempt claimed this audit. Null before any attempt. */
   claimed_at: Nullable<Date>
+  /**
+   * Which day's scheduled run produced this audit (#13). Null for everything
+   * else: a page's first audit, an anonymous one-off, a manual re-audit.
+   *
+   * WRITE-ONLY, and typed to say so. node-postgres parses a `date` into a JS
+   * Date at LOCAL midnight, so a value read back means a different instant
+   * depending on where the process runs. Nothing reads it - it exists for
+   * `audits_one_scheduled_per_page_per_day` - and `toAuditModel` does not map
+   * it, so the read type below is never relied on.
+   */
+  scheduled_for: ColumnType<Date | null, string | null | undefined, string | null>
 }
 
 export interface ViolationsTable {

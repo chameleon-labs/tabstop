@@ -1,6 +1,9 @@
 import { vi } from 'vitest'
 import type { AddAuditRepository } from '../protocols/db/audit/add-audit-repository.js'
 import type {
+  AddScheduledAuditRepository
+} from '../protocols/db/audit/add-scheduled-audit-repository.js'
+import type {
   DeleteQueuedAuditRepository
 } from '../protocols/db/audit/delete-queued-audit-repository.js'
 import type { AuditJob, AuditJobQueue } from '../protocols/queue/audit-job-queue.js'
@@ -77,6 +80,15 @@ export const mockPageAuditor = () => ({
 
 export const mockAddAuditRepository = () => ({
   add: vi.fn<AddAuditRepository['add']>(async () => mockAuditModel())
+})
+
+export const mockAddScheduledAuditRepository = () => ({
+  // A distinct id per page, because the scheduler's whole job is one audit per
+  // page - a shared id would let a spec pass while the run created one audit
+  // in total and enqueued it repeatedly.
+  addScheduled: vi.fn<AddScheduledAuditRepository['addScheduled']>(async (params) => ({
+    ...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId
+  }))
 })
 
 export const mockDeleteQueuedAuditRepository = () => ({

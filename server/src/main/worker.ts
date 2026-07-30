@@ -1,8 +1,12 @@
 import { UnrecoverableError } from 'bullmq'
 import { env } from './config/env.js'
 import { connectDatabase, disconnectDatabase } from './config/database.js'
-import { QUEUE_NAMES, type AuditPayload, type PingPayload } from './config/queue-names.js'
-import { makeWorker, setGlobalConcurrency } from '../infra/queue/helpers/bullmq-helper.js'
+import {
+  QUEUE_NAMES, type AuditPayload, type PingPayload, type ReauditPayload
+} from './config/queue-names.js'
+import {
+  makeQueue, makeWorker, setGlobalConcurrency, upsertDailySchedule
+} from '../infra/queue/helpers/bullmq-helper.js'
 import { runWithTimeout } from '../infra/queue/run-with-timeout.js'
 import { PermanentAuditError } from '../domain/errors/permanent-audit-error.js'
 import {
@@ -11,6 +15,10 @@ import {
 import { getDatabase } from './config/database.js'
 import { PostgresSessionRepository } from '../infra/db/postgres/session/postgres-session-repository.js'
 import { startSessionSweeper } from './maintenance/session-sweeper.js'
+import {
+  REAUDIT_ATTEMPTS, REAUDIT_CRON, REAUDIT_RETRY_BACKOFF_MS, REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
+} from './config/reaudit.js'
+import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
 
 const PING_TIMEOUT_MS = 10_000
 
@@ -62,14 +70,63 @@ const auditWorker = makeWorker<AuditPayload>(QUEUE_NAMES.audit, env.redisUrl, as
   lockDuration: env.auditJobTimeoutMs + 15_000
 })
 
+// The nightly re-audit (#13), which is what makes this a monitoring product
+// rather than a one-off audit tool.
+//
+// A BullMQ job scheduler rather than a timer, and deliberately NOT for the
+// reason the session sweeper below is a timer. That one avoids Redis because
+// authentication must not depend on it; this job's entire output is BullMQ
+// jobs, so Redis is already on its critical path - and a timer would fire once
+// per worker replica, racing N fan-outs over the same rows every night. The
+// schedule lives in Redis and fires once however many workers are running.
+const reauditQueue = makeQueue<ReauditPayload>(QUEUE_NAMES.reaudit, env.redisUrl)
+
+reauditQueue.on('error', (error) => {
+  console.error('Re-audit queue error (Redis connection):', error)
+})
+
+await upsertDailySchedule(
+  reauditQueue, REAUDIT_SCHEDULER_ID, REAUDIT_CRON, REAUDIT_TIMEZONE,
+  { attempts: REAUDIT_ATTEMPTS, backoff: { type: 'exponential', delay: REAUDIT_RETRY_BACKOFF_MS } }
+)
+
+const reauditWorker = makeWorker<ReauditPayload>(
+  QUEUE_NAMES.reaudit, env.redisUrl, async () => {
+    const startedAt = Date.now()
+    // The clock is read here rather than taken from the job, so a run retried
+    // after an outage schedules for the day it actually runs on.
+    const summary = await makeRunScheduledReaudits().run(new Date())
+
+    // One structured line per run, emitted even when there was nothing to do.
+    // A scheduler that stops firing breaks this product silently - nothing
+    // errors, users simply stop being told their pages got worse - so the
+    // absence of this line is the signal. #25 forwards it to PostHog.
+    console.log(JSON.stringify({
+      event: 'reaudit-run', ...summary, durationMs: Date.now() - startedAt
+    }))
+
+    // Thrown AFTER the summary is logged, so the record of what happened
+    // survives the failure. Retrying is safe and cheap: every page the attempt
+    // did schedule now has an audit in flight and is excluded from the
+    // eligibility query, so the next attempt picks up only what is still owed.
+    if (summary.failed > 0) {
+      throw new Error(`Re-audit run could not schedule ${summary.failed} page(s)`)
+    }
+  }
+)
+
 // Expired sessions were enforced at read time but never removed, so the
 // table only grew - one row per login, forever. This runs here rather than in
 // the API because the API scales horizontally and would have N instances
 // issuing the same delete, and because the worker already owns background
 // work and a database connection.
+//
+// Left as a timer rather than folded into the scheduler above, which #13's
+// comment proposed: #10's design turns on authentication not depending on
+// Redis, and a repeatable job would make session maintenance do exactly that.
 const sessionSweeper = startSessionSweeper(new PostgresSessionRepository(getDatabase()))
 
-const workers = [pingWorker, auditWorker]
+const workers = [pingWorker, auditWorker, reauditWorker]
 
 for (const worker of workers) {
   worker.on('failed', (job, error) => {
@@ -83,8 +140,9 @@ for (const worker of workers) {
 
 await Promise.all(workers.map(async (worker) => { await worker.waitUntilReady() }))
 console.log(
-  `Worker started, consuming "${QUEUE_NAMES.ping}" and "${QUEUE_NAMES.audit}" ` +
-  `(audit concurrency ${env.auditConcurrency}, enforced across all workers)`
+  `Worker started, consuming "${QUEUE_NAMES.ping}", "${QUEUE_NAMES.audit}" and ` +
+  `"${QUEUE_NAMES.reaudit}" (audit concurrency ${env.auditConcurrency}, enforced across all ` +
+  `workers; re-audit fan-out at "${REAUDIT_CRON}" ${REAUDIT_TIMEZONE})`
 )
 
 const shutdown = (signal: string): void => {
@@ -105,6 +163,8 @@ const shutdown = (signal: string): void => {
   void Promise.all(workers.map(async (worker) => { await worker.close() }))
     .then(async () => {
       sessionSweeper.stop()
+      // The queue holds its own Redis connection, separate from the worker's.
+      await reauditQueue.close()
       await closePageAuditor()
       await disconnectDatabase()
       process.exit(0)

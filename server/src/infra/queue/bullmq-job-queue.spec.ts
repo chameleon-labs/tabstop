@@ -164,14 +164,18 @@ describe('BullMqAuditQueue', () => {
     expect(await sut.has('67890')).toBe(false)
   })
 
-  it('counts jobs that are waiting and jobs inside a retry backoff', async () => {
+  it('counts the jobs that are runnable now, and not the ones scheduled for later', async () => {
     // The whole queue cap rests on this number meaning what submission thinks
-    // it means: how much accepted work is still owed a worker slot. A delayed
-    // job is owed one - in this queue "delayed" means "threw, and is inside
-    // its retry backoff", because nothing enqueues an audit with a delay of
-    // its own. Counting waiting alone hides those for the length of the
-    // backoff, which makes a cost control wrong in the direction that accepts
-    // more work.
+    // it means: how much accepted work is competing for a worker slot NOW.
+    //
+    // This counted delayed jobs too, on the premise that nothing enqueued an
+    // audit with a delay of its own - so "delayed" could only mean "threw, and
+    // is inside its retry backoff". #13 made that false: the daily scheduler
+    // hands the queue a night's work with delays of up to six hours. Counted
+    // as backlog, a hundred monitored pages would push the depth over
+    // AUDIT_QUEUE_MAX_DEPTH the instant the fan-out ran, and POST /api/audits
+    // would answer 503 for the length of the window, nightly, against idle
+    // workers.
     //
     // Driven against real BullMQ rather than a fake, because which state a
     // job is in is BullMQ's decision, not ours: a fake would simply agree
@@ -186,13 +190,86 @@ describe('BullMqAuditQueue', () => {
     await sut.enqueueOnce({ auditId: '222' })
     expect(await sut.backlogCount()).toBe(2)
 
-    // Not runnable yet, but accepted and coming back.
-    await queue.add(name, { auditId: '333' }, { delay: 60_000 })
-    expect(await sut.backlogCount()).toBe(3)
+    // Accepted, and deliberately not competing for a slot yet.
+    await sut.enqueueOnce({ auditId: '333' }, { delayMs: 60_000 })
+    expect(await queue.getJobCountByTypes('delayed')).toBe(1)
+    expect(await sut.backlogCount()).toBe(2)
 
     // Deduped rather than counted twice, matching enqueueOnce's contract.
     await sut.enqueueOnce({ auditId: '111' })
-    expect(await sut.backlogCount()).toBe(3)
+    expect(await sut.backlogCount()).toBe(2)
+  })
+
+  it('counts a scheduled job once its delay has elapsed', async () => {
+    // The other half of the rule above, and what keeps it a bound rather than
+    // a hole: work scheduled into the future is uncounted only while it IS in
+    // the future. When its time comes it joins the runnable line, and a
+    // saturated worker refuses submissions exactly as it did before.
+    //
+    // A worker has to be running for that to happen at all - BullMQ promotes
+    // the delayed set from the workers, so with none attached a delayed job
+    // stays delayed forever and this reads zero indefinitely. Worth knowing
+    // beyond this spec: the depth check is only a live number while something
+    // is consuming the queue.
+    //
+    // The worker blocks on a gate and takes one job at the default concurrency
+    // of one, so the second promoted job is left waiting where it can be
+    // counted rather than being finished before the assertion runs.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    worker = makeWorker<AuditJob>(name, connectionUrl(), async () => { await gate })
+    await worker.waitUntilReady()
+
+    try {
+      await sut.enqueueOnce({ auditId: '777' }, { delayMs: 500 })
+      await sut.enqueueOnce({ auditId: '778' }, { delayMs: 500 })
+      expect(await sut.backlogCount()).toBe(0)
+
+      // At least one, not exactly one. Both jobs are promoted together and the
+      // worker takes them one at a time, so the count passes through 2 on its
+      // way to 1 - and asserting the exact value made this spec race against
+      // however busy the shared Redis was, which is not what it is about.
+      await vi.waitFor(async () => {
+        expect(await sut.backlogCount()).toBeGreaterThanOrEqual(1)
+      }, { timeout: 20_000 })
+    } finally {
+      release()
+    }
+  })
+
+  it('hands the delay to BullMQ rather than sleeping on it', async () => {
+    // A fan-out that waited out its own jitter would hold the run open for six
+    // hours and lose every page it had not reached if the worker restarted.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    const before = Date.now()
+    await sut.enqueueOnce({ auditId }, { delayMs: 3_600_000 })
+    const elapsed = Date.now() - before
+
+    const job = await queue.getJob(`audit-${auditId}`)
+    expect(job?.opts.delay).toBe(3_600_000)
+    expect(await job?.getState()).toBe('delayed')
+    expect(elapsed).toBeLessThan(5_000)
+  })
+
+  it('still finds a delayed job, so its audit row is never deleted from under it', async () => {
+    // has() is what turns an unconfirmed enqueue into `unknown` rather than
+    // `failed`. If it could not see a delayed job, a scheduler retry would
+    // report failure and delete an audit row whose job is sitting in the
+    // delayed set, waiting for a slot it will get.
+    const name = `audit-${randomUUID()}`
+    queue = makeQueue<AuditJob>(name, connectionUrl())
+    const sut = new BullMqAuditQueue(queue)
+
+    await sut.enqueueOnce({ auditId }, { delayMs: 3_600_000 })
+
+    expect(await sut.has(auditId)).toBe(true)
   })
 
   it('leaves finished work out of the backlog', async () => {

@@ -1,6 +1,7 @@
 export const QUEUE_NAMES = {
   ping: 'ping',
-  audit: 'audit'
+  audit: 'audit',
+  reaudit: 'reaudit'
 } as const
 
 export type PingPayload = {
@@ -14,3 +15,12 @@ export type PingPayload = {
 export type AuditPayload = {
   auditId: string
 }
+
+/**
+ * Nothing travels at all: the nightly fan-out reads the clock itself.
+ *
+ * A `scheduledFor` in the payload would be the time the SCHEDULER fired,
+ * which is the wrong thing for a job that may be retried an hour later after
+ * a Redis outage - it would keep stamping rows with a day that has passed.
+ */
+export type ReauditPayload = Record<string, never>

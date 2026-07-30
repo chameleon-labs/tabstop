@@ -1,4 +1,7 @@
-import { Queue, Worker, type Job, type Processor, type WorkerOptions } from 'bullmq'
+import {
+  Queue, Worker,
+  type Job, type JobSchedulerTemplateOptions, type Processor, type WorkerOptions
+} from 'bullmq'
 
 /**
  * BullMQ's Queue and Worker generics are asymmetric.
@@ -49,6 +52,34 @@ export const setGlobalConcurrency = async (
   } finally {
     await queue.close()
   }
+}
+
+/**
+ * Registers a recurring job, or updates the one already registered under this
+ * id.
+ *
+ * The schedule lives in Redis, so it fires ONCE across every worker replica -
+ * which is the whole reason a nightly fan-out uses this rather than a timer.
+ * A timer fires per process, so N replicas would race on the same rows every
+ * night.
+ *
+ * An upsert rather than an add because this runs on every worker boot: a
+ * deploy that changes the cron has to take effect, not leave the old schedule
+ * running and add a second one beside it.
+ *
+ * `jobOptions` are the fired job's - attempts and backoff for one run - not
+ * the schedule's.
+ */
+export const upsertDailySchedule = async <TPayload>(
+  queue: PayloadQueue<TPayload>,
+  schedulerId: string,
+  pattern: string,
+  timezone: string,
+  jobOptions: JobSchedulerTemplateOptions = {}
+): Promise<void> => {
+  await queue.upsertJobScheduler(
+    schedulerId, { pattern, tz: timezone }, { name: queue.name, opts: jobOptions }
+  )
 }
 
 export const makeWorker = <TPayload>(

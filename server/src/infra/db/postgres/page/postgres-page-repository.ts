@@ -16,6 +16,9 @@ import type {
   DeletePageRepository
 } from '../../../../data/protocols/db/page/delete-page-repository.js'
 import type {
+  DuePage, LoadDueReauditsRepository
+} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
+import type {
   LoadPageHistoryRepository
 } from '../../../../data/protocols/db/page/load-page-history-repository.js'
 import type { PageHistory } from '../../../../domain/usecases/load-page-history.js'
@@ -49,6 +52,7 @@ const isStorableId = (value: string): boolean =>
 
 export class PostgresPageRepository implements
   AddPageRepository,
+  LoadDueReauditsRepository,
   LoadPageSummariesRepository,
   LoadPageHistoryRepository,
   SetPageMonitoringRepository,
@@ -128,6 +132,54 @@ export class PostgresPageRepository implements
 
       return { outcome: 'added', page: toPageModel(page), firstAudit: toAuditModel(audit) }
     })
+  }
+
+  /**
+   * The nightly run's worklist: every monitored page with nothing already in
+   * flight and nothing audited yet today (#13).
+   *
+   * Two `not exists` clauses rather than a left join and a filter, because
+   * each is answered by an index that stops at the first matching row instead
+   * of building a result to discard.
+   *
+   * The first reads `audits_in_flight_page_idx`, which is partial on `status
+   * in ('queued','running')` so it holds only live work. Without it this check
+   * walks a page's entire audit history to find nothing - a cost that grows
+   * for as long as the account is a customer, paid once per page per night.
+   *
+   * The second reads `audits_page_created_idx` on its leading columns. It
+   * keys on `created_at`, not on `scheduled_for`: a page somebody audited
+   * manually an hour ago should not be fetched again tonight, and that is a
+   * cost control the unique index deliberately does not enforce.
+   *
+   * `limit` is a memory bound, not a policy. If it ever truncates, the same
+   * tail is cut every night - so it is set far above any real fan-out and the
+   * caller reports a truncated run as the operational event it is.
+   */
+  async loadDueForReaudit (dayStart: Date, limit: number): Promise<DuePage[]> {
+    const rows = await this.db.selectFrom('pages')
+      .innerJoin('sites', 'sites.id', 'pages.site_id')
+      .select(['pages.id as page_id', 'pages.url', 'sites.domain'])
+      .where('pages.monitoring_enabled', '=', true)
+      .where((eb) => eb.not(eb.exists(
+        eb.selectFrom('audits')
+          .select('audits.id')
+          .whereRef('audits.page_id', '=', 'pages.id')
+          .where('audits.status', 'in', ['queued', 'running'])
+      )))
+      .where((eb) => eb.not(eb.exists(
+        eb.selectFrom('audits')
+          .select('audits.id')
+          .whereRef('audits.page_id', '=', 'pages.id')
+          .where('audits.created_at', '>=', dayStart)
+      )))
+      // So a run that hits the cap is at least reproducible: the planner's
+      // preferred order would otherwise decide who gets monitored.
+      .orderBy('pages.id')
+      .limit(limit)
+      .execute()
+
+    return rows.map((row) => ({ pageId: row.page_id, url: row.url, domain: row.domain }))
   }
 
   async loadSummariesForUser (userId: string): Promise<PageSummary[]> {

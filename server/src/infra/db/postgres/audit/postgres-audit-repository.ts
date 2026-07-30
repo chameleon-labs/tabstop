@@ -5,6 +5,10 @@ import type {
   AddAuditRepository
 } from '../../../../data/protocols/db/audit/add-audit-repository.js'
 import type {
+  AddScheduledAuditParams,
+  AddScheduledAuditRepository
+} from '../../../../data/protocols/db/audit/add-scheduled-audit-repository.js'
+import type {
   LoadAuditByPublicUuidRepository
 } from '../../../../data/protocols/db/audit/load-audit-by-public-uuid-repository.js'
 import type {
@@ -54,6 +58,7 @@ const DEFAULT_STALE_CLAIM_AFTER_MS = claimLeaseFor(600_000, 15_000)
 
 export class PostgresAuditRepository implements
   AddAuditRepository,
+  AddScheduledAuditRepository,
   LoadAuditByPublicUuidRepository,
   LoadAuditByIdRepository,
   MarkRunningRepository,
@@ -75,6 +80,41 @@ export class PostgresAuditRepository implements
       .executeTakeFirstOrThrow()
 
     return toAuditModel(row)
+  }
+
+  /**
+   * The nightly run's audit for one page.
+   *
+   * `on conflict ... do nothing` rather than catching SQLSTATE 23505: a raised
+   * error inside a transaction aborts it, and the caller is looping over every
+   * monitored page. Returning zero rows leaves the connection usable and turns
+   * the conflict into the answer the protocol wants - null, meaning another
+   * run already scheduled this page today.
+   *
+   * The conflict target is spelled as columns plus the index predicate rather
+   * than `on constraint`, because a partial unique index is not a constraint
+   * and Postgres will not infer one by name. Repeating the predicate is what
+   * makes it infer THIS index rather than any unique index on the table -
+   * bare `do nothing` would also swallow a public_uuid collision, which is a
+   * different problem that should never be silent.
+   */
+  async addScheduled (params: AddScheduledAuditParams): Promise<AuditModel | null> {
+    const row = await this.db
+      .insertInto('audits')
+      .values({
+        page_id: params.pageId,
+        url: params.url,
+        status: 'queued',
+        scheduled_for: params.scheduledFor
+      })
+      .onConflict((oc) => oc
+        .columns(['page_id', 'scheduled_for'])
+        .where('scheduled_for', 'is not', null)
+        .doNothing())
+      .returningAll()
+      .executeTakeFirst()
+
+    return row === undefined ? null : toAuditModel(row)
   }
 
   async loadByPublicUuid (publicUuid: string): Promise<AuditModel | null> {

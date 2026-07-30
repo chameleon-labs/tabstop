@@ -6,6 +6,9 @@ import type {
   DeletePageRepository
 } from '../protocols/db/page/delete-page-repository.js'
 import type {
+  DuePage, LoadDueReauditsRepository
+} from '../protocols/db/page/load-due-reaudits-repository.js'
+import type {
   LoadPageHistoryRepository
 } from '../protocols/db/page/load-page-history-repository.js'
 import type {
@@ -63,6 +66,17 @@ export const mockPageHistory = (): PageHistory => ({
     // as a point, not that it is dropped or scored zero.
     { ...mockAuditModel(), pageId: 'page-1', status: 'failed', error: 'Navigation timed out' }
   ]
+})
+
+export const mockDuePages = (): DuePage[] => [
+  { pageId: 'page-1', url: 'https://example.test/a', domain: 'example.test' },
+  { pageId: 'page-2', url: 'https://other.test/b', domain: 'other.test' }
+]
+
+export const mockLoadDueReauditsRepository = () => ({
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(
+    async () => mockDuePages()
+  )
 })
 
 export const mockLoadPageHistoryRepository = () => ({

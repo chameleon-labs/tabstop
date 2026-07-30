@@ -78,6 +78,76 @@ describe('PostgresAuditRepository', () => {
     })
   })
 
+  describe('addScheduled', () => {
+    const DAY = '2026-08-01'
+
+    it('creates the queued audit for a page\'s nightly run', async () => {
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const audit = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(audit?.status).toBe('queued')
+      expect(audit?.pageId).toBe(pageId)
+      expect(audit?.url).toBe(url)
+    })
+
+    it('answers null rather than throwing when the day is already scheduled', async () => {
+      // The second idempotency layer, and the reason it returns a value rather
+      // than raising: the caller is looping over every monitored page, and a
+      // 23505 would abort the transaction it is in and end the night there.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const first = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+      const second = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(first).not.toBeNull()
+      expect(second).toBeNull()
+
+      const rows = await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()
+      expect(rows).toHaveLength(1)
+    })
+
+    it('leaves the connection usable after a conflict', async () => {
+      // What `do nothing` buys over catching the error: a raised 23505 inside
+      // a transaction aborts it, so every statement after the catch fails with
+      // 25P02 and the only recovery is starting over.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(await sut.addScheduled({ pageId, url, scheduledFor: '2026-08-02' })).not.toBeNull()
+    })
+
+    it('schedules the same page again the next day', async () => {
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const monday = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+      const tuesday = await sut.addScheduled({ pageId, url, scheduledFor: '2026-08-02' })
+
+      expect(monday?.id).not.toBe(tuesday?.id)
+    })
+
+    it('does not block an unscheduled audit of the same page on the same day', async () => {
+      // The conflict target names the partial index, so it only ever sees
+      // scheduled rows. A manual re-audit (#22) and the first audit an added
+      // page gets both carry a null scheduled_for and are untouched by it.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      const manual = await sut.add({ url, pageId })
+
+      expect(manual.pageId).toBe(pageId)
+      const rows = await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()
+      expect(rows).toHaveLength(2)
+    })
+  })
+
   describe('loadByPublicUuid', () => {
     it('returns the audit that was created', async () => {
       const created = await sut.add({ url: `https://${randomUUID()}.test/find-me`, pageId: null })
