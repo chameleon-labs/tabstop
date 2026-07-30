@@ -24,22 +24,30 @@ const params = (overrides: Partial<RunAuditParams> = {}): RunAuditParams => ({
 })
 
 describe('DbRunAudit', () => {
-  it('marks running, stores violations, then marks done', async () => {
+  it('claims, stores violations, then completes with the rule snapshot', async () => {
     const { sut, auditStatus, violations } = makeSut()
 
     await sut.run(params())
 
     expect(auditStatus.claimForRun).toHaveBeenCalledWith('audit-1')
     expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), expect.any(Array))
-    expect(auditStatus.markDone).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), {
+    expect(auditStatus.complete).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), {
       // (10 x 2 critical) + (5 x 1 serious) = 25 deducted.
       score: 75,
       // counted per NODE, not per rule: two alt-less images are two problems
       countsByImpact: { minor: 0, moderate: 0, serious: 1, critical: 2 },
       axeVersion: '4.12.1',
       durationMs: 1234,
-      settled: true
+      settled: true,
+      // Exact objects: nodes and display copy are not part of rule-level
+      // regression identity, while impact is what makes a new rule severe.
+      violations: [
+        { ruleId: 'image-alt', impact: 'critical' },
+        { ruleId: 'color-contrast', impact: 'serious' }
+      ]
     })
+    expect(violations.replaceAll.mock.invocationCallOrder[0])
+      .toBeLessThan(auditStatus.complete.mock.invocationCallOrder[0] ?? 0)
     expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
@@ -51,7 +59,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone.mock.calls[0]?.[2].score).toBe(100)
+    expect(auditStatus.complete.mock.calls[0]?.[2].score).toBe(100)
   })
 
   it('audits the URL from the loaded audit row', async () => {
@@ -73,7 +81,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone.mock.calls[0]?.[2].countsByImpact)
+    expect(auditStatus.complete.mock.calls[0]?.[2].countsByImpact)
       .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 0 })
   })
 
@@ -107,7 +115,7 @@ describe('DbRunAudit', () => {
     expect(violations.replaceAll.mock.calls[0]?.[2]).toHaveLength(2)
     // ...but only the one with a severity is counted. Inventing a bucket for
     // the other would corrupt the comparison regression detection makes.
-    expect(auditStatus.markDone.mock.calls[0]?.[2].countsByImpact)
+    expect(auditStatus.complete.mock.calls[0]?.[2].countsByImpact)
       .toEqual({ minor: 0, moderate: 0, serious: 0, critical: 1 })
   })
 
@@ -119,7 +127,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone.mock.calls[0]?.[2].settled).toBe(false)
+    expect(auditStatus.complete.mock.calls[0]?.[2].settled).toBe(false)
     expect(auditStatus.markFailed).not.toHaveBeenCalled()
   })
 
@@ -201,7 +209,7 @@ describe('DbRunAudit', () => {
 
       expect(pageAuditor.audit).not.toHaveBeenCalled()
       expect(violations.replaceAll).not.toHaveBeenCalled()
-      expect(auditStatus.markDone).not.toHaveBeenCalled()
+      expect(auditStatus.complete).not.toHaveBeenCalled()
       expect(auditStatus.markFailed).not.toHaveBeenCalled()
     }
   })
@@ -227,7 +235,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params())
 
-    expect(auditStatus.markDone).toHaveBeenCalled()
+    expect(auditStatus.complete).toHaveBeenCalled()
   })
 
   it('treats a missing audit as permanent without marking anything running', async () => {

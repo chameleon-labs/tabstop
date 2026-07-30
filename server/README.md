@@ -17,7 +17,7 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-Five slices exist:
+Six slices exist:
 
 - **Health** — `GET /api/health`, including a Postgres reachability probe.
 - **Accounts** — signup, login, logout and `GET /api/me`, on server-side sessions.
@@ -25,8 +25,9 @@ Five slices exist:
 - **Pages** — `POST/GET /api/pages`, `PATCH/DELETE /api/pages/:id` and `GET /api/pages/:id/history`, all behind the auth middleware. Adding a page creates its `Site` if needed, enforces the per-account cap, and starts a first audit; `GET` answers the whole dashboard — latest audit, score, previous score and a bounded sparkline — in a fixed number of queries.
 
 - **Daily re-audits** — a BullMQ job scheduler in the worker fans out one audit per monitored page every night, spread over a six-hour window by a per-domain offset. See *Re-audit scheduler* below.
+- **Regression detection** — each tracked-page completion compares with its previous completed audit, records a score drop or newly severe rule, and dedupes alerts to one per page per UTC day. See *Regression detection* below.
 
-Not built yet: regression detection, alert email, and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
+Not built yet: alert email and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
 
 ## Stack
 
@@ -128,6 +129,14 @@ The `audit` queue runs accessibility audits: navigate with Chromium, inject vend
   ```
 
   `--with-deps` also installs the OS libraries Chromium needs, which a slim container image will not have. This is a deploy requirement (#16), not just a test-setup step. `playwright` is a runtime **dependency** for the same reason: a `pnpm install --prod` that omitted it would fail the worker at module load, before it could consume a single job.
+
+## Regression detection
+
+Successful tracked-page audits are completed and evaluated in one Postgres transaction. The claim-fenced `done` update runs first; only its owner may compare the result or emit an event. The baseline is the latest earlier `done` audit by `(created_at, id)`, so failed audits are skipped and jobs finishing out of order cannot compare time backwards. Anonymous and first audits never alert.
+
+`domain/services/regression.ts` owns the rule-level policy shared with the future audit diff UI (#22): a newly added `serious` or `critical` rule wins over a simultaneous score drop, while an axe-version change suppresses both signals. Improvements do not alert.
+
+`alert_events_one_per_page_per_day` is the authority for the one-alert-per-UTC-day rule. The insert names that expression index as its exact `ON CONFLICT DO NOTHING` target, so two completions racing for the same page resolve normally while foreign-key and check errors still fail. `emailed_at` remains null until #15 confirms delivery.
 
 ## Re-audit scheduler
 

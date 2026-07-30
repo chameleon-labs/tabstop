@@ -22,6 +22,20 @@ Rejected: waiting once at startup instead. It is the obvious shape and it fixes 
 
 **Not claimed:** that this fixes the `account-routes.test.ts` flakes. Eight baseline runs on `main` and six on the branch all passed, so the local signal is too weak to confirm or rule it out; CI is where it showed. Recorded on #50 rather than asserted here.
 
+## 2026-07-30 — regression means a comparable earlier result, and completion owns its alert
+
+A tracked audit now emits an `AlertEvent` when its score falls by the account threshold or it gains a `serious`/`critical` rule. It emits at most one signal: a new severe rule wins over a simultaneous score drop because it says what became actionable, while the score can only say that the aggregate moved. Improvements, first audits and anonymous audits do not alert.
+
+**Rules are compared by id, not by nodes or severity transitions.** The same rule moving to a different selector is still the same finding, and a rule already present as `minor` becoming `serious` is not “new”. `diffViolations` owns that set arithmetic and returns current objects for `added`/`unchanged` and previous objects for `fixed`, so #22 can show richer rows without rebuilding a definition that might disagree with email. An alert stores the two audit ids rather than a frozen copy of the diff for the same reason.
+
+**An axe-version change suppresses the whole alert.** A release may add or reclassify rules, and presenting that as the page regressing would alert every monitored page after an engine bump—the fastest way to teach users to ignore the product. The history endpoint already returns `axeVersion`, so the UI can explain the discontinuity without pretending it came from the page. Alerting with an engine-update caveat is deferred; v1 chooses the conservative signal.
+
+**“Previous” means the latest earlier completed audit, not the result that most recently happened to finish.** Workers can complete out of order. The baseline query is bounded below the current `(created_at, id)`, ordered by that same tuple descending, and filters `status = done`; a failed audit is not a score of zero, and an audit created later cannot become this one's past. The id is the tiebreak because Postgres `now()` is transaction time and rows can share a timestamp.
+
+**Completion and detection are one transaction.** Marking the audit `done` and then inserting its alert in a separate step leaves a fatal gap: the worker can crash between them, and every redelivery sees a terminal audit and acknowledges it, so the alert is lost forever. The existing claim-fenced update now gates the transaction; if it updates no row, the stale attempt writes neither result nor event.
+
+The issue sketched catching the daily unique violation. That is not safe inside this transaction: once Postgres raises `23505`, the transaction is aborted, and “handling” it would still roll the valid completion back unless a savepoint were introduced. The insert instead names `alert_events_one_per_page_per_day`'s exact expression as its `ON CONFLICT DO NOTHING` target. The race becomes a normal no-op without swallowing foreign-key or check failures, and the completion commits. The UTC day keys on detection, not delivery, so an unsent event still spends the page's one alert for that day.
+
 ## 2026-07-30 — the nightly re-audit, and dedupe on intent rather than on a timestamp
 
 Every page with `monitoring_enabled` is audited once per UTC day, fanned out at 02:00 UTC by a BullMQ job scheduler in the worker and spread over a six-hour window. This is the promise the product is actually making; without it tabstop is a one-off audit tool with an account system.

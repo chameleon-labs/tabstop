@@ -5,7 +5,9 @@ import type { PageAuditor } from '../../protocols/audit/page-auditor.js'
 import type {
   LoadAuditByIdRepository
 } from '../../protocols/db/audit/load-audit-by-id-repository.js'
-import type { MarkDoneRepository } from '../../protocols/db/audit/mark-done-repository.js'
+import type {
+  CompleteAuditRepository
+} from '../../protocols/db/audit/complete-audit-repository.js'
 import type { MarkFailedRepository } from '../../protocols/db/audit/mark-failed-repository.js'
 import type { MarkRunningRepository } from '../../protocols/db/audit/mark-running-repository.js'
 import type {
@@ -14,7 +16,7 @@ import type {
 import { classifyAuditError } from './audit-error.js'
 
 export type AuditStatusRepository =
-  MarkRunningRepository & MarkDoneRepository & MarkFailedRepository
+  MarkRunningRepository & CompleteAuditRepository & MarkFailedRepository
 
 export class DbRunAudit implements RunAudit {
   constructor (
@@ -61,11 +63,14 @@ export class DbRunAudit implements RunAudit {
         ({ ruleId, impact, nodes }) => ({ ruleId, impact, nodeCount: nodes.length })
       ))
 
-      await this.auditStatusRepository.markDone(auditId, claimedAt, {
+      await this.auditStatusRepository.complete(auditId, claimedAt, {
         ...summary,
         axeVersion: result.axeVersion,
         durationMs: result.durationMs,
-        settled: result.settled
+        settled: result.settled,
+        // Regression identity is rule-level. Display copy and nodes are
+        // already persisted, while these are the only fields comparison uses.
+        violations: result.violations.map(({ ruleId, impact }) => ({ ruleId, impact }))
       })
     } catch (error) {
       const failure = classifyAuditError(error)
