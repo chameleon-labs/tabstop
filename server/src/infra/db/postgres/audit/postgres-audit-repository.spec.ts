@@ -7,6 +7,9 @@ import type { Database } from '../database.js'
 import type {
   StaleAudit
 } from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
+import type {
+  CompleteAuditParams
+} from '../../../../data/protocols/db/audit/complete-audit-repository.js'
 
 describe('PostgresAuditRepository', () => {
   let db: Kysely<Database>
@@ -34,6 +37,14 @@ describe('PostgresAuditRepository', () => {
       .values({ site_id: site.id, url: `https://${randomUUID()}.test/a` })
       .returning('id').executeTakeFirstOrThrow()
     return page.id
+  }
+
+  const complete = async (
+    id: string,
+    claimedAt: Date,
+    result: Omit<CompleteAuditParams, 'violations'>
+  ): Promise<void> => {
+    await sut.complete(id, claimedAt, { ...result, violations: [] })
   }
 
   describe('add', () => {
@@ -433,7 +444,7 @@ describe('PostgresAuditRepository', () => {
       for (const finish of ['done', 'failed'] as const) {
         const { id, claimedAt } = await makeClaimedAudit()
         if (finish === 'done') {
-          await sut.markDone(id, claimedAt, {
+          await complete(id, claimedAt, {
             score: 100,
             countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
             axeVersion: '4.12.1', durationMs: 1, settled: true
@@ -449,7 +460,7 @@ describe('PostgresAuditRepository', () => {
 
     it('refuses every concurrent delivery once the audit has finished', async () => {
       const { id, claimedAt } = await makeClaimedAudit()
-      await sut.markDone(id, claimedAt, {
+      await complete(id, claimedAt, {
         score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1', durationMs: 1, settled: true
@@ -464,7 +475,7 @@ describe('PostgresAuditRepository', () => {
 
     it('ignores a terminal write from an attempt that lost its claim', async () => {
       // A paused attempt can resume after another worker reclaimed and finished
-      // the audit. Unfenced, markDone would overwrite the new owner's result
+      // the audit. Unfenced, completion would overwrite the new owner's result
       // and markFailed would turn a success into a failure.
       const { id, claimedAt } = await makeClaimedAudit()
       await db.updateTable('audits')
@@ -472,7 +483,7 @@ describe('PostgresAuditRepository', () => {
         .where('id', '=', id).execute()
       const newOwner = await sut.claimForRun(id)
       if (newOwner === null) throw new Error('fixture failed to reclaim')
-      await sut.markDone(id, newOwner, {
+      await complete(id, newOwner, {
         score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1', durationMs: 1, settled: true
@@ -525,7 +536,7 @@ describe('PostgresAuditRepository', () => {
     it('marks an audit done with counts, version, duration and settled', async () => {
       const { id, claimedAt } = await makeClaimedAudit()
 
-      await sut.markDone(id, claimedAt, {
+      await complete(id, claimedAt, {
         // Not derived from the counts below: the repository writes whatever
         // score it is given, so this pins that the column round-trips it
         // rather than that it matches any particular formula.
@@ -550,7 +561,7 @@ describe('PostgresAuditRepository', () => {
     it('writes all four impact keys, which the check constraint requires', async () => {
       const { id, claimedAt } = await makeClaimedAudit()
 
-      await sut.markDone(id, claimedAt, {
+      await complete(id, claimedAt, {
         score: 100,
         countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
         axeVersion: '4.12.1',
@@ -568,7 +579,7 @@ describe('PostgresAuditRepository', () => {
       // produced it.
       for (const score of [0, 100]) {
         const { id, claimedAt } = await makeClaimedAudit()
-        await sut.markDone(id, claimedAt, {
+        await complete(id, claimedAt, {
           score,
           countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
           axeVersion: '4.12.1', durationMs: 1, settled: true
@@ -621,7 +632,7 @@ describe('PostgresAuditRepository', () => {
         if (claimedAt === null) throw new Error('fixture failed to claim')
 
         if (advance === 'done') {
-          await sut.markDone(audit.id, claimedAt, {
+          await complete(audit.id, claimedAt, {
             score: 100,
             countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
             axeVersion: '4.12.1', durationMs: 1, settled: true

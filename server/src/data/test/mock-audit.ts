@@ -15,7 +15,9 @@ import type { AuditPageResult, PageAuditor } from '../protocols/audit/page-audit
 import type {
   LoadAuditByIdRepository
 } from '../protocols/db/audit/load-audit-by-id-repository.js'
-import type { MarkDoneRepository } from '../protocols/db/audit/mark-done-repository.js'
+import type {
+  CompleteAuditRepository
+} from '../protocols/db/audit/complete-audit-repository.js'
 import type { MarkFailedRepository } from '../protocols/db/audit/mark-failed-repository.js'
 import type { MarkRunningRepository } from '../protocols/db/audit/mark-running-repository.js'
 import type {
@@ -69,7 +71,7 @@ export const mockAuditStatusRepository = () => ({
     async () => new Date('2026-07-27T10:00:00Z')
   ),
   releaseClaim: vi.fn<MarkRunningRepository['releaseClaim']>(async () => { /* no-op */ }),
-  markDone: vi.fn<MarkDoneRepository['markDone']>(async () => { /* no-op */ }),
+  complete: vi.fn<CompleteAuditRepository['complete']>(async () => { /* no-op */ }),
   markFailed: vi.fn<MarkFailedRepository['markFailed']>(async () => { /* no-op */ })
 })
 

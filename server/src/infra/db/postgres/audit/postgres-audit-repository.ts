@@ -18,8 +18,8 @@ import type {
   MarkRunningRepository
 } from '../../../../data/protocols/db/audit/mark-running-repository.js'
 import type {
-  MarkDoneParams, MarkDoneRepository
-} from '../../../../data/protocols/db/audit/mark-done-repository.js'
+  CompleteAuditParams, CompleteAuditRepository
+} from '../../../../data/protocols/db/audit/complete-audit-repository.js'
 import type {
   MarkFailedRepository
 } from '../../../../data/protocols/db/audit/mark-failed-repository.js'
@@ -30,6 +30,7 @@ import type {
   ReclaimAbandonedAuditsRepository, StaleAudit
 } from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { Database } from '../database.js'
+import { detectRegression } from '../../../../domain/services/regression.js'
 import { toAuditModel } from './audit-mapper.js'
 
 // Postgres rejects a malformed value compared against a `uuid` column (SQLSTATE
@@ -59,13 +60,41 @@ export const claimLeaseFor = (jobTimeoutMs: number, unwindGraceMs: number): numb
 /** Safe for the largest job budget the environment schema allows. */
 const DEFAULT_STALE_CLAIM_AFTER_MS = claimLeaseFor(600_000, 15_000)
 
+const writeDone = async (
+  db: Kysely<Database>,
+  auditId: string,
+  claimedAt: Date,
+  result: CompleteAuditParams
+) =>
+  await db
+    .updateTable('audits')
+    .set({
+      status: 'done',
+      score: result.score,
+      // Stringified because node-postgres serialises a plain object as JSON
+      // but an array as a Postgres array literal. The column type requires a
+      // string so the compiler enforces the rule uniformly across jsonb.
+      counts_by_impact: JSON.stringify(result.countsByImpact),
+      axe_version: result.axeVersion,
+      duration_ms: result.durationMs,
+      settled: result.settled,
+      completed_at: new Date()
+    })
+    .where('id', '=', auditId)
+    // Fenced: an attempt that lost its claim must not overwrite the result
+    // of the worker that reclaimed the audit - or emit an alert for it.
+    .where('status', '=', 'running')
+    .where('claimed_at', '=', claimedAt)
+    .returning(['page_id', 'created_at'])
+    .executeTakeFirst()
+
 export class PostgresAuditRepository implements
   AddAuditRepository,
   AddScheduledAuditRepository,
   LoadAuditByPublicUuidRepository,
   LoadAuditByIdRepository,
   MarkRunningRepository,
-  MarkDoneRepository,
+  CompleteAuditRepository,
   MarkFailedRepository,
   DeleteQueuedAuditRepository,
   ReclaimAbandonedAuditsRepository {
@@ -190,27 +219,91 @@ export class PostgresAuditRepository implements
       .execute()
   }
 
-  async markDone (auditId: string, claimedAt: Date, result: MarkDoneParams): Promise<void> {
-    await this.db
-      .updateTable('audits')
-      .set({
-        status: 'done',
-        score: result.score,
-        // Stringified because node-postgres serialises a plain object as JSON
-        // but an array as a Postgres array literal. The column type requires a
-        // string so the compiler enforces the rule uniformly across jsonb.
-        counts_by_impact: JSON.stringify(result.countsByImpact),
-        axe_version: result.axeVersion,
-        duration_ms: result.durationMs,
-        settled: result.settled,
-        completed_at: new Date()
-      })
-      .where('id', '=', auditId)
-      // Fenced: an attempt that lost its claim must not overwrite the result
-      // of the worker that reclaimed the audit.
-      .where('status', '=', 'running')
-      .where('claimed_at', '=', claimedAt)
-      .execute()
+  async complete (
+    auditId: string, claimedAt: Date, result: CompleteAuditParams
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      // This update is the transaction's gate. If the claim was superseded,
+      // the current attempt owns neither the result nor an alert derived from
+      // it, so every read and insert below is skipped.
+      const current = await writeDone(trx, auditId, claimedAt, result)
+      if (current === undefined || current.page_id === null) return
+
+      const account = await trx
+        .selectFrom('pages')
+        .innerJoin('sites', 'sites.id', 'pages.site_id')
+        .innerJoin('users', 'users.id', 'sites.user_id')
+        .select('users.alert_threshold')
+        .where('pages.id', '=', current.page_id)
+        .executeTakeFirstOrThrow()
+
+      // "Previous" is chronological, not whichever audit happened to finish
+      // most recently. Two jobs may complete out of order; allowing an audit
+      // created later than this one into the baseline would compare time
+      // backwards and can turn either an improvement or a regression around.
+      const previous = await trx
+        .selectFrom('audits')
+        .select(['id', 'score', 'axe_version'])
+        .where('page_id', '=', current.page_id)
+        .where('status', '=', 'done')
+        .where('score', 'is not', null)
+        .where('axe_version', 'is not', null)
+        .where(sql<SqlBool>`
+          (audits.created_at, audits.id) <
+          (${current.created_at}, ${auditId}::bigint)
+        `)
+        .orderBy('created_at', 'desc')
+        .orderBy('id', 'desc')
+        .limit(1)
+        .executeTakeFirst()
+
+      if (previous === undefined || previous.score === null || previous.axe_version === null) {
+        return
+      }
+
+      const previousViolations = await trx
+        .selectFrom('violations')
+        .select(['rule_id', 'impact'])
+        .where('audit_id', '=', previous.id)
+        .orderBy('id')
+        .execute()
+
+      const regression = detectRegression(
+        {
+          score: result.score,
+          axeVersion: result.axeVersion,
+          violations: result.violations
+        },
+        {
+          score: previous.score,
+          axeVersion: previous.axe_version,
+          violations: previousViolations.map((violation) => ({
+            ruleId: violation.rule_id,
+            impact: violation.impact
+          }))
+        },
+        account.alert_threshold
+      )
+
+      if (regression.kind === 'none') return
+
+      // The expression is the existing unique index's exact target. `do
+      // nothing` turns the expected race into a normal outcome without
+      // swallowing foreign-key or check failures, and without aborting this
+      // transaction (which would roll the successful completion back too).
+      await trx
+        .insertInto('alert_events')
+        .values({
+          page_id: current.page_id,
+          audit_id: auditId,
+          previous_audit_id: previous.id,
+          kind: regression.kind
+        })
+        .onConflict((oc) => oc
+          .expression(sql`page_id, ((created_at at time zone 'UTC')::date)`)
+          .doNothing())
+        .execute()
+    })
   }
 
   async markFailed (auditId: string, claimedAt: Date, error: string): Promise<void> {

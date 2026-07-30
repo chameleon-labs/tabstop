@@ -134,7 +134,7 @@ describe('run-audit end to end', () => {
     // no-op, so the assertion would hold even with replacement broken.
     const auditId = await queueAudit(server.baseUrl)
 
-    // Attempt 1: claims, commits violations, then dies before markDone.
+    // Attempt 1: claims, commits violations, then dies before completion.
     const firstClaim = await audits.claimForRun(auditId)
     if (firstClaim === null) throw new Error('fixture failed to claim')
     await violations.replaceAll(auditId, firstClaim, [{
