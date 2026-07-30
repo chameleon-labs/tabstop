@@ -20,7 +20,15 @@ export type ReauditRunSummary = {
    * but a number that stays non-zero means something is firing twice.
    */
   skippedDuplicate: number
-  /** Pages whose audit could not be created or queued. Their rows are removed. */
+  /**
+   * Pages whose audit could not be created or queued.
+   *
+   * The run TRIES to remove a row whose job never reached the queue, and does
+   * not retry if that fails - the outage that failed the delete fails the
+   * retry. So a page counted here usually leaves nothing behind, and sometimes
+   * leaves an unfinished row for the reclaim pass to retire later. Saying the
+   * rows are removed would be a promise this number cannot keep.
+   */
   failed: number
   /**
    * Unfinished audits retired because the queue no longer held their job.

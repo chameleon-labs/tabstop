@@ -173,26 +173,96 @@ describe('audits.scheduled_for', () => {
     // back - the distinction the whole assertion rests on, since this
     // predicate returns nothing whether it examined one row or two thousand.
     expect(await explainRowsRead(db, probe, 'audits')).toBeLessThan(50)
-    // And by the right index. Dropping the partial predicate would leave an
-    // index on (page_id) that still appears here by name while reading the
-    // page's whole history, which is why the count above is the real
-    // assertion and this is the label on it.
-    expect(await explainPlanText(db, probe)).toContain('audits_in_flight_page_idx')
+    // And on an index rather than the table.
+    expect(await explainPlanText(db, probe)).not.toContain('Seq Scan')
   })
 
-  it('declares both indexes, with the predicates that make them cheap', async () => {
+  // No assertion above names WHICH index answered that, and the omission is
+  // deliberate. It used to name `audits_in_flight_page_idx`, and went red the
+  // moment a second partial index over the same live rows existed: Postgres
+  // picked the other one, scanning a small index and filtering, which for a
+  // live set of a handful is a perfectly good plan. Both indexes cover the
+  // same tiny set here, so the choice is the planner's to make; the
+  // page-leading one earns its place when the live set is large enough for
+  // `page_id = ?` to be the selective predicate, which is the shape a spec
+  // cannot cheaply reproduce. Same lesson as #12's lateral - assert the work,
+  // not the plan.
+
+  it('finds the oldest unfinished audits without scanning every unfinished audit', async () => {
+    // The reclaim pass asks a GLOBAL question - which unfinished audits are old
+    // enough to check against the queue - and takes a bounded number, oldest
+    // first. That needs `created_at` leading.
+    //
+    // It was originally a trailing column on the per-page index, which reads
+    // plausibly and does not work: with `page_id` unconstrained Postgres cannot
+    // walk that index in `created_at` order, so it reads the whole live set and
+    // sorts before applying the limit. Harmless while the live set is small,
+    // and useless exactly when it is not - which is when a stale backlog has
+    // built up and this pass is the thing meant to clear it.
+    //
+    // A row count rather than a plan name: an index can be named in a plan and
+    // still be read end to end, which is the failure mode here.
+    const pageId = await seedPage(db)
+    const LIVE = 2000
+    // Dated in SECONDS rather than hours, so every one of them is far newer
+    // than the cutoffs the reclaim specs beside the audit repository use. This
+    // seeds thousands of unfinished audits into a database every spec file
+    // shares, and an earlier version spread them over eighty days - which put
+    // them at the front of every "oldest first" ordering in the suite and
+    // pushed those files' own fixtures out of their results.
+    await sql`
+      insert into audits (page_id, url, status, created_at)
+      select ${pageId}::bigint, 'https://bulk.test/', 'queued',
+             now() - ((i || ' seconds')::interval)
+      from generate_series(1, ${LIVE}) i
+    `.execute(db)
+    await sql`analyze audits`.execute(db)
+
+    const probe = {
+      sql: `select id from audits
+            where status in ('queued','running') and created_at < $1
+            order by created_at limit 10`,
+      parameters: [new Date()]
+    }
+
+    try {
+      // Ten rows are wanted, so an ordered walk stops at ten. The whole live
+      // set is two orders of magnitude more, and other spec files add their
+      // own in-flight rows to it in parallel - which is why the threshold sits
+      // well below the seeded count rather than near the limit.
+      expect(await explainRowsRead(db, probe, 'audits')).toBeLessThan(LIVE / 4)
+    } finally {
+      // Finished, so they leave the partial index rather than sitting in it
+      // for the rest of the run.
+      await db.updateTable('audits').set({ status: 'done' })
+        .where('page_id', '=', pageId).execute()
+    }
+  })
+
+  it('declares every index, with the predicates that make them cheap', async () => {
     const rows = await sql<{ indexname: string, indexdef: string }>`
       select indexname, indexdef from pg_indexes
       where tablename = 'audits'
-        and indexname in ('audits_one_scheduled_per_page_per_day', 'audits_in_flight_page_idx')
+        and indexname in (
+          'audits_one_scheduled_per_page_per_day',
+          'audits_in_flight_page_idx',
+          'audits_in_flight_created_idx'
+        )
       order by indexname
     `.execute(db)
 
     expect(rows.rows.map((row) => row.indexname)).toEqual([
-      'audits_in_flight_page_idx', 'audits_one_scheduled_per_page_per_day'
+      'audits_in_flight_created_idx',
+      'audits_in_flight_page_idx',
+      'audits_one_scheduled_per_page_per_day'
     ])
+    // Two access patterns, two indexes, each partial on the live statuses - so
+    // both stay small and a finished audit drops out of both.
+    expect(rows.rows[0]?.indexdef).toContain('(created_at)')
     expect(rows.rows[0]?.indexdef).toContain("status = ANY (ARRAY['queued'::text, 'running'::text])")
-    expect(rows.rows[1]?.indexdef).toContain('scheduled_for IS NOT NULL')
-    expect(rows.rows[1]?.indexdef).toContain('CREATE UNIQUE INDEX')
+    expect(rows.rows[1]?.indexdef).toContain('(page_id)')
+    expect(rows.rows[1]?.indexdef).toContain("status = ANY (ARRAY['queued'::text, 'running'::text])")
+    expect(rows.rows[2]?.indexdef).toContain('scheduled_for IS NOT NULL')
+    expect(rows.rows[2]?.indexdef).toContain('CREATE UNIQUE INDEX')
   })
 })

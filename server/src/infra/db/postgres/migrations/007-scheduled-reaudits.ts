@@ -34,32 +34,45 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   `.execute(db)
 
   // Serves both halves of the nightly run, which ask different questions of
-  // the same small set of rows.
+  // the same small set of rows - but they ask DIFFERENT questions, and one
+  // index cannot answer both.
   //
-  // The eligibility query asks whether a page has any unfinished audit - by
-  // `page_id`, with no bound on age, because ageing them out compounds under
-  // load: on a queue that has not drained, real pending audits look abandoned
-  // and their pages get scheduled again on top of the backlog. Without an
-  // index that check reads every audit the page has ever had, to find none - a
-  // cost that grows for as long as the account is a customer, paid once per
-  // page per night.
-  //
-  // The reclaim pass asks which unfinished audits are old enough to be worth
-  // checking against the queue, oldest first - hence `created_at` in the
-  // index rather than left to a filter. Age selects candidates there; the
-  // queue decides whether any of them is actually abandoned.
-  //
-  // Partial on the two live statuses, so it holds a handful of rows rather
-  // than the whole table, and a finished audit drops out of it. That is also
-  // what makes the reclaim scan cheap: it walks unfinished audits, not
-  // history.
+  // The eligibility query asks whether a given page has any unfinished audit:
+  // `page_id = ?`, with no bound on age, because ageing them out compounds
+  // under load - on a queue that has not drained, real pending audits look
+  // abandoned and their pages get scheduled again on top of the backlog.
+  // Without an index that check reads every audit the page has ever had, to
+  // find none: a cost that grows for as long as the account is a customer,
+  // paid once per page per night.
   await sql`
-    create index audits_in_flight_page_idx on audits (page_id, created_at)
+    create index audits_in_flight_page_idx on audits (page_id)
+      where status in ('queued','running')
+  `.execute(db)
+
+  // The reclaim pass asks a global question - which unfinished audits are old
+  // enough to be worth checking against the queue - and wants them oldest
+  // first, bounded by a limit.
+  //
+  // That needs `created_at` LEADING. It was originally a trailing column on
+  // the index above, which reads plausibly and does not work: with `page_id`
+  // unconstrained, Postgres cannot walk that index in `created_at` order, so
+  // it reads the whole live set and sorts before applying the limit. Fine
+  // while the live set is small - and useless exactly when it is not, which
+  // is when a stale backlog has built up and this pass is the thing meant to
+  // clear it.
+  //
+  // Both are partial on the two live statuses, so each holds a handful of
+  // rows rather than the whole table and a finished audit drops out of both.
+  // That is what makes a second index cheap enough to be worth having rather
+  // than a compromise between two access patterns that serves neither.
+  await sql`
+    create index audits_in_flight_created_idx on audits (created_at)
       where status in ('queued','running')
   `.execute(db)
 }
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
+  await sql`drop index if exists audits_in_flight_created_idx`.execute(db)
   await sql`drop index if exists audits_in_flight_page_idx`.execute(db)
   await sql`drop index if exists audits_one_scheduled_per_page_per_day`.execute(db)
   await sql`alter table audits drop column scheduled_for`.execute(db)
