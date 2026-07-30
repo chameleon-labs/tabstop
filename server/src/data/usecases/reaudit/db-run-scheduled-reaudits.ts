@@ -33,8 +33,16 @@ import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
  * The gap between the two is deliberately left open rather than papered over
  * with a lock, so the constraint stays load-bearing rather than decorative.
  */
-/** What the reaper writes on a row whose job no longer exists. */
-export const ABANDONED_ERROR = 'Abandoned: the audit was queued but no job ever ran it'
+/**
+ * What the reclaim pass writes on a row whose job no longer exists.
+ *
+ * Deliberately silent about how far the audit got, because both live statuses
+ * end up here and they got different distances: a `queued` row was never
+ * picked up, while a `running` one was started by a worker that then died. The
+ * fact they share - and the only one this pass established - is that nothing
+ * is left to finish it.
+ */
+export const ABANDONED_ERROR = 'Abandoned: no job remained to finish this audit'
 
 export class DbRunScheduledReaudits implements RunScheduledReaudits {
   constructor (
@@ -61,6 +69,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       skippedDuplicate: 0,
       failed: 0,
       abandonedReclaimed: 0,
+      reclaimFailures: 0,
       truncated: false
     }
 
@@ -70,15 +79,12 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     // true.
     const stopped = (): boolean => signal?.aborted ?? false
 
-    // Before the worklist, so a page freed by the reaper is scheduled tonight
-    // rather than tomorrow.
-    summary.abandonedReclaimed = await this.reclaimAbandoned(now, stopped)
+    // Before the worklist, so a page freed by the reclaim pass is scheduled
+    // tonight rather than tomorrow.
+    const reclaim = await this.reclaimAbandoned(now, stopped)
+    summary.abandonedReclaimed = reclaim.reclaimed
+    summary.reclaimFailures = reclaim.failed
 
-    // How many pages of this domain the run has already placed, so several
-    // pages on one host are serialised rather than arriving together. Held
-    // across batches, or a domain straddling a batch boundary would restart
-    // its stagger and put two of its pages on the same instant.
-    const placed = new Map<string, number>()
     let after: string | null = null
 
     // Paged rather than fetched whole. The batch bounds memory; the loop is
@@ -120,10 +126,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
           return summary
         }
 
-        const position = placed.get(page.domain) ?? 0
-        placed.set(page.domain, position + 1)
-
-        const outcome = await this.schedule(page, position, scheduledFor)
+        const outcome = await this.schedule(page, scheduledFor)
         summary[outcome] += 1
         summary.pagesConsidered += 1
       }
@@ -158,7 +161,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
    * is therefore free to be generous; it decides how much this scans, not
    * what it concludes.
    */
-  private async reclaimAbandoned (now: Date, stopped: () => boolean): Promise<number> {
+  private async reclaimAbandoned (
+    now: Date, stopped: () => boolean
+  ): Promise<{ reclaimed: number, failed: number }> {
     const staleBefore = new Date(now.getTime() - this.staleAfterMs)
 
     let candidates: string[]
@@ -167,10 +172,16 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     } catch {
       // Never fatal. Reclaiming is maintenance; failing at it must not stop
       // the night's actual work, and the same rows are still here tomorrow.
-      return 0
+      //
+      // Counted, though, and not as zero. Reporting "nothing needed
+      // reclaiming" for "I could not look" would hide the one failure mode
+      // this pass exists to prevent: rows that keep excluding their pages
+      // while every run reports a healthy night.
+      return { reclaimed: 0, failed: 1 }
     }
 
     let reclaimed = 0
+    let failed = 0
     for (const auditId of candidates) {
       if (stopped()) break
       if (await this.queueStillHolds(auditId)) continue
@@ -179,10 +190,11 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
         if (await this.audits.markAbandoned(auditId, ABANDONED_ERROR)) reclaimed += 1
       } catch {
         // The row stays unfinished and is a candidate again next run.
+        failed += 1
       }
     }
 
-    return reclaimed
+    return { reclaimed, failed }
   }
 
   /**
@@ -225,7 +237,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
    * under the audits it just scheduled.
    */
   private async schedule (
-    page: DuePage, position: number, scheduledFor: string
+    page: DuePage, scheduledFor: string
   ): Promise<'auditsEnqueued' | 'skippedDuplicate' | 'failed'> {
     let auditId: string
     try {
@@ -244,7 +256,7 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     }
 
     const enqueued = await enqueueAudit(
-      this.auditQueue, auditId, reauditDelayMs(page.domain, position)
+      this.auditQueue, auditId, reauditDelayMs(page.domain, page.pageId)
     )
 
     if (enqueued === 'failed') {

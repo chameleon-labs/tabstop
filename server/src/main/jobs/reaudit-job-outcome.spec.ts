@@ -9,6 +9,7 @@ const summary = (overrides: Partial<ReauditRunSummary> = {}): ReauditRunSummary 
   skippedDuplicate: 0,
   failed: 0,
   abandonedReclaimed: 0,
+  reclaimFailures: 0,
   truncated: false,
   ...overrides
 })

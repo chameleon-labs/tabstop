@@ -154,7 +154,7 @@ describe('daily re-audit scheduler', () => {
 
     const job = await queue.getJob(`audit-${audits[0]?.id ?? ''}`)
     expect(job).toBeDefined()
-    expect(job?.opts.delay).toBe(reauditDelayMs(domain, 0))
+    expect(job?.opts.delay).toBe(reauditDelayMs(domain, pageId))
   })
 
   it('produces no duplicates when the run fires twice', async () => {
@@ -245,9 +245,11 @@ describe('daily re-audit scheduler', () => {
       return job?.opts.delay
     }))
 
+    // Each page's own slot, derived from its id - so this holds whether they
+    // are scheduled together, in separate batches, or one of them on a retry.
+    expect(delays).toEqual([
+      reauditDelayMs(domain, first.pageId), reauditDelayMs(domain, second.id)
+    ])
     expect(delays[0]).not.toBe(delays[1])
-    expect(new Set(delays)).toEqual(new Set([
-      reauditDelayMs(domain, 0), reauditDelayMs(domain, 1)
-    ]))
   })
 })

@@ -33,17 +33,26 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
       on audits (page_id, scheduled_for) where scheduled_for is not null
   `.execute(db)
 
-  // The eligibility query's other half: skip a page that already has a queued
-  // or running audit, and only if that audit is recent enough to still be
-  // real. Without an index the check reads every audit the page has ever had,
-  // to find none - a cost that grows for as long as the account is a customer,
-  // paid once per page per night.
+  // Serves both halves of the nightly run, which ask different questions of
+  // the same small set of rows.
+  //
+  // The eligibility query asks whether a page has any unfinished audit - by
+  // `page_id`, with no bound on age, because ageing them out compounds under
+  // load: on a queue that has not drained, real pending audits look abandoned
+  // and their pages get scheduled again on top of the backlog. Without an
+  // index that check reads every audit the page has ever had, to find none - a
+  // cost that grows for as long as the account is a customer, paid once per
+  // page per night.
+  //
+  // The reclaim pass asks which unfinished audits are old enough to be worth
+  // checking against the queue, oldest first - hence `created_at` in the
+  // index rather than left to a filter. Age selects candidates there; the
+  // queue decides whether any of them is actually abandoned.
   //
   // Partial on the two live statuses, so it holds a handful of rows rather
-  // than the whole table, and a finished audit drops out of it. `created_at`
-  // is in the index rather than left to a filter because the query bounds it:
-  // an unfinished audit older than the grace window is one nothing is going to
-  // finish, and it must stop hiding its page.
+  // than the whole table, and a finished audit drops out of it. That is also
+  // what makes the reclaim scan cheap: it walks unfinished audits, not
+  // history.
   await sql`
     create index audits_in_flight_page_idx on audits (page_id, created_at)
       where status in ('queued','running')

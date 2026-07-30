@@ -6,16 +6,33 @@ import {
 const domains = (count: number): string[] =>
   Array.from({ length: count }, (_value, index) => `site-${index}.example.test`)
 
+const pageIds = (count: number): string[] =>
+  Array.from({ length: count }, (_value, index) => String(1000 + index))
+
 describe('reauditDelayMs', () => {
-  it('gives one domain the same slot every night', () => {
+  it('gives one page the same slot every night', () => {
     // The property random jitter cannot have, and the reason this is a hash
     // rather than Math.random: a trend line whose measurement hour wanders
     // compares Monday morning against Tuesday evening.
-    expect(reauditDelayMs('example.test', 0)).toBe(reauditDelayMs('example.test', 0))
+    expect(reauditDelayMs('example.test', '42')).toBe(reauditDelayMs('example.test', '42'))
+  })
+
+  it('depends on nothing but the page and its domain', () => {
+    // The bug this replaced: the offset used to be the page's INDEX among the
+    // pages a run happened to hold for its domain. That is not a property of
+    // the page - it moves when a sibling is paused or is still mid-audit, and
+    // a retry sees a different set again - so the "same slot every night"
+    // above held only for domains tracking exactly one page.
+    const first = reauditDelayMs('example.test', '1001')
+    const second = reauditDelayMs('example.test', '1002')
+
+    // Whichever order they arrive in, and whatever else is due alongside them.
+    expect(reauditDelayMs('example.test', '1002')).toBe(second)
+    expect(reauditDelayMs('example.test', '1001')).toBe(first)
   })
 
   it('gives different domains different slots', () => {
-    const slots = new Set(domains(200).map((domain) => reauditDelayMs(domain, 0)))
+    const slots = new Set(domains(200).map((domain) => reauditDelayMs(domain, '1')))
 
     // Collisions are possible and harmless - two domains sharing a minute is
     // not the failure this guards against. A hash that mapped everything onto
@@ -23,9 +40,24 @@ describe('reauditDelayMs', () => {
     expect(slots.size).toBeGreaterThan(190)
   })
 
+  it('separates pages that share a domain', () => {
+    // Probabilistically now rather than by construction, which is the cost of
+    // dropping positions. Cheap here: the worker runs one audit at a time
+    // under the global concurrency cap, so two pages in one slot queue behind
+    // each other rather than arriving at somebody's origin together.
+    const slots = new Set(pageIds(20).map((pageId) => reauditDelayMs('example.test', pageId)))
+
+    expect(slots.size).toBeGreaterThan(17)
+  })
+
   it('stays inside the window', () => {
     for (const domain of domains(500)) {
-      const delay = reauditDelayMs(domain, 0)
+      const delay = reauditDelayMs(domain, '7')
+      expect(delay).toBeGreaterThanOrEqual(0)
+      expect(delay).toBeLessThan(JITTER_WINDOW_MS)
+    }
+    for (const pageId of pageIds(500)) {
+      const delay = reauditDelayMs('example.test', pageId)
       expect(delay).toBeGreaterThanOrEqual(0)
       expect(delay).toBeLessThan(JITTER_WINDOW_MS)
     }
@@ -36,40 +68,49 @@ describe('reauditDelayMs', () => {
     // above and still deliver the night's work in a spike - which is half of
     // what this function exists to prevent.
     const buckets = new Set(
-      domains(2000).map((domain) => Math.floor(reauditDelayMs(domain, 0) / (10 * 60 * 1000)))
+      domains(2000).map((domain) => Math.floor(reauditDelayMs(domain, '1') / (10 * 60 * 1000)))
     )
 
     // 36 ten-minute buckets in six hours.
     expect(buckets.size).toBe(36)
   })
 
-  it('separates pages that share a domain', () => {
-    const first = reauditDelayMs('example.test', 0)
-    const second = reauditDelayMs('example.test', 1)
-
-    expect(second - first).toBe(SAME_DOMAIN_STAGGER_MS)
-  })
-
-  it('keeps wrapping rather than clamping once a domain has more pages than slots', () => {
-    // The window holds 360 one-minute slots. Clamping at the edge would put
-    // every page past it on the same instant - the simultaneous arrival at one
-    // origin that the stagger exists to prevent, reappearing exactly for the
-    // domain that tracks the most pages.
-    const slots = new Set(
-      Array.from({ length: 400 }, (_value, index) => reauditDelayMs('example.test', index))
+  it('spreads one domain\'s pages across the window too', () => {
+    // The stagger has to reach the whole window rather than crowding the
+    // domain's base offset, or an account tracking many pages hands its own
+    // origin a burst.
+    const buckets = new Set(
+      pageIds(2000).map(
+        (pageId) => Math.floor(reauditDelayMs('example.test', pageId) / (10 * 60 * 1000))
+      )
     )
 
-    expect(slots.size).toBe(360)
-    for (const slot of slots) expect(slot).toBeLessThan(JITTER_WINDOW_MS)
+    expect(buckets.size).toBe(36)
+  })
+
+  it('lands every page on a stagger boundary relative to its domain', () => {
+    // What keeps same-domain pages a whole minute apart when they differ at
+    // all, rather than milliseconds apart.
+    const base = reauditDelayMs('example.test', '0')
+    for (const pageId of pageIds(200)) {
+      const offset = (reauditDelayMs('example.test', pageId) - base + JITTER_WINDOW_MS)
+        % JITTER_WINDOW_MS
+      expect(offset % SAME_DOMAIN_STAGGER_MS).toBe(0)
+    }
   })
 
   it('honours a caller that narrows the window', () => {
-    const delays = Array.from(
-      { length: 50 },
-      (_value, index) => reauditDelayMs(`d-${index}.test`, 0, 60_000, 1000)
+    const delays = pageIds(50).map(
+      (pageId) => reauditDelayMs('example.test', pageId, 60_000, 1000)
     )
 
     for (const delay of delays) expect(delay).toBeLessThan(60_000)
+  })
+
+  it('survives a window narrower than one stagger step', () => {
+    // Would divide by zero without a floor of one slot, and a schedule that
+    // throws on an odd configuration fails at boot rather than degrading.
+    expect(reauditDelayMs('example.test', '42', 1000, 60_000)).toBeLessThan(1000)
   })
 })
 

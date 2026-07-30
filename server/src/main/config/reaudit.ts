@@ -57,6 +57,20 @@ export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
 export const REAUDIT_RUN_TIMEOUT_MS = 30 * 60 * 1000
 
 /**
+ * How long after its own deadline the run gets before it is stopped outright.
+ *
+ * The deadline above is a signal the run honours, so it stops at its next page
+ * and returns a summary that can be logged. `runWithTimeout` rejects instead,
+ * discarding whatever the handler returned - so a run bounded only by that
+ * produces no record in exactly the case somebody most wants one.
+ *
+ * This margin is the room the cooperative stop needs to win: long enough for
+ * the current page's insert and enqueue to finish, short enough that a run
+ * ignoring its signal is still ended promptly.
+ */
+export const REAUDIT_HARD_STOP_MARGIN_MS = 60 * 1000
+
+/**
  * A minute, then two, rather than the queue-wide one second.
  *
  * The fan-out's failures are almost always a database or Redis blip, and a

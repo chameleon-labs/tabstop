@@ -23,6 +23,9 @@ export const JITTER_WINDOW_MS = 6 * 60 * 60 * 1000
  * jitter that was supposed to provide it. A minute apart is enough for a
  * monitored page load and leaves the account's pages inside one browsing
  * session of each other.
+ *
+ * It also sets how many distinct slots a domain's pages can occupy: a
+ * six-hour window holds 360 of them.
  */
 export const SAME_DOMAIN_STAGGER_MS = 60_000
 
@@ -60,19 +63,39 @@ const fnv1a = (value: string): number => {
 /**
  * How long after the run starts this page should be fetched.
  *
- * `position` is the page's index among the pages this run holds for the same
- * domain, so the whole domain is serialised rather than fired at once. The
- * modulo wraps rather than clamps: a domain with more pages than the window
- * has stagger slots keeps spreading them across the window instead of piling
- * every page past the edge onto the same final instant - which is exactly the
- * simultaneous arrival the stagger exists to prevent.
+ * The domain sets the base offset and the page picks a stagger slot within it,
+ * so pages sharing a host are separated while the host still lands where it
+ * always lands.
+ *
+ * Both halves are derived from IDENTITY, never from position in the run. The
+ * first version numbered a domain's pages by the order the worklist returned
+ * them, which is not a property of the page at all: it shifts when a sibling
+ * is added, paused, or still mid-audit, and a retry - which sees only the
+ * pages the previous attempt failed on - restarts the numbering at zero and
+ * hands a page the slot a sibling already occupies. That contradicted the
+ * whole reason this is a hash rather than `Math.random`: a page whose audit
+ * time moves between nights gives the trend chart measurements it cannot
+ * compare.
+ *
+ * The cost of dropping positions is that two pages on one domain can now land
+ * in the same slot rather than being guaranteed apart. That is a cheap loss
+ * here: with 360 slots a same-domain pair collides a few percent of the time,
+ * and the global concurrency cap means the worker runs one audit at a time
+ * regardless - so "arriving together" is a queue position, not two
+ * simultaneous requests to somebody's origin.
  */
 export const reauditDelayMs = (
   domain: string,
-  position: number,
+  pageId: string,
   windowMs: number = JITTER_WINDOW_MS,
   staggerMs: number = SAME_DOMAIN_STAGGER_MS
-): number => (fnv1a(domain) + position * staggerMs) % windowMs
+): number => {
+  // At least one, so a window shorter than a single stagger step still yields
+  // a usable slot instead of dividing by zero.
+  const slots = Math.max(1, Math.floor(windowMs / staggerMs))
+  const slot = fnv1a(pageId) % slots
+  return (fnv1a(domain) + slot * staggerMs) % windowMs
+}
 
 /** The UTC calendar day, as Postgres wants a `date`. */
 export const utcDay = (at: Date): string => at.toISOString().slice(0, 10)

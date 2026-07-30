@@ -16,8 +16,8 @@ import { getDatabase } from './config/database.js'
 import { PostgresSessionRepository } from '../infra/db/postgres/session/postgres-session-repository.js'
 import { startSessionSweeper } from './maintenance/session-sweeper.js'
 import {
-  REAUDIT_ATTEMPTS, REAUDIT_CRON, REAUDIT_RETRY_BACKOFF_MS, REAUDIT_RUN_TIMEOUT_MS,
-  REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
+  REAUDIT_ATTEMPTS, REAUDIT_CRON, REAUDIT_HARD_STOP_MARGIN_MS, REAUDIT_RETRY_BACKOFF_MS,
+  REAUDIT_RUN_TIMEOUT_MS, REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
 } from './config/reaudit.js'
 import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
 import { reauditRunFailure } from './jobs/reaudit-job-outcome.js'
@@ -109,12 +109,43 @@ const reauditShutdown = new AbortController()
 const reauditWorker = makeWorker<ReauditPayload>(
   QUEUE_NAMES.reaudit, env.redisUrl, async (job) => {
     const startedAt = Date.now()
-    const summary = await runWithTimeout(REAUDIT_RUN_TIMEOUT_MS, async (timeout) => {
-      // Either reason to stop stops the run: the timeout's signal or ours.
-      const stop = AbortSignal.any([timeout, reauditShutdown.signal])
-      // The clock is read here rather than taken from the job, so a run
-      // retried after an outage schedules for the day it actually runs on.
-      return await makeRunScheduledReaudits().run(new Date(), stop)
+
+    // TWO deadlines, and the gap between them is the point.
+    //
+    // The soft one is a signal the run honours, so it stops at its next page
+    // and RETURNS a summary - which is what keeps a timed-out night
+    // observable. The hard one is `runWithTimeout`, which rejects outright:
+    // once it fires the return value is discarded no matter how cooperatively
+    // the handler finished, so a run bounded only by it would produce no
+    // record at all in exactly the case somebody most wants one.
+    //
+    // The hard bound stays because the soft one assumes the loop is running.
+    // A run wedged in a query that never returns checks no signals, and
+    // something has to stop it holding a worker and a connection all night.
+    const softDeadline = AbortSignal.timeout(REAUDIT_RUN_TIMEOUT_MS)
+
+    const summary = await runWithTimeout(
+      REAUDIT_RUN_TIMEOUT_MS + REAUDIT_HARD_STOP_MARGIN_MS,
+      async (hardStop) => {
+        // Any reason to stop stops the run: its own deadline, the hard bound,
+        // or shutdown.
+        const stop = AbortSignal.any([softDeadline, hardStop, reauditShutdown.signal])
+        // The clock is read here rather than taken from the job, so a run
+        // retried after an outage schedules for the day it actually runs on.
+        return await makeRunScheduledReaudits().run(new Date(), stop)
+      }
+    ).catch((error: unknown) => {
+      // The hard bound fired, or the run threw. Still emit a record, because
+      // a night that produced nothing but a stack trace is a night nobody can
+      // reconstruct - and this is the one an operator will come looking for.
+      console.log(JSON.stringify({
+        event: 'reaudit-run',
+        outcome: 'aborted',
+        reason: error instanceof Error ? error.message : String(error),
+        attempt: job.attemptsMade + 1,
+        durationMs: Date.now() - startedAt
+      }))
+      throw error
     })
 
     // One structured line per run, emitted even when there was nothing to do.
@@ -123,6 +154,7 @@ const reauditWorker = makeWorker<ReauditPayload>(
     // absence of this line is the signal. #25 forwards it to PostHog.
     console.log(JSON.stringify({
       event: 'reaudit-run',
+      outcome: 'completed',
       ...summary,
       attempt: job.attemptsMade + 1,
       durationMs: Date.now() - startedAt

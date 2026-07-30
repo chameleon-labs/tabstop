@@ -32,6 +32,16 @@ export type ReauditRunSummary = {
    */
   abandonedReclaimed: number
   /**
+   * Reclaim attempts that could not be carried out at all.
+   *
+   * Separate from `abandonedReclaimed` because zero-because-nothing-was-owed
+   * and zero-because-nothing-worked are opposite facts, and only the first is
+   * good news. While reclaiming keeps failing, stranded rows keep excluding
+   * their pages and every other number here looks healthy - which is exactly
+   * the invisible degradation this pass was added to prevent.
+   */
+  reclaimFailures: number
+  /**
    * Whether the run stopped with pages still due - because it hit its circuit
    * breaker, or because it was asked to shut down.
    *

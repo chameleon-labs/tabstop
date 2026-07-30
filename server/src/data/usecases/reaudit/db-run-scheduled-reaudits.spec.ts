@@ -55,6 +55,7 @@ describe('DbRunScheduledReaudits', () => {
       skippedDuplicate: 0,
       failed: 0,
       abandonedReclaimed: 0,
+      reclaimFailures: 0,
       truncated: false
     })
   })
@@ -110,43 +111,39 @@ describe('DbRunScheduledReaudits', () => {
     expect(new Set(days)).toEqual(new Set(['2026-08-01']))
   })
 
-  it('gives each page its domain jitter, so one origin is not hit all at once', async () => {
+  it('gives each page the delay its own identity earns it', async () => {
     const { sut, pages, queue } = makeSut()
-    pages.loadDueForReaudit.mockResolvedValueOnce(pagesOn('example.test', 3))
+    const due = pagesOn('example.test', 3)
+    pages.loadDueForReaudit.mockResolvedValueOnce(due)
 
     await sut.run(NOW)
 
-    const delays = queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)
-    expect(delays).toEqual([
-      reauditDelayMs('example.test', 0),
-      reauditDelayMs('example.test', 1),
-      reauditDelayMs('example.test', 2)
-    ])
-    // The property that matters more than the exact numbers: no two pages on
-    // one host arrive together.
-    expect(new Set(delays).size).toBe(3)
+    expect(queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs))
+      .toEqual(due.map((page) => reauditDelayMs(page.domain, page.pageId)))
   })
 
-  it('counts a page position per domain, not per run', async () => {
-    // Positions counted across the whole run would make the offset depend on
-    // where a page happened to sort - so adding one page to an unrelated
-    // domain would move every later page's audit time, and the trend lines
-    // this schedule exists to keep comparable would all shift.
+  it('gives a page the same delay wherever it lands in the worklist', async () => {
+    // The property that made positional numbering wrong. A page's slot has to
+    // be a fact about the page, not about which siblings happened to be due
+    // alongside it - otherwise pausing one page moves another's audit time,
+    // and a retry, which sees only the pages that failed, restarts the
+    // numbering and hands one of them a slot a sibling already holds.
     const { sut, pages, queue } = makeSut()
-    pages.loadDueForReaudit.mockResolvedValueOnce([
-      { pageId: 'a', url: 'https://one.test/a', domain: 'one.test' },
-      { pageId: 'b', url: 'https://two.test/b', domain: 'two.test' },
-      { pageId: 'c', url: 'https://one.test/c', domain: 'one.test' }
-    ])
+    const [first, second, third] = pagesOn('example.test', 3)
+    if (first === undefined || second === undefined || third === undefined) return
 
+    pages.loadDueForReaudit.mockResolvedValueOnce([first, second, third])
     await sut.run(NOW)
+    const wholeRun = queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)
 
-    const delays = queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)
-    expect(delays).toEqual([
-      reauditDelayMs('one.test', 0),
-      reauditDelayMs('two.test', 0),
-      reauditDelayMs('one.test', 1)
-    ])
+    queue.enqueueOnce.mockClear()
+    pages.loadDueForReaudit.mockReset()
+    // What a retry sees: only the page the previous attempt could not place.
+    pages.loadDueForReaudit.mockResolvedValueOnce([third])
+    await sut.run(NOW)
+    const retry = queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)
+
+    expect(retry).toEqual([wholeRun[2]])
   })
 
   it('treats a page another run already scheduled as skipped, not failed', async () => {
@@ -279,27 +276,23 @@ describe('DbRunScheduledReaudits', () => {
     expect(summary.truncated).toBe(true)
   })
 
-  it('keeps one domain\'s stagger running across a batch boundary', async () => {
-    // Positions are counted for the whole run, not per batch. Reset at each
-    // boundary, the first page of every batch would land on its domain's base
-    // offset - so the pages that straddle a boundary arrive together at the
-    // origin the stagger exists to protect.
+  it('gives one domain\'s pages the same delays across a batch boundary as within one', async () => {
+    // Batching must not touch the schedule. When the stagger was positional
+    // this needed care - a counter reset per batch would put the first page of
+    // every batch on its domain's base offset - and now it holds by
+    // construction, since nothing about the delay depends on the run at all.
+    // Kept because "by construction" is a claim, and this is what checks it.
     const all = pagesOn('example.test', 4)
-    const pages = mockPagedDueReauditsRepository(all)
     const queue = mockAuditQueue()
     const sut = new DbRunScheduledReaudits(
-      pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
-      queue, 2, MAX_PAGES, STALE_AFTER_MS
+      mockPagedDueReauditsRepository(all), mockAddScheduledAuditRepository(),
+      mockDeleteQueuedAuditRepository(), queue, 2, MAX_PAGES, STALE_AFTER_MS
     )
 
     await sut.run(NOW)
 
-    expect(queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs)).toEqual([
-      reauditDelayMs('example.test', 0),
-      reauditDelayMs('example.test', 1),
-      reauditDelayMs('example.test', 2),
-      reauditDelayMs('example.test', 3)
-    ])
+    expect(queue.enqueueOnce.mock.calls.map(([, options]) => options?.delayMs))
+      .toEqual(all.map((page) => reauditDelayMs(page.domain, page.pageId)))
   })
 
   describe('reclaiming abandoned audits', () => {
@@ -397,6 +390,35 @@ describe('DbRunScheduledReaudits', () => {
       expect(summary.abandonedReclaimed).toBe(0)
       expect(summary.auditsEnqueued).toBe(2)
     })
+
+    it('reports a failure to look rather than passing it off as nothing to do', async () => {
+      // Zero-because-nothing-was-owed and zero-because-nothing-worked are
+      // opposite facts and only one is good news. Reported as the same number,
+      // a reclaim pass that had stopped working would look like a healthy
+      // night forever - while the rows it was meant to retire kept their pages
+      // out of the worklist. That is the exact failure this pass exists to
+      // prevent, reintroduced one level up.
+      const { sut, audits } = makeSut()
+      audits.loadStaleInFlight.mockRejectedValueOnce(new Error('the database is down'))
+
+      expect((await sut.run(NOW)).reclaimFailures).toBe(1)
+    })
+
+    it('counts a row it identified but could not retire', async () => {
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7', 'audit-8'])
+      queue.has.mockResolvedValue(false)
+      audits.markAbandoned.mockRejectedValueOnce(new Error('deadlock detected'))
+
+      const summary = await sut.run(NOW)
+
+      expect(summary).toMatchObject({ abandonedReclaimed: 1, reclaimFailures: 1 })
+    })
+
+    it('reports no failures on a night with nothing to reclaim', async () => {
+      // The counterpart, without which the counter could be a constant.
+      expect((await makeSut().sut.run(NOW)).reclaimFailures).toBe(0)
+    })
   })
 
   describe('shutting down mid-run', () => {
@@ -469,6 +491,7 @@ describe('DbRunScheduledReaudits', () => {
       skippedDuplicate: 0,
       failed: 0,
       abandonedReclaimed: 0,
+      reclaimFailures: 0,
       truncated: false
     })
   })
