@@ -16,6 +16,9 @@ import type {
   DeletePageRepository
 } from '../../../../data/protocols/db/page/delete-page-repository.js'
 import type {
+  DuePage, DuePageQuery, LoadDueReauditsRepository
+} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
+import type {
   LoadPageHistoryRepository
 } from '../../../../data/protocols/db/page/load-page-history-repository.js'
 import type { PageHistory } from '../../../../domain/usecases/load-page-history.js'
@@ -49,6 +52,7 @@ const isStorableId = (value: string): boolean =>
 
 export class PostgresPageRepository implements
   AddPageRepository,
+  LoadDueReauditsRepository,
   LoadPageSummariesRepository,
   LoadPageHistoryRepository,
   SetPageMonitoringRepository,
@@ -128,6 +132,66 @@ export class PostgresPageRepository implements
 
       return { outcome: 'added', page: toPageModel(page), firstAudit: toAuditModel(audit) }
     })
+  }
+
+  /**
+   * One batch of the nightly run's worklist: monitored pages with nothing
+   * recently in flight and nothing audited yet today (#13).
+   *
+   * Two `not exists` clauses rather than a left join and a filter, because
+   * each is answered by an index that stops at the first matching row instead
+   * of building a result to discard.
+   *
+   * The first reads `audits_in_flight_page_idx`, which is partial on `status
+   * in ('queued','running')` so it holds only live work. Without it this check
+   * walks a page's entire audit history to find nothing - a cost that grows
+   * for as long as the account is a customer, paid once per page per night.
+   *
+   * There is deliberately no age limit on that clause. Ageing unfinished
+   * audits out would compound under load: once the queue stops draining within
+   * a day, real pending audits read as abandoned and their pages are scheduled
+   * again, so each night adds work on top of a backlog. A row that is
+   * genuinely abandoned is reclaimed by asking the queue whether its job still
+   * exists, which no SQL predicate can answer.
+   *
+   * The second reads `audits_page_created_idx` on its leading columns. It
+   * keys on `created_at`, not on `scheduled_for`: a page somebody audited
+   * manually an hour ago should not be fetched again tonight, and that is a
+   * cost control the unique index deliberately does not enforce.
+   *
+   * The order is `pages.id` because the cursor is, and because a run that does
+   * stop early should stop somewhere reproducible rather than wherever the
+   * planner felt like ending.
+   */
+  async loadDueForReaudit (query: DuePageQuery): Promise<DuePage[]> {
+    let statement = this.db.selectFrom('pages')
+      .innerJoin('sites', 'sites.id', 'pages.site_id')
+      .select(['pages.id as page_id', 'pages.url', 'sites.domain'])
+      .where('pages.monitoring_enabled', '=', true)
+      .where((eb) => eb.not(eb.exists(
+        eb.selectFrom('audits')
+          .select('audits.id')
+          .whereRef('audits.page_id', '=', 'pages.id')
+          .where('audits.status', 'in', ['queued', 'running'])
+      )))
+      .where((eb) => eb.not(eb.exists(
+        eb.selectFrom('audits')
+          .select('audits.id')
+          .whereRef('audits.page_id', '=', 'pages.id')
+          .where('audits.created_at', '>=', query.dayStart)
+      )))
+      .orderBy('pages.id')
+      .limit(query.limit)
+
+    if (query.after !== null) {
+      // Strictly greater, so the cursor cannot re-serve the page it points at.
+      // The value is one this method returned, so it needs no id guard.
+      statement = statement.where('pages.id', '>', query.after)
+    }
+
+    const rows = await statement.execute()
+
+    return rows.map((row) => ({ pageId: row.page_id, url: row.url, domain: row.domain }))
   }
 
   async loadSummariesForUser (userId: string): Promise<PageSummary[]> {

@@ -67,12 +67,11 @@ export const queryMatching = (
  * Narrowed as it walks rather than typed: the plan tree is the planner's to
  * change, and a type describing it would be a claim this cannot check.
  *
- * `Actual Rows` is reported PER LOOP, so an inner scan of a nested loop has to
- * be multiplied by its loop count - which is the whole point, since a lateral
- * runs one bounded scan per outer row and the total is what matters.
+ * Rows READ, which is not the same as rows returned: a node's discarded rows
+ * count too. That distinction is the whole measurement for an `exists` check,
+ * which returns nothing whether it examined one row or a million.
  *
- * Two earlier versions of this were wrong, in opposite directions, and the
- * second is the more instructive.
+ * Three earlier versions of this were wrong, and the last two are instructive.
  *
  * Summing every node's rows regardless of relation multiplies the answer by
  * the depth of the plan: a Sort over a Nested Loop over a Limit counts the
@@ -87,9 +86,19 @@ export const queryMatching = (
  * first and the count never proved anything. A count-based assertion has to be
  * mutation-checked against a change that leaves the query FINDABLE.
  *
- * Hence: descend through every value, and attribute rows only where a node
- * names the relation.
+ * Counting only `Actual Rows` then read zero for a plan doing real work. #13's
+ * eligibility query asks whether a page has an audit in flight; answered by
+ * scanning that page's entire history and filtering on status, the node emits
+ * no rows and reads every one of them, all of which land in `Rows Removed by
+ * Filter`. The assertion "this reads fewer than 2000 rows" was true of both
+ * the good plan and the bad one.
+ *
+ * Hence: descend through every value, attribute rows only where a node names
+ * the relation, and count what it discarded as well as what it returned.
  */
+const numberAt = (fields: Record<string, unknown>, key: string, fallback = 0): number =>
+  typeof fields[key] === 'number' ? fields[key] : fallback
+
 const rowsReadFrom = (relation: string, node: unknown): number => {
   if (Array.isArray(node)) {
     return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0)
@@ -100,9 +109,21 @@ const rowsReadFrom = (relation: string, node: unknown): number => {
   // Only scan nodes carry `Relation Name`, so descending everywhere cannot
   // double-count - a Sort above an Index Scan contributes nothing of its own.
   const scanned = fields['Relation Name'] === relation
-  const rows = typeof fields['Actual Rows'] === 'number' ? fields['Actual Rows'] : 0
-  const loops = typeof fields['Actual Loops'] === 'number' ? fields['Actual Loops'] : 1
-  const here = scanned ? rows * loops : 0
+  const rows = numberAt(fields, 'Actual Rows')
+  // Rows the node touched and threw away. Without these the count measures
+  // OUTPUT rather than work, and the two differ by exactly the amount that
+  // matters: an `exists` check answered by scanning a page's whole audit
+  // history and filtering on status emits zero rows and reads all of them, so
+  // a count that stopped at `Actual Rows` would report 0 for the plan it is
+  // meant to catch. Both discard counters are included because which one
+  // Postgres uses depends on the scan it picked, not on the query.
+  const discarded = numberAt(fields, 'Rows Removed by Filter') +
+    numberAt(fields, 'Rows Removed by Index Recheck')
+  // `Actual Rows` is per loop, so an inner scan has to be multiplied by its
+  // loop count - which is the point, since a lateral or an anti-join runs one
+  // bounded scan per outer row and the total is what costs.
+  const loops = numberAt(fields, 'Actual Loops', 1)
+  const here = scanned ? (rows + discarded) * loops : 0
 
   return here + Object.values(fields)
     .reduce<number>((total, value) => total + rowsReadFrom(relation, value), 0)

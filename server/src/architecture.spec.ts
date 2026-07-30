@@ -5,7 +5,49 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = fileURLToPath(new URL('.', import.meta.url))
 
-const IMPORT_PATTERN = /(?:^|\n)\s*(?:import|export)\b[^\n;]*?from\s+['"]([^'"]+)['"]/g
+/**
+ * The ways a file names a dependency, matched by hand.
+ *
+ * By hand because the alternative is not available: TypeScript 7 is the
+ * native port and exposes no `createSourceFile`, so there is no AST to walk
+ * without adding a second parser. That makes this an enumeration, and an
+ * enumeration is only ever as good as the list - which has now been wrong
+ * three times, each time in a form nobody was writing until somebody did:
+ *
+ * 1. A clause with `from`, on one line or several. Matching `[^\n;]*?` between
+ *    `import` and `from` saw only the single-line form - and this codebase
+ *    wraps constantly, because a protocol name plus a four-deep relative path
+ *    does not fit the line limit. 109 of 967 specifiers were invisible.
+ * 2. A side-effect import, `import './x.js'`, which has no clause at all.
+ * 3. A dynamic `import('./x.js')`, which is not a statement and can appear
+ *    anywhere in a file - including with a second argument, since
+ *    `import('./x.json', { with: { type: 'json' } })` is the attributes form.
+ *
+ * So this claims coverage of those forms and no more. Each carries the same
+ * coupling - a domain module doing any of them has taken on a dependency - so
+ * a form left out is a way to bypass every rule below by writing an import
+ * differently. Nothing does that today; the point of this file is that nothing
+ * can, and the point of this comment is that "nothing can" rests on a list.
+ *
+ * The character class in the first pattern is what keeps a newline-tolerant
+ * match honest. An import clause holds identifiers, braces, commas, `*`, `as`
+ * and `type` and nothing else, so a non-greedy match cannot run out of an
+ * `export const` and across arbitrary code to find some later `from` - which
+ * `[\s\S]*?` would do in a file with no semicolons to stop it.
+ */
+const IMPORT_PATTERNS = [
+  /(?:^|\n)\s*(?:import|export)\s+[\w\s{},*]*?from\s+['"]([^'"]+)['"]/g,
+  /(?:^|\n)\s*import\s+['"]([^'"]+)['"]/g,
+  // `[,)]` rather than `)`: the specifier can be followed by import
+  // attributes, and requiring the call to close straight after it missed
+  // every dynamic import that carries them.
+  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*[,)]/g
+]
+
+const specifiersIn = (source: string): string[] =>
+  IMPORT_PATTERNS.flatMap((pattern) =>
+    [...source.matchAll(pattern)].map((match) => match[1] ?? '')
+  )
 
 const sourceFiles = async (directory: string): Promise<string[]> => {
   const entries = await readdir(join(SRC, directory), { recursive: true, withFileTypes: true })
@@ -18,10 +60,8 @@ const sourceFiles = async (directory: string): Promise<string[]> => {
     .filter((path) => !path.split('/').includes('test'))
 }
 
-const importsOf = async (path: string): Promise<string[]> => {
-  const source = await readFile(join(SRC, path), 'utf8')
-  return [...source.matchAll(IMPORT_PATTERN)].map((match) => match[1] ?? '')
-}
+const importsOf = async (path: string): Promise<string[]> =>
+  specifiersIn(await readFile(join(SRC, path), 'utf8'))
 
 const offendingImports = async (
   directory: string, isAllowed: (specifier: string) => boolean
@@ -68,6 +108,79 @@ const vendorRoot = (specifier: string): string =>
  * cost of keeping them is a second per run and the benefit is that the
  * boundary is a fact rather than an aspiration.
  */
+describe('the import scanner the rules rest on', () => {
+  const specifiers = specifiersIn
+
+  it('reads an import clause written across several lines', () => {
+    // 109 of this codebase's 967 import specifiers are written this way,
+    // because a protocol name plus a four-deep relative path does not fit the
+    // line limit. Every one of them was invisible to the rules below until
+    // this pattern stopped matching `[^\n;]`.
+    expect(specifiers([
+      'import type {',
+      '  DeleteQueuedAuditRepository',
+      '} from \'../protocols/db/audit/delete-queued-audit-repository.js\''
+    ].join('\n'))).toEqual(['../protocols/db/audit/delete-queued-audit-repository.js'])
+  })
+
+  it('reads the single-line forms too', () => {
+    expect(specifiers([
+      'import { Queue } from \'bullmq\'',
+      'import type { Database } from \'./database.js\'',
+      'import * as migration from \'./001-initial-schema.js\'',
+      'export { toAuditModel } from \'./audit-mapper.js\''
+    ].join('\n'))).toEqual(['bullmq', './database.js', './001-initial-schema.js', './audit-mapper.js'])
+  })
+
+  it('reads a side-effect import, which has no clause to find', () => {
+    // `import './register.js'` names a dependency as surely as any other form,
+    // and it is the one a module reaches for precisely when it wants the
+    // side effect rather than a value - which is exactly the coupling these
+    // rules exist to catch.
+    expect(specifiers('import \'../infra/db/postgres/database.js\''))
+      .toEqual(['../infra/db/postgres/database.js'])
+  })
+
+  it('reads a dynamic import, wherever in the file it appears', () => {
+    // Not a statement, so it can sit inside a function body halfway down a
+    // file - and a `data/` usecase that lazily imported a driver this way
+    // would have satisfied every rule below.
+    expect(specifiers([
+      'export const load = async (): Promise<void> => {',
+      '  const { makeDatabase } = await import(\'../../infra/db/postgres/helpers/x.js\')',
+      '}'
+    ].join('\n'))).toEqual(['../../infra/db/postgres/helpers/x.js'])
+  })
+
+  it('reads a dynamic import that carries attributes', () => {
+    // `import(specifier, options)` is as valid as the one-argument form, so a
+    // pattern demanding `)` straight after the specifier reads a whole valid
+    // syntax as absent - and a `data/` module could import a driver this way
+    // while satisfying every rule below.
+    expect(specifiers(
+      'const config = await import(\'../../infra/config.json\', { with: { type: \'json\' } })'
+    )).toEqual(['../../infra/config.json'])
+  })
+
+  it('does not mistake a word ending in import for one', () => {
+    expect(specifiers('const reimport = (x: string) => x')).toEqual([])
+  })
+
+  it('does not run out of a declaration and across code to a later import', () => {
+    // The hazard of letting the match cross newlines. This codebase writes no
+    // semicolons, so nothing but the character class stops `[\s\S]*?` running
+    // from `export const` to whatever `from '...'` appears next - which would
+    // attribute an import to a file at a position where there is none.
+    expect(specifiers([
+      'export const forbids = (...layers: string[]) => {',
+      '  return (specifier: string): boolean => !pattern.test(specifier)',
+      '}',
+      '',
+      'import { Worker } from \'bullmq\''
+    ].join('\n'))).toEqual(['bullmq'])
+  })
+})
+
 describe('layer dependencies', () => {
   it('keeps domain/ free of every import that is not domain', async () => {
     // Not even node: builtins. A domain service reaching for the runtime is
@@ -188,6 +301,7 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/004-violation-impact-nullable.ts',
           'infra/db/postgres/migrations/005-audit-claimed-at.ts',
           'infra/db/postgres/migrations/006-sessions-expires-at-index.ts',
+          'infra/db/postgres/migrations/007-scheduled-reaudits.ts',
           // Reached only through `kysely/migration`, so the exact-name match
           // never saw it.
           'infra/db/postgres/migrations/index.ts',

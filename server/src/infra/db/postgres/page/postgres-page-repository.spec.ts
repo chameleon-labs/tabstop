@@ -8,6 +8,9 @@ import { HISTORY_POINTS, PostgresPageRepository } from './postgres-page-reposito
 import {
   explainPlanText, explainRowsRead, makeRecordingDatabase, queryMatching, type IssuedQuery
 } from '../test/explain.js'
+import type {
+  DuePage
+} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
 
 const connectionUrl = (): string => {
   const url = process.env.DATABASE_URL
@@ -525,6 +528,244 @@ describe('PostgresPageRepository', () => {
         await recording.destroy()
       }
     })
+  })
+
+  describe('loadDueForReaudit', () => {
+    const MIDNIGHT_TODAY = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
+    const NO_CAP = 10_000
+
+    const due = async (
+      overrides: { limit?: number, after?: string | null, dayStart?: Date } = {}
+    ): Promise<DuePage[]> => await sut.loadDueForReaudit({
+      dayStart: overrides.dayStart ?? MIDNIGHT_TODAY,
+      limit: overrides.limit ?? NO_CAP,
+      after: overrides.after ?? null
+    })
+
+    /**
+     * A day boundary no audit can be on the far side of, which switches the
+     * "audited today" clause off - so a spec about the in-flight clause is
+     * testing the in-flight clause. Without it a fixture dated a few hours ago
+     * is excluded by whichever clause fires first, and after midday that is the
+     * wrong one, so the assertion passes without exercising what it names.
+     *
+     * In the FUTURE, not the past. The clause reads `created_at >= dayStart`,
+     * so an old boundary matches every audit ever written and excludes every
+     * page that has one - the opposite of switching it off.
+     */
+    const NO_DAY_BOUNDARY = new Date('3000-01-01T00:00:00.000Z')
+
+    /**
+     * A monitored page with NO audits at all.
+     *
+     * `sut.add` would create a queued first audit, which makes the page
+     * ineligible - correctly, since it already has work in flight. These specs
+     * decide for themselves what history each page has.
+     */
+    const monitoredPage = async (
+      options: { monitoring?: boolean } = {}
+    ): Promise<{ pageId: string, domain: string, url: string }> => {
+      const userId = await makeUser()
+      const domain = newDomain()
+      const url = `https://${domain}/`
+      const site = await db.insertInto('sites')
+        .values({ user_id: userId, domain })
+        .returning('id').executeTakeFirstOrThrow()
+      const page = await db.insertInto('pages')
+        .values({ site_id: site.id, url, monitoring_enabled: options.monitoring ?? true })
+        .returning('id').executeTakeFirstOrThrow()
+      return { pageId: page.id, domain, url }
+    }
+
+    /**
+     * Every spec file shares one database and they run in parallel, so this
+     * query - which is deliberately global, since the nightly run audits
+     * everyone's pages - sees other files' fixtures too. Assertions are made
+     * about the pages a spec created, never about the whole result.
+     */
+    const dueIds = async (limit = NO_CAP): Promise<Set<string>> => new Set(
+      (await due({ limit })).map((page) => page.pageId)
+    )
+
+    it('returns a monitored page with the domain its jitter keys on', async () => {
+      const { pageId, domain, url } = await monitoredPage()
+
+      expect(await due()).toContainEqual({ pageId, url, domain })
+    })
+
+    it('skips a page whose monitoring is paused', async () => {
+      const { pageId } = await monitoredPage({ monitoring: false })
+
+      expect(await dueIds()).not.toContain(pageId)
+    })
+
+    it('skips a page that already has an audit in flight', async () => {
+      // Both live statuses, because a page can be either at 02:00: queued from
+      // a manual submission that has not started, or running from a job that
+      // began before the fan-out did.
+      const queued = await monitoredPage()
+      const running = await monitoredPage()
+      await addAudit(queued.pageId, { status: 'queued' })
+      await addAudit(running.pageId, { status: 'running' })
+
+      const ids = await dueIds()
+
+      expect(ids).not.toContain(queued.pageId)
+      expect(ids).not.toContain(running.pageId)
+    })
+
+    it('keeps skipping a page with an unfinished audit however old it is', async () => {
+      // No age limit here, deliberately - the first version of this had one.
+      // Ageing unfinished audits out compounds under load: once the queue stops
+      // draining inside the window, every real pending audit looks abandoned,
+      // its page is scheduled again, and each night piles more work onto a
+      // backlog the workers are already behind on.
+      //
+      // A row that genuinely has no job behind it is retired by asking the
+      // queue - a question no predicate here can answer. See the reclaim specs
+      // beside the audit repository.
+      const { pageId } = await monitoredPage()
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'queued',
+        created_at: new Date(Date.now() - 90 * 86_400_000)
+      }).execute()
+
+      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
+
+      expect(ids).not.toContain(pageId)
+    })
+
+    it('returns the page once that audit has finished, however it finished', async () => {
+      // The release, without which the rule above is indistinguishable from "a
+      // page that has ever had an audit is never due again". `failed` because
+      // that is what the reclaim path writes: retiring an abandoned row is
+      // what puts its page back in the worklist.
+      const { pageId } = await monitoredPage()
+      const audit = await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'queued',
+        created_at: new Date(Date.now() - 90 * 86_400_000)
+      }).returning('id').executeTakeFirstOrThrow()
+
+      await db.updateTable('audits').set({ status: 'failed', error: 'abandoned' })
+        .where('id', '=', audit.id).execute()
+
+      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
+
+      expect(ids).toContain(pageId)
+    })
+
+    it('skips a page already audited today, however that audit came about', async () => {
+      // Keyed on created_at rather than on scheduled_for, so a page somebody
+      // audited manually an hour ago is not fetched again tonight. That is a
+      // cost control the unique index deliberately does not enforce - it only
+      // knows about scheduled work.
+      const { pageId } = await monitoredPage()
+      await addAudit(pageId, { status: 'done', score: 90 })
+
+      expect(await dueIds()).not.toContain(pageId)
+    })
+
+    it('returns a page whose last audit was yesterday', async () => {
+      // The counterpart to the rule above: a bound that never released would
+      // audit every page exactly once, ever.
+      const { pageId } = await monitoredPage()
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'done',
+        score: 90,
+        created_at: new Date(MIDNIGHT_TODAY.getTime() - 3_600_000)
+      }).execute()
+
+      expect(await dueIds()).toContain(pageId)
+    })
+
+    it('returns a page whose last audit failed, rather than giving up on it', async () => {
+      // A failed audit is not work in flight and it is not a result. Excluding
+      // these would mean one bad night silently ends monitoring for a page -
+      // the failure mode that looks most like the product simply working.
+      const { pageId } = await monitoredPage()
+      await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'failed',
+        error: 'Navigation timed out',
+        created_at: new Date(MIDNIGHT_TODAY.getTime() - 3_600_000)
+      }).execute()
+
+      expect(await dueIds()).toContain(pageId)
+    })
+
+    it('never returns more pages than the batch allows', async () => {
+      await monitoredPage()
+      await monitoredPage()
+
+      expect(await due({ limit: 1 })).toHaveLength(1)
+    })
+
+    it('starts after the cursor, so the caller can page through', async () => {
+      // Keyset, and it has to be: the run mutates what it is paging over -
+      // every page it schedules gains an audit in flight and leaves the
+      // predicate - so an offset would step over exactly as many pages as the
+      // previous batch handled.
+      const first = await monitoredPage()
+      const second = await monitoredPage()
+      const ordered = [first.pageId, second.pageId].sort(
+        (left, right) => Number(BigInt(left) - BigInt(right))
+      )
+      const lower = ordered[0] ?? ''
+      const higher = ordered[1] ?? ''
+
+      const ids = new Set((await due({ after: lower })).map((page) => page.pageId))
+
+      expect(ids).toContain(higher)
+      expect(ids).not.toContain(lower)
+    })
+
+    it('pages through the whole worklist without repeating or skipping a page', async () => {
+      // The property the run depends on, asserted end to end rather than
+      // inferred from the two rules above: walking one page at a time has to
+      // arrive at every row exactly once.
+      const mine = new Set(await Promise.all(
+        [0, 1, 2].map(async () => (await monitoredPage()).pageId)
+      ))
+
+      const seen: string[] = []
+      let after: string | null = null
+      for (;;) {
+        const batch = await due({ limit: 1, after })
+        const page = batch[0]
+        if (page === undefined) break
+        if (mine.has(page.pageId)) seen.push(page.pageId)
+        after = page.pageId
+      }
+
+      expect(new Set(seen)).toEqual(mine)
+      expect(seen).toHaveLength(mine.size)
+    })
+
+    // There is deliberately NO assertion here about how much of `audits` this
+    // query reads, and the reason is worth writing down.
+    //
+    // The obvious one - seed a page with thousands of audits, EXPLAIN the
+    // load, assert it reads almost none of them - passes when this file runs
+    // alone and fails in the suite, measured: 7,635 rows against a threshold
+    // of 1,000. Not a flake. This query is global, because the nightly run
+    // audits everyone's pages, so it also evaluates every fixture the other
+    // spec files are creating in parallel - and once the outer side is a few
+    // hundred pages Postgres correctly stops probing per page and hash
+    // anti-joins the whole audits table instead. That is the better plan for
+    // that shape, so the assertion was pinning the size of the shared fixture
+    // set rather than anything about this query.
+    //
+    // The same lesson #12 recorded about the lateral: an index makes a cheap
+    // plan AVAILABLE, it does not guarantee one. What can be pinned is that
+    // the index answers the predicate at all, which is asserted next to the
+    // migration that creates it.
   })
 
   describe('setMonitoringForUser', () => {

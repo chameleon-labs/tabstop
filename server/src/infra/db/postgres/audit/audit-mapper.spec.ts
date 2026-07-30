@@ -19,6 +19,9 @@ const makeRow = (overrides: Partial<Selectable<AuditsTable>> = {}): Selectable<A
   completed_at: new Date('2026-07-26T10:00:30Z'),
   settled: true,
   claimed_at: null,
+  // Present because the row type says so, and deliberately not mapped: it is
+  // the scheduler's dedupe key (#13), not something the domain knows about.
+  scheduled_for: null,
   ...overrides
 })
 

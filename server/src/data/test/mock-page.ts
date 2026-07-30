@@ -6,6 +6,9 @@ import type {
   DeletePageRepository
 } from '../protocols/db/page/delete-page-repository.js'
 import type {
+  DuePage, LoadDueReauditsRepository
+} from '../protocols/db/page/load-due-reaudits-repository.js'
+import type {
   LoadPageHistoryRepository
 } from '../protocols/db/page/load-page-history-repository.js'
 import type {
@@ -63,6 +66,34 @@ export const mockPageHistory = (): PageHistory => ({
     // as a point, not that it is dropped or scored zero.
     { ...mockAuditModel(), pageId: 'page-1', status: 'failed', error: 'Navigation timed out' }
   ]
+})
+
+export const mockDuePages = (): DuePage[] => [
+  { pageId: 'page-1', url: 'https://example.test/a', domain: 'example.test' },
+  { pageId: 'page-2', url: 'https://other.test/b', domain: 'other.test' }
+]
+
+/**
+ * One batch and no more, so a spec that does not care about paging gets a run
+ * that terminates. `after` is honoured rather than ignored: a mock that
+ * returned the same batch forever would let a broken cursor pass.
+ */
+export const mockLoadDueReauditsRepository = () => ({
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(
+    async (query) => query.after === null ? mockDuePages() : []
+  )
+})
+
+/**
+ * A repository holding `pages`, served in id order through the cursor - so a
+ * paging spec exercises the loop rather than a stub that agrees with it.
+ */
+export const mockPagedDueReauditsRepository = (pages: DuePage[]) => ({
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(
+    async (query) => pages
+      .filter((page) => query.after === null || page.pageId > query.after)
+      .slice(0, query.limit)
+  )
 })
 
 export const mockLoadPageHistoryRepository = () => ({

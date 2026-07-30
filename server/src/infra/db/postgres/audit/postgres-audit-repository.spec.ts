@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 import { makeDatabase } from '../helpers/postgres-helper.js'
 import { PostgresAuditRepository, claimLeaseFor } from './postgres-audit-repository.js'
 import type { Database } from '../database.js'
+import type {
+  StaleAudit
+} from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 
 describe('PostgresAuditRepository', () => {
   let db: Kysely<Database>
@@ -75,6 +78,269 @@ describe('PostgresAuditRepository', () => {
       const audit = await sut.add({ url: `https://${randomUUID()}.test/a`, pageId })
 
       expect(audit.pageId).toBe(pageId)
+    })
+  })
+
+  describe('addScheduled', () => {
+    const DAY = '2026-08-01'
+
+    it('creates the queued audit for a page\'s nightly run', async () => {
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const audit = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(audit?.status).toBe('queued')
+      expect(audit?.pageId).toBe(pageId)
+      expect(audit?.url).toBe(url)
+    })
+
+    it('answers null rather than throwing when the day is already scheduled', async () => {
+      // The second idempotency layer, and the reason it returns a value rather
+      // than raising: the caller is looping over every monitored page, and a
+      // 23505 would abort the transaction it is in and end the night there.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const first = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+      const second = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(first).not.toBeNull()
+      expect(second).toBeNull()
+
+      const rows = await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()
+      expect(rows).toHaveLength(1)
+    })
+
+    it('leaves the connection usable after a conflict', async () => {
+      // What `do nothing` buys over catching the error: a raised 23505 inside
+      // a transaction aborts it, so every statement after the catch fails with
+      // 25P02 and the only recovery is starting over.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      expect(await sut.addScheduled({ pageId, url, scheduledFor: '2026-08-02' })).not.toBeNull()
+    })
+
+    it('schedules the same page again the next day', async () => {
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+
+      const monday = await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+      const tuesday = await sut.addScheduled({ pageId, url, scheduledFor: '2026-08-02' })
+
+      expect(monday?.id).not.toBe(tuesday?.id)
+    })
+
+    it('does not block an unscheduled audit of the same page on the same day', async () => {
+      // The conflict target names the partial index, so it only ever sees
+      // scheduled rows. A manual re-audit and the first audit an added page
+      // gets both carry a null scheduled_for and are untouched by it.
+      const pageId = await makePage()
+      const url = `https://${randomUUID()}.test/a`
+      await sut.addScheduled({ pageId, url, scheduledFor: DAY })
+
+      const manual = await sut.add({ url, pageId })
+
+      expect(manual.pageId).toBe(pageId)
+      const rows = await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()
+      expect(rows).toHaveLength(2)
+    })
+  })
+
+  describe('reclaiming abandoned audits', () => {
+    const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 3_600_000)
+
+    const inFlightAudit = async (
+      status: 'queued' | 'running', createdAt: Date
+    ): Promise<string> => {
+      const pageId = await makePage()
+      const audit = await db.insertInto('audits')
+        .values({
+          page_id: pageId, url: `https://${randomUUID()}.test/a`, status, created_at: createdAt
+        })
+        .returning('id').executeTakeFirstOrThrow()
+      return audit.id
+    }
+
+    const staleIds = async (
+      olderThan: Date, limit = 1000, after: StaleAudit | null = null
+    ): Promise<string[]> =>
+      (await sut.loadStaleInFlight(olderThan, limit, after)).map((row) => row.auditId)
+
+    it('offers unfinished audits older than the cutoff, in both live statuses', async () => {
+      // Both, because either can be stranded: `queued` when an enqueue was
+      // lost, `running` when the worker died holding it and its job is gone.
+      const queued = await inFlightAudit('queued', hoursAgo(30))
+      const running = await inFlightAudit('running', hoursAgo(30))
+
+      const stale = await staleIds(hoursAgo(12))
+
+      expect(stale).toContain(queued)
+      expect(stale).toContain(running)
+    })
+
+    it('leaves finished audits alone however old they are', async () => {
+      const pageId = await makePage()
+      const done = await db.insertInto('audits')
+        .values({
+          page_id: pageId,
+          url: `https://${randomUUID()}.test/a`,
+          status: 'done',
+          score: 90,
+          created_at: hoursAgo(500)
+        })
+        .returning('id').executeTakeFirstOrThrow()
+
+      expect(await staleIds(hoursAgo(12))).not.toContain(done.id)
+    })
+
+    it('leaves recent unfinished audits alone', async () => {
+      // The cutoff is what keeps this off the healthy pending work that exists
+      // on any night - a page waiting out its six-hour jitter delay is not
+      // abandoned, it has not started.
+      const recent = await inFlightAudit('queued', hoursAgo(1))
+
+      expect(await staleIds(hoursAgo(12))).not.toContain(recent)
+    })
+
+    it('offers the oldest first, since that is where the abandoned ones are', async () => {
+      // A row waiting on a busy queue gets older every night, but so does
+      // everything ahead of it. The ones with no job at all never move, so
+      // they sink to the front and a bounded scan still reaches them.
+      const older = await inFlightAudit('queued', hoursAgo(400))
+      const newer = await inFlightAudit('queued', hoursAgo(300))
+
+      const stale = await staleIds(hoursAgo(200))
+
+      expect(stale.indexOf(older)).toBeLessThan(stale.indexOf(newer))
+    })
+
+    it('honours the limit, so one batch cannot become an unbounded scan', async () => {
+      await inFlightAudit('queued', hoursAgo(30))
+      await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await staleIds(hoursAgo(12), 1)).toHaveLength(1)
+    })
+
+    // The cursor specs below assert only about the rows they created.
+    // `loadStaleInFlight` is global by design - the reclaim pass reconciles
+    // every unfinished audit there is - so every other spec file's in-flight
+    // fixtures are in these results too, and one that asserted "mine is at the
+    // head" would be asserting the suite's insertion order.
+    //
+    // They also take the cursor from a real load rather than building one, so
+    // it carries whatever the repository actually emits. A hand-built cursor
+    // is a second implementation of the thing under test, and this is exactly
+    // where the two would disagree: the database's microseconds do not survive
+    // a JavaScript Date.
+    const cursorFor = async (auditId: string, olderThan: Date): Promise<StaleAudit> => {
+      const rows = await sut.loadStaleInFlight(olderThan, 10_000, null)
+      const found = rows.find((row) => row.auditId === auditId)
+      if (found === undefined) throw new Error(`${auditId} was not offered as a candidate`)
+      return found
+    }
+
+    it('resumes after the cursor rather than serving the same batch again', async () => {
+      // What stops the reclaim pass starving. Old candidates that are
+      // legitimately pending never change their `created_at`, so they hold the
+      // front of this list every night - without a cursor the orphan behind
+      // them is never examined, and its page is excluded from re-audits for
+      // good.
+      const first = await inFlightAudit('queued', hoursAgo(500))
+      const second = await inFlightAudit('queued', hoursAgo(499))
+
+      const next = await staleIds(hoursAgo(400), 1000, await cursorFor(first, hoursAgo(400)))
+
+      expect(next).toContain(second)
+      expect(next).not.toContain(first)
+    })
+
+    it('does not serve a row again as its own successor', async () => {
+      // Postgres keeps `timestamptz` to microseconds; a JavaScript Date holds
+      // milliseconds. Carry the cursor as a Date and the value sent back is
+      // smaller than the value stored, so `created_at > cursor` is true of the
+      // row the cursor came FROM and it arrives again at the head of the next
+      // batch. With a small batch that repeats forever, spending the run's
+      // whole ceiling re-reading one row while the abandoned audits behind it
+      // are never reached.
+      const pageId = await makePage()
+      // Microseconds a Date cannot hold, which is what makes the round trip
+      // lossy. Every real row has them - `now()` is microsecond-resolution -
+      // so this is the ordinary case rather than a contrived one.
+      const cutoff = new Date('2026-07-02T00:00:00Z')
+      const inserted = await db.insertInto('audits')
+        .values({
+          page_id: pageId,
+          url: 'https://micro.test/',
+          status: 'queued',
+          created_at: sql<Date>`timestamptz '2026-07-01 00:00:00.123456+00'`
+        })
+        .returning('id').executeTakeFirstOrThrow()
+
+      const next = await staleIds(cutoff, 1000, await cursorFor(inserted.id, cutoff))
+
+      expect(next).not.toContain(inserted.id)
+    })
+
+    it('separates rows sharing a timestamp, which is why the cursor carries the id', async () => {
+      // `now()` is transaction time, so a fan-out's rows routinely share one.
+      // A cursor comparing `created_at` alone would place all three on the
+      // same side of it: resuming after the first would skip the other two
+      // entirely, and one of them may be the orphan this pass exists to find.
+      const sharedAt = hoursAgo(600)
+      const [first, ...rest] = [
+        await inFlightAudit('queued', sharedAt),
+        await inFlightAudit('queued', sharedAt),
+        await inFlightAudit('queued', sharedAt)
+      ]
+      if (first === undefined) return
+
+      const after = await staleIds(hoursAgo(550), 1000, await cursorFor(first, hoursAgo(550)))
+
+      for (const auditId of rest) expect(after).toContain(auditId)
+      expect(after).not.toContain(first)
+    })
+
+    it('retires an abandoned audit as failed rather than deleting it', async () => {
+      // The audit is a fact: the page was due, a run was created, nothing ran
+      // it. A failure is what the dashboard should show and what the trend
+      // chart should keep as a scoreless point - deleting it would make the
+      // night look like it never happened.
+      const auditId = await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(true)
+
+      const row = await sut.loadById(auditId)
+      expect(row?.status).toBe('failed')
+      expect(row?.error).toBe('Abandoned')
+      expect(row?.completedAt).toBeInstanceOf(Date)
+    })
+
+    it('refuses to touch an audit that has already finished', async () => {
+      // The fence. Between the run deciding a row is abandoned and this
+      // statement, a worker may have picked it up after all - and overwriting
+      // a real result with "abandoned" is worse than the stranded row this
+      // exists to fix.
+      const auditId = await inFlightAudit('running', hoursAgo(30))
+      await db.updateTable('audits').set({ status: 'done', score: 88 })
+        .where('id', '=', auditId).execute()
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(false)
+
+      const row = await sut.loadById(auditId)
+      expect(row?.status).toBe('done')
+      expect(row?.score).toBe(88)
+    })
+
+    it('reports false the second time, so a race is not counted twice', async () => {
+      const auditId = await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(true)
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(false)
     })
   })
 

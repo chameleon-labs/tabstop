@@ -63,14 +63,35 @@ export const resolvesSafely = async (
  */
 export type EnqueueOutcome = 'queued' | 'unknown' | 'failed'
 
-/** Most enqueue failures are a blip; absorbing them keeps cleanup for real outages. */
+/**
+ * Most enqueue failures are a blip; absorbing them keeps cleanup for real
+ * outages.
+ *
+ * `delayMs` is how long the queue holds the job before a worker may take it:
+ * zero for anything a person is waiting on, and the daily scheduler's
+ * per-domain jitter for a re-audit. It changes nothing about the retry
+ * semantics below - the job is enqueued the moment `add` returns, and the
+ * delay is a property of the job rather than of getting it there.
+ */
 export const enqueueAudit = async (
-  queue: AuditJobQueue, auditId: string
+  queue: AuditJobQueue, auditId: string, delayMs = 0
 ): Promise<EnqueueOutcome> => {
+  // The options argument is left off entirely when there is no delay, rather
+  // than passed as an explicit undefined, so an interactive submission calls
+  // the queue exactly as it always has - one argument, no job options to
+  // decide about. Deduped on the audit id either way, so a retry after a lost
+  // reply enqueues once.
+  const submit = async (): Promise<void> => {
+    if (delayMs <= 0) {
+      await queue.enqueueOnce({ auditId })
+      return
+    }
+    await queue.enqueueOnce({ auditId }, { delayMs })
+  }
+
   for (let attempt = 1; ; attempt++) {
     try {
-      // Deduped on the audit id, so a retry after a lost reply enqueues once.
-      await withTimeout(queue.enqueueOnce({ auditId }), ENQUEUE_TIMEOUT_MS)
+      await withTimeout(submit(), ENQUEUE_TIMEOUT_MS)
       return 'queued'
     } catch {
       if (attempt >= ENQUEUE_ATTEMPTS) break

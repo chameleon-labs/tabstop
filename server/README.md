@@ -17,14 +17,16 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-Four slices exist:
+Five slices exist:
 
 - **Health** — `GET /api/health`, including a Postgres reachability probe.
 - **Accounts** — signup, login, logout and `GET /api/me`, on server-side sessions.
 - **Audits** — `POST /api/audits` (anonymous, one-off) and the public `GET /api/audits/:uuid`. A BullMQ queue and a separate worker process run them with Playwright Chromium and vendored axe-core.
 - **Pages** — `POST/GET /api/pages`, `PATCH/DELETE /api/pages/:id` and `GET /api/pages/:id/history`, all behind the auth middleware. Adding a page creates its `Site` if needed, enforces the per-account cap, and starts a first audit; `GET` answers the whole dashboard — latest audit, score, previous score and a bounded sparkline — in a fixed number of queries.
 
-Not built yet: the daily re-audit scheduler, regression detection, alert email, and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
+- **Daily re-audits** — a BullMQ job scheduler in the worker fans out one audit per monitored page every night, spread over a six-hour window by a per-domain offset. See *Re-audit scheduler* below.
+
+Not built yet: regression detection, alert email, and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
 
 ## Stack
 
@@ -76,6 +78,8 @@ Connections are configured with `{ connection: { url } }`. BullMQ then sets `max
 
 BullMQ has no per-job timeout, so handlers that can hang wrap themselves in `runWithTimeout`, which passes an `AbortSignal` into the handler.
 
+`backlogCount` — the number `POST /api/audits` refuses submissions on — counts **waiting** jobs only, not delayed ones. It counted both until the re-audit scheduler landed, on the premise that a delayed audit could only be one inside its retry backoff. That scheduler broke the premise deliberately, and counting work it had parked hours into the future would have made the submission endpoint answer 503 for six hours a night against idle workers.
+
 To exercise the `ping` queue by hand against a running worker (`pnpm dev:worker` or `pnpm start:worker`):
 
 ```bash
@@ -108,7 +112,7 @@ Every bucket except the anonymous audit one is a constant in `main/config/rate-l
 
 ## Audit worker
 
-The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations, and score the page. `pnpm dev:worker` consumes both `ping` and `audit`.
+The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations, and score the page. `pnpm dev:worker` consumes `ping`, `audit` and `reaudit`.
 
 - **axe-core is vendored, not imported at runtime.** `src/infra/audit/vendor/axe.min.js` is checked in; refresh it with `pnpm vendor:axe`, which also rewrites the sibling `VERSION` file. The reported `axe_version` comes from `testEngine.version` in the run itself, so it can never disagree with the file that executed.
 - **`pnpm build` copies that file explicitly.** `tsc` compiles `.ts` and ignores everything else, so without `scripts/copy-vendor.mjs` the engine never reaches `dist/` — and it fails only in production. A spec asserts the built file exists, and CI builds before testing.
@@ -122,6 +126,21 @@ The `audit` queue runs accessibility audits: navigate with Chromium, inject vend
   ```
 
   `--with-deps` also installs the OS libraries Chromium needs, which a slim container image will not have. This is a deploy requirement (#16), not just a test-setup step. `playwright` is a runtime **dependency** for the same reason: a `pnpm install --prod` that omitted it would fail the worker at module load, before it could consume a single job.
+
+## Re-audit scheduler
+
+The nightly fan-out that makes this a monitoring product rather than a one-off audit tool. It runs in the **worker**, on the `reaudit` queue, at `0 2 * * *` **UTC** — a BullMQ job scheduler, so it fires once however many worker replicas are running. The handler enqueues onto the same `audit` queue everything else uses, so re-audits and one-off submissions share one concurrency cap and one worker pool.
+
+- **Jitter is deterministic per page**, not random: FNV-1a over the host gives the domain's base offset, and FNV-1a over the page id picks a one-minute slot within a six-hour window. Both come from *identity* rather than from position in the run — a positional stagger shifts when a sibling is paused and resets on retry, so a page's audit time would move between nights and its trend line would stop being comparable, which is the whole reason this is a hash. `domain/services/reaudit-schedule.ts`, pure and dependency-free. It spreads load and holds each page at a consistent hour; it does **not** guarantee two audits of one host never overlap, which is #41's job at the worker.
+- **Exactly one audit per page per UTC day, in two layers.** The eligibility query skips pages with an audit in flight or one created since midnight UTC. Underneath it, `audits_one_scheduled_per_page_per_day` — a partial unique index on `(page_id, scheduled_for)` — makes it true regardless: two overlapping runs both select the page, and the second insert returns no row.
+- **`scheduled_for` is the run's day, stamped by the scheduler and nothing else.** Deriving it from `created_at` would have constrained *manual* re-audits to one per page per day too, and would split a fan-out that crosses midnight across two days. The column is write-only: node-postgres parses a `date` at local midnight, so nothing reads it back.
+- **A failed enqueue deletes its audit row.** A queued audit nothing will run shows as permanently in progress, and it keeps its page out of the worklist. An *unconfirmed* enqueue keeps the row — the queue may have taken the job and lost the reply.
+- **Rows that get stranded anyway are reclaimed, by asking the queue rather than by ageing them out.** Each run first retires unfinished audits that are old *and* whose job is no longer *pending*, marking them `failed`. Pending, not merely present: BullMQ keeps a failed job for a day and a completed one for an hour, so "a record exists" would read that retention as work still to come. Ageing them out on a timer instead would compound under load: on a queue that hasn't drained, every real pending audit looks abandoned too, so its page is scheduled again and each night piles onto the backlog. The lookup fails **closed** — an unreachable queue means "still live" — because the alternative manufactures duplicate work out of healthy rows. `abandonedReclaimed` in the summary should be zero; a rising number means enqueues are being lost.
+- **The run stops on shutdown.** A full fan-out is far longer than the worker's shutdown grace, so `SIGTERM` aborts it at the next page rather than hitting the force-exit timer mid-page — which is one way rows get stranded in the first place.
+- **A run that did not finish fails its job**, rather than logging `truncated` and reporting success — otherwise it is invisible to every queue dashboard. The retry then starts on the tail, because the pages the first attempt scheduled have dropped out of the worklist. A run cut short by shutdown is the exception: it succeeds, since retries would go to a worker that is leaving.
+- **The run pages through the worklist**, keyset by page id, rather than taking one capped batch. A cap would drop the same tail every night — those accounts would stop being monitored with nothing failing anywhere. `truncated` in the summary is a circuit breaker at 50,000 pages, not a routine outcome.
+- **Every run logs one structured line**, `{"event":"reaudit-run", ...}`, including the nights it finds nothing to do and the ones that ended badly (`outcome` is `completed` or `aborted`). A summary that only appears when there is work is one nobody notices the absence of, and a scheduler that stops firing breaks this product silently. Watch `reclaimFailures` as well as `abandonedReclaimed`: the first says the reclaim pass could not run, which looks identical to a healthy night in every other number. #25 forwards it to PostHog.
+- **The session sweeper is not on this scheduler**, deliberately. It stays a plain timer, because #10's design turns on authentication not depending on Redis.
 
 ### URL safety
 
@@ -145,7 +164,7 @@ Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300
 
 ## Schema
 
-Seven tables, across five migrations in `src/infra/db/postgres/migrations/`:
+Seven tables, across seven migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|
@@ -153,7 +172,7 @@ Seven tables, across five migrations in `src/infra/db/postgres/migrations/`:
 | `sessions` | primary key **is** the cookie value; `expires_at` is filtered in SQL so no caller can forget it |
 | `sites` | `unique (user_id, domain)`; deleting a user cascades all the way down |
 | `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
-| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `score` and `counts_by_impact` are written by the domain score formula when the audit completes; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker |
+| `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `score` and `counts_by_impact` are written by the domain score formula when the audit completes; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker; `scheduled_for` is set only by the nightly run and is what dedupes it — null for every other audit, and never read back |
 | `violations` | `nodes` is display-only jsonb, never queried across; `impact` is nullable, because axe reports violations with no severity and dropping them would hide real findings |
 | `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
 

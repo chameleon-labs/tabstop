@@ -1,9 +1,13 @@
-import type { Kysely } from 'kysely'
+import { sql, type Kysely, type SqlBool } from 'kysely'
 import type { AuditModel } from '../../../../domain/models/audit.js'
 import type {
   AddAuditParams,
   AddAuditRepository
 } from '../../../../data/protocols/db/audit/add-audit-repository.js'
+import type {
+  AddScheduledAuditParams,
+  AddScheduledAuditRepository
+} from '../../../../data/protocols/db/audit/add-scheduled-audit-repository.js'
 import type {
   LoadAuditByPublicUuidRepository
 } from '../../../../data/protocols/db/audit/load-audit-by-public-uuid-repository.js'
@@ -22,6 +26,9 @@ import type {
 import type {
   DeleteQueuedAuditRepository
 } from '../../../../data/protocols/db/audit/delete-queued-audit-repository.js'
+import type {
+  ReclaimAbandonedAuditsRepository, StaleAudit
+} from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { Database } from '../database.js'
 import { toAuditModel } from './audit-mapper.js'
 
@@ -54,12 +61,14 @@ const DEFAULT_STALE_CLAIM_AFTER_MS = claimLeaseFor(600_000, 15_000)
 
 export class PostgresAuditRepository implements
   AddAuditRepository,
+  AddScheduledAuditRepository,
   LoadAuditByPublicUuidRepository,
   LoadAuditByIdRepository,
   MarkRunningRepository,
   MarkDoneRepository,
   MarkFailedRepository,
-  DeleteQueuedAuditRepository {
+  DeleteQueuedAuditRepository,
+  ReclaimAbandonedAuditsRepository {
   constructor (
     private readonly db: Kysely<Database>,
     private readonly staleClaimAfterMs: number = DEFAULT_STALE_CLAIM_AFTER_MS
@@ -75,6 +84,41 @@ export class PostgresAuditRepository implements
       .executeTakeFirstOrThrow()
 
     return toAuditModel(row)
+  }
+
+  /**
+   * The nightly run's audit for one page.
+   *
+   * `on conflict ... do nothing` rather than catching SQLSTATE 23505: a raised
+   * error inside a transaction aborts it, and the caller is looping over every
+   * monitored page. Returning zero rows leaves the connection usable and turns
+   * the conflict into the answer the protocol wants - null, meaning another
+   * run already scheduled this page today.
+   *
+   * The conflict target is spelled as columns plus the index predicate rather
+   * than `on constraint`, because a partial unique index is not a constraint
+   * and Postgres will not infer one by name. Repeating the predicate is what
+   * makes it infer THIS index rather than any unique index on the table -
+   * bare `do nothing` would also swallow a public_uuid collision, which is a
+   * different problem that should never be silent.
+   */
+  async addScheduled (params: AddScheduledAuditParams): Promise<AuditModel | null> {
+    const row = await this.db
+      .insertInto('audits')
+      .values({
+        page_id: params.pageId,
+        url: params.url,
+        status: 'queued',
+        scheduled_for: params.scheduledFor
+      })
+      .onConflict((oc) => oc
+        .columns(['page_id', 'scheduled_for'])
+        .where('scheduled_for', 'is not', null)
+        .doNothing())
+      .returningAll()
+      .executeTakeFirst()
+
+    return row === undefined ? null : toAuditModel(row)
   }
 
   async loadByPublicUuid (publicUuid: string): Promise<AuditModel | null> {
@@ -179,6 +223,68 @@ export class PostgresAuditRepository implements
       .where('status', '=', 'running')
       .where('claimed_at', '=', claimedAt)
       .execute()
+  }
+
+  async loadStaleInFlight (
+    olderThan: Date, limit: number, after: StaleAudit | null
+  ): Promise<StaleAudit[]> {
+    // Reads `audits_in_flight_created_idx`, which is partial on the two live
+    // statuses and leads with `created_at` - so this walks the handful of
+    // unfinished audits in order and stops at the limit, rather than reading
+    // the whole live set and sorting it. The per-page index cannot serve this
+    // query at all: with `page_id` unconstrained there is no ordered path
+    // through it.
+    let statement = this.db
+      .selectFrom('audits')
+      // `created_at` as TEXT, not as the parsed column. node-postgres turns a
+      // timestamptz into a JavaScript Date, which holds milliseconds where
+      // Postgres holds microseconds - so a cursor built from the parsed value
+      // sits just below the row it came from, and the next batch serves that
+      // row again. Letting the database render it keeps every digit.
+      .select(['id', sql<string>`created_at::text`.as('cursor_at')])
+      .where('status', 'in', ['queued', 'running'])
+      .where('created_at', '<', olderThan)
+      .orderBy('created_at')
+      // The tiebreak the cursor needs. Two audits can share a timestamp -
+      // `now()` is transaction time, so a fan-out's rows routinely do - and a
+      // cursor that cannot tell them apart either repeats one or skips one.
+      .orderBy('id')
+      .limit(limit)
+
+    if (after !== null) {
+      // A row comparison, not two predicates: `created_at > x or (= x and id >
+      // y)` is the same thing written so the planner cannot use the index for
+      // it. This form matches the index's own ordering.
+      //
+      // The timestamp goes back as the text Postgres produced, cast
+      // explicitly so it is parsed at full precision rather than inferred.
+      // Written as raw SQL because the typed tuple builder insists the value
+      // match the column's PARSED type - a Date - which is the very thing that
+      // loses the microseconds this cursor exists to keep.
+      statement = statement.where(
+        sql<SqlBool>`(created_at, id) > (${after.createdAt}::timestamptz, ${after.auditId}::bigint)`
+      )
+    }
+
+    const rows = await statement.execute()
+
+    return rows.map((row) => ({ auditId: row.id, createdAt: row.cursor_at }))
+  }
+
+  async markAbandoned (auditId: string, error: string): Promise<boolean> {
+    const updated = await this.db
+      .updateTable('audits')
+      .set({ status: 'failed', error, completed_at: new Date() })
+      .where('id', '=', auditId)
+      // Fenced on the audit still being unfinished. Between the caller
+      // deciding this row is abandoned and this statement running, a worker
+      // may have picked it up after all - and overwriting a real result with
+      // "abandoned" would be worse than the stranded row this fixes.
+      .where('status', 'in', ['queued', 'running'])
+      .returning('id')
+      .executeTakeFirst()
+
+    return updated !== undefined
   }
 
   async deleteIfQueued (auditId: string): Promise<void> {
