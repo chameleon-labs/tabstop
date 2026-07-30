@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { ZodValidationAdapter } from '../../../infra/validation/zod-validation-adapter.js'
 import type { AddPageBody } from '../../../presentation/controllers/page/add-page-controller.js'
 import type {
+  LoadPageHistoryQuery
+} from '../../../presentation/controllers/page/load-page-history-controller.js'
+import type {
   UpdatePageBody
 } from '../../../presentation/controllers/page/update-page-controller.js'
 import type { Validation } from '../../../presentation/protocols/validation.js'
@@ -31,8 +34,38 @@ const updatePageSchema = z.object({
   monitoringEnabled: z.boolean()
 })
 
+/** Roughly a quarter, which is the window the trend chart (#21) opens on. */
+const DEFAULT_HISTORY_DAYS = 90
+/**
+ * A year. Not a guess about what anyone wants - it is the point past which the
+ * request stops being a chart and becomes a free table scan for whoever asks.
+ */
+const MAX_HISTORY_DAYS = 365
+
+/**
+ * `days` is CLAMPED at the ceiling, but a non-integer is still a 400.
+ *
+ * The two halves are different kinds of wrong. `days=100000` is a coherent
+ * request for more than we will serve, and the response echoes `days` back, so
+ * answering with a year is honest rather than silently truncated - and it
+ * closes the scan. `days=lastweek` is not a request we understood at all, and
+ * clamping it would mean picking a number on the caller's behalf and pretending
+ * they asked for it.
+ *
+ * `z.coerce` because a query string is always text; it maps "abc" to NaN, which
+ * the integer check then rejects.
+ */
+const historyQuerySchema = z.object({
+  days: z.coerce.number().int().min(1)
+    .transform((value) => Math.min(value, MAX_HISTORY_DAYS))
+    .default(DEFAULT_HISTORY_DAYS)
+})
+
 export const makeAddPageValidation = (): Validation<AddPageBody> =>
   new ZodValidationAdapter<AddPageBody>(addPageSchema)
 
 export const makeUpdatePageValidation = (): Validation<UpdatePageBody> =>
   new ZodValidationAdapter<UpdatePageBody>(updatePageSchema)
+
+export const makeLoadPageHistoryValidation = (): Validation<LoadPageHistoryQuery> =>
+  new ZodValidationAdapter<LoadPageHistoryQuery>(historyQuerySchema)

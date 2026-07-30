@@ -1,6 +1,7 @@
 import type { AuditModel, AuditStatus } from '../../domain/models/audit.js'
 import type { CountsByImpact } from '../../domain/models/impact.js'
 import type { PageSummary } from '../../domain/models/page.js'
+import type { PageHistory } from '../../domain/usecases/load-page-history.js'
 import type { PageModel } from '../../domain/models/page.js'
 
 /**
@@ -79,4 +80,47 @@ export const toPageSummaryView = (summary: PageSummary): PageSummaryView => ({
   score: summary.history.at(-1)?.score ?? null,
   previousScore: summary.history.at(-2)?.score ?? null,
   history: summary.history.map((point) => ({ score: point.score, at: point.at.toISOString() }))
+})
+
+/**
+ * One point on the trend chart (#21).
+ *
+ * `axeVersion` rides along per point so the chart can mark where the engine
+ * changed. A score shift across an axe upgrade is not a regression in the
+ * page, and without this the chart raises a false alarm the first time axe is
+ * bumped - which is the sort of thing that teaches a team to ignore it.
+ */
+export type PageHistoryPointView = {
+  /** The public uuid, so a point can link to its own result (#23). */
+  auditId: string
+  createdAt: string
+  status: AuditStatus
+  /** Null whenever the run did not finish. Never coerced to zero. */
+  score: number | null
+  countsByImpact: CountsByImpact
+  axeVersion: string | null
+}
+
+export type PageHistoryView = {
+  pageId: string
+  url: string
+  /** What the server actually used, which is not always what was asked for. */
+  days: number
+  points: PageHistoryPointView[]
+}
+
+export const toPageHistoryView = (history: PageHistory, days: number): PageHistoryView => ({
+  pageId: history.page.id,
+  url: history.page.url,
+  days,
+  points: history.audits.map((audit) => ({
+    auditId: audit.publicUuid,
+    createdAt: audit.createdAt.toISOString(),
+    status: audit.status,
+    // A failed run is a point with no score, not a zero and not a missing
+    // entry. Both alternatives lie about what happened.
+    score: audit.score,
+    countsByImpact: audit.countsByImpact,
+    axeVersion: audit.axeVersion
+  }))
 })

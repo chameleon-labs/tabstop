@@ -55,5 +55,13 @@ export const RATE_LIMITS = {
   pageUpdate: { capacity: 30, refillPerHour: 120 },
   pageDelete: { capacity: 30, refillPerHour: 120 },
   /** The dashboard's only call, and it is polled rather than fetched once. */
-  pageRead: { capacity: 60, refillPerHour: 600 }
+  pageRead: { capacity: 60, refillPerHour: 600 },
+  /**
+   * The trend chart (#21). Sized like pageRead - it is a read of the same
+   * order, bounded by the same 365-day ceiling - but named separately, because
+   * the route table asserts one name per bucket and #47 recorded why that
+   * stays strict. Its own counter also means opening a chart cannot spend the
+   * budget the dashboard behind it needs.
+   */
+  pageHistory: { capacity: 60, refillPerHour: 600 }
 } as const satisfies Record<string, BucketConfig>

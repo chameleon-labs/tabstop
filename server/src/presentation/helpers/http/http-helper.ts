@@ -22,10 +22,19 @@ export const notFound = (error: Error): HttpResponse<{ error: string }> => ({
   body: { error: error.message }
 })
 
-export const okCacheable = <T>(body: T, cacheControl: string): HttpResponse<T> => ({
+/**
+ * `vary` matters as soon as a cacheable response is owner-scoped: the URL
+ * alone stops identifying it, so two accounts sharing a browser would
+ * otherwise share one cache entry for `/api/pages/1/history`. Optional,
+ * because a fully public response - the share page - genuinely varies on
+ * nothing.
+ */
+export const okCacheable = <T>(body: T, cacheControl: string, vary?: string): HttpResponse<T> => ({
   statusCode: 200,
   body,
-  headers: { 'cache-control': cacheControl }
+  headers: vary === undefined
+    ? { 'cache-control': cacheControl }
+    : { 'cache-control': cacheControl, vary }
 })
 
 export const okWithCookies = <T>(body: T, cookies: CookieDirective[]): HttpResponse<T> => ({

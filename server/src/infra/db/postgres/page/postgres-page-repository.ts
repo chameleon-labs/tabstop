@@ -15,6 +15,10 @@ import type {
 import type {
   DeletePageRepository
 } from '../../../../data/protocols/db/page/delete-page-repository.js'
+import type {
+  LoadPageHistoryRepository
+} from '../../../../data/protocols/db/page/load-page-history-repository.js'
+import type { PageHistory } from '../../../../domain/usecases/load-page-history.js'
 import type { Database } from '../database.js'
 import { toAuditModel } from '../audit/audit-mapper.js'
 import { toPageModel } from './page-mapper.js'
@@ -46,6 +50,7 @@ const isStorableId = (value: string): boolean =>
 export class PostgresPageRepository implements
   AddPageRepository,
   LoadPageSummariesRepository,
+  LoadPageHistoryRepository,
   SetPageMonitoringRepository,
   DeletePageRepository {
   constructor (private readonly db: Kysely<Database>) {}
@@ -156,6 +161,45 @@ export class PostgresPageRepository implements
       latestAudit: latest.get(row.id) ?? null,
       history: history.get(row.id) ?? []
     }))
+  }
+
+  /**
+   * The trend chart's data (#21): one page, every audit since `since`.
+   *
+   * Ownership is settled by the first statement, so a page belonging to
+   * somebody else never reaches the audit read at all - there is no window in
+   * which this touches rows the caller may not see.
+   *
+   * The audit read is a single index scan on `audits_page_created_idx`. That
+   * index is declared `(page_id, created_at desc)` and this wants ascending;
+   * Postgres walks it backwards for the same cost and still returns rows in
+   * order, so ascending here buys the chart a list it can render directly
+   * rather than one it has to reverse - and costs nothing to get.
+   *
+   * No status filter. Every audit in the window is a point, `failed` included.
+   */
+  async loadHistoryForUser (
+    pageId: string, userId: string, since: Date
+  ): Promise<PageHistory | null> {
+    if (!isStorableId(pageId)) return null
+
+    const page = await this.db.selectFrom('pages')
+      .selectAll('pages')
+      .where('pages.id', '=', pageId)
+      .where('pages.site_id', 'in', (eb) =>
+        eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
+      .executeTakeFirst()
+
+    if (page === undefined) return null
+
+    const audits = await this.db.selectFrom('audits')
+      .selectAll()
+      .where('page_id', '=', pageId)
+      .where('created_at', '>=', since)
+      .orderBy('created_at')
+      .execute()
+
+    return { page: toPageModel(page), audits: audits.map(toAuditModel) }
   }
 
   async setMonitoringForUser (

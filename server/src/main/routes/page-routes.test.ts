@@ -8,6 +8,9 @@ import { connectDatabase, disconnectDatabase, getDatabase } from '../config/data
 import { PAGE_LIMIT } from '../config/page-limits.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
 import type { Database } from '../../infra/db/postgres/database.js'
+import {
+  PostgresPageRepository
+} from '../../infra/db/postgres/page/postgres-page-repository.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -81,6 +84,34 @@ describe('page routes', () => {
    */
   const auditableUrl = (): string => `http://93.184.216.34/${randomUUID()}`
 
+  /** The account behind a session cookie, for specs that seed rows directly. */
+  const accountIdFor = async (cookie: string): Promise<string> => {
+    const sessionId = cookie.split(';')[0]?.split('=')[1]
+    if (sessionId === undefined) throw new Error('expected a session cookie')
+    const session = await db.selectFrom('sessions').select('user_id')
+      .where('id', '=', sessionId).executeTakeFirstOrThrow()
+    return session.user_id
+  }
+
+  /**
+   * A page owned by this session, created through the repository.
+   *
+   * Not through `POST /api/pages`, because an accepted add enqueues to a live
+   * Redis with a 2s timeout and three retries - so a spec that only needs an
+   * owned page to exist pays for the queue, and enough of them in one file
+   * turns a busy container into a 30s timeout that reports as whatever spec
+   * happened to be running. Specs that are ABOUT creating a page still go
+   * through the API; these are about what you can then do with one.
+   */
+  const seedPage = async (cookie: string): Promise<{ pageId: string, url: string }> => {
+    const url = auditableUrl()
+    const added = await new PostgresPageRepository(db).add({
+      userId: await accountIdFor(cookie), domain: '93.184.216.34', url, limit: 100
+    })
+    if (added.outcome !== 'added') throw new Error(`expected a page, got ${added.outcome}`)
+    return { pageId: added.page.id, url }
+  }
+
   const addPage = async (cookie: string, url: string): Promise<request.Response> =>
     await request(app).post('/api/pages')
       .set('x-forwarded-for', uniqueIp()).set('cookie', cookie).send({ url })
@@ -93,10 +124,11 @@ describe('page routes', () => {
         request(app).get('/api/pages').set('x-forwarded-for', uniqueIp()),
         request(app).patch('/api/pages/1').set('x-forwarded-for', uniqueIp())
           .send({ monitoringEnabled: false }),
-        request(app).delete('/api/pages/1').set('x-forwarded-for', uniqueIp())
+        request(app).delete('/api/pages/1').set('x-forwarded-for', uniqueIp()),
+        request(app).get('/api/pages/1/history').set('x-forwarded-for', uniqueIp())
       ])
 
-      expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401])
+      expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401])
     })
 
     it('meters an unauthenticated caller rather than letting it drive session lookups', async () => {
@@ -212,10 +244,19 @@ describe('page routes', () => {
 
     it('refuses the page past the account cap, with a body the UI can render', async () => {
       const cookie = await signUp()
-      // pageAdd's capacity is exactly PAGE_LIMIT, so the eleventh call would
-      // be a 429 from a shared address rather than the 409 this is about.
+      // Seeded through the repository rather than through ten more requests.
+      // Each accepted POST enqueues to a real Redis with a 2s timeout and
+      // three retries, so ten of them in sequence is minutes of wall clock
+      // whenever the shared container is busy - which timed the whole file out
+      // rather than failing anything. What this spec is actually about is the
+      // ELEVENTH call's body, so only that one goes through the API. The cap
+      // itself, including under concurrency, is pinned in the repository spec.
+      const pages = new PostgresPageRepository(db)
+      const userId = await accountIdFor(cookie)
       for (let index = 0; index < PAGE_LIMIT; index++) {
-        expect((await addPage(cookie, auditableUrl())).status).toBe(201)
+        await pages.add({
+          userId, domain: '93.184.216.34', url: `http://93.184.216.34/seed-${index}`, limit: 100
+        })
       }
 
       const refused = await addPage(cookie, auditableUrl())
@@ -251,12 +292,22 @@ describe('page routes', () => {
       // Fixed, because this spec is about exhausting one address's bucket -
       // and out of a block the sequence above will never reach.
       const ip = '172.21.0.1'
+      // Deliberately unauditable urls. A rejected submission is NOT refunded -
+      // that is recorded in DECISIONS.md, because refunding a 400 would make
+      // hostname probing free - so each of these spends a token just as an
+      // accepted one would, while costing no page, no audit row and no
+      // enqueue. Spending the bucket with real adds instead made this spec the
+      // slowest in the suite and, when the shared Redis was busy, timed it out
+      // on the queue rather than on anything to do with rate limiting.
       const submit = async (): Promise<number> => (await request(app).post('/api/pages')
         .set('x-forwarded-for', ip).set('cookie', cookie)
-        .send({ url: auditableUrl() })).status
+        .send({ url: 'not a url' })).status
 
-      for (let index = 0; index < RATE_LIMITS.pageAdd.capacity; index++) await submit()
+      for (let index = 0; index < RATE_LIMITS.pageAdd.capacity; index++) {
+        expect(await submit()).toBe(400)
+      }
 
+      // The limiter runs before the controller, so it answers first.
       expect(await submit()).toBe(429)
     })
   })
@@ -396,6 +447,127 @@ describe('page routes', () => {
     })
   })
 
+  describe('GET /api/pages/:id/history', () => {
+    const historyOf = async (
+      cookie: string, pageId: string, query = ''
+    ): Promise<request.Response> =>
+      await request(app).get(`/api/pages/${pageId}/history${query}`)
+        .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
+
+    /** A page with three finished audits and one failure, oldest to newest. */
+    const pageWithTrend = async (cookie: string): Promise<string> => {
+      const { pageId, url } = await seedPage(cookie)
+
+      // The page's own first audit is queued and undated by these specs; the
+      // trend below is what the assertions read.
+      // Spaced so no spec's window boundary lands on a fixture timestamp: a
+      // request made milliseconds after setup computes `since` from a slightly
+      // later `now`, so an audit dated exactly on the edge falls out about
+      // half the time.
+      for (const [days, score] of [[5, 70], [3, 82], [1, 91]] as const) {
+        await db.insertInto('audits').values({
+          page_id: pageId, url, status: 'done', score,
+          created_at: new Date(Date.now() - days * 86_400_000)
+        }).execute()
+      }
+      await db.insertInto('audits').values({
+        page_id: pageId, url, status: 'failed', error: 'Navigation timed out',
+        created_at: new Date(Date.now() - 12 * 3_600_000)
+      }).execute()
+
+      return pageId
+    }
+
+    it('returns the window oldest first, with failures kept as scoreless points', async () => {
+      const cookie = await signUp()
+      const pageId = await pageWithTrend(cookie)
+
+      const response = await historyOf(cookie, pageId)
+
+      expect(response.status).toBe(200)
+      expect(response.body.pageId).toBe(pageId)
+      expect(response.body.days).toBe(90)
+
+      const points = response.body.points as Array<Record<string, unknown>>
+      // The page's own queued first audit is in here too, newest of all.
+      expect(points.map((point) => point.score)).toEqual([70, 82, 91, null, null])
+      expect(points.map((point) => point.status))
+        .toEqual(['done', 'done', 'done', 'failed', 'queued'])
+      expect(points[3]).toMatchObject({
+        auditId: expect.stringMatching(UUID),
+        createdAt: expect.any(String),
+        countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
+        axeVersion: null
+      })
+    })
+
+    it('honours a narrower window', async () => {
+      const cookie = await signUp()
+      const pageId = await pageWithTrend(cookie)
+
+      const response = await historyOf(cookie, pageId, '?days=2')
+
+      expect(response.body.days).toBe(2)
+      // The audits from five and three days ago fall outside it.
+      expect((response.body.points as unknown[]).map(
+        (point) => (point as { score: number | null }).score
+      )).toEqual([91, null, null])
+    })
+
+    it('clamps an oversized window instead of scanning the table, and says so', async () => {
+      const cookie = await signUp()
+      const pageId = await pageWithTrend(cookie)
+
+      const response = await historyOf(cookie, pageId, '?days=100000')
+
+      expect(response.status).toBe(200)
+      // Echoed back, which is what makes clamping honest rather than a silent
+      // truncation - the client can see it got a year rather than what it
+      // asked for.
+      expect(response.body.days).toBe(365)
+    })
+
+    it('rejects a window that is not a positive integer', async () => {
+      const cookie = await signUp()
+      const pageId = await pageWithTrend(cookie)
+
+      // Clamping these would mean picking a number on the caller's behalf and
+      // pretending they asked for it - different from `days=100000`, which is
+      // a coherent request for more than we serve.
+      for (const query of ['?days=abc', '?days=0', '?days=-5', '?days=1.5', '?days=']) {
+        expect((await historyOf(cookie, pageId, query)).status).toBe(400)
+      }
+    })
+
+    it('lets a browser cache it privately, keyed on the session', async () => {
+      const cookie = await signUp()
+      const pageId = await pageWithTrend(cookie)
+
+      const response = await historyOf(cookie, pageId)
+
+      // Beats the global no-store middleware, which is the point of the
+      // allowlist on adaptRoute.
+      expect(response.headers['cache-control']).toBe('private, max-age=60')
+      // BOTH variants survive. `Vary` is a list and the CORS middleware has
+      // already put `origin` in it; asserting only `Cookie` here passed while
+      // the adapter was overwriting the header and quietly dropping Origin
+      // from the cache key.
+      expect(response.headers.vary).toContain('Cookie')
+      expect(response.headers.vary?.toLowerCase()).toContain('origin')
+    })
+
+    it('returns an empty point list rather than 404 for a page with no audits in range', async () => {
+      const cookie = await signUp()
+      const { pageId } = await seedPage(cookie)
+      await db.deleteFrom('audits').where('page_id', '=', pageId).execute()
+
+      const response = await historyOf(cookie, pageId, '?days=1')
+
+      expect(response.status).toBe(200)
+      expect(response.body.points).toEqual([])
+    })
+  })
+
   describe('cross-account access', () => {
     /**
      * The acceptance criterion #10 handed to this issue. 404, never 403: a 403
@@ -413,8 +585,10 @@ describe('page routes', () => {
         .send({ monitoringEnabled: false })
       const deleted = await request(app).delete(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', bob)
+      const history = await request(app).get(`/api/pages/${pageId}/history`)
+        .set('x-forwarded-for', uniqueIp()).set('cookie', bob)
 
-      expect([patched.status, deleted.status]).toEqual([404, 404])
+      expect([patched.status, deleted.status, history.status]).toEqual([404, 404, 404])
 
       // And nothing happened to her page.
       const row = await db.selectFrom('pages').select('monitoring_enabled')
@@ -434,10 +608,12 @@ describe('page routes', () => {
           .set('x-forwarded-for', uniqueIp()).set('cookie', cookie),
         request(app).patch('/api/pages/not-a-number')
           .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
-          .send({ monitoringEnabled: false })
+          .send({ monitoringEnabled: false }),
+        request(app).get('/api/pages/not-a-number/history')
+          .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
       ])
 
-      expect(responses.map((response) => response.status)).toEqual([404, 404, 404])
+      expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404])
     })
   })
 })

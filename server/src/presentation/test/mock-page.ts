@@ -3,6 +3,7 @@ import type { AuditModel } from '../../domain/models/audit.js'
 import type { PageModel, PageSummary } from '../../domain/models/page.js'
 import type { AddPage } from '../../domain/usecases/add-page.js'
 import type { DeletePage } from '../../domain/usecases/delete-page.js'
+import type { LoadPageHistory, PageHistory } from '../../domain/usecases/load-page-history.js'
 import type { LoadPages } from '../../domain/usecases/load-pages.js'
 import type { UpdatePage } from '../../domain/usecases/update-page.js'
 
@@ -60,4 +61,34 @@ export const mockUpdatePage = () => ({
 
 export const mockDeletePage = () => ({
   delete: vi.fn<DeletePage['delete']>(async () => true)
+})
+
+export const mockPageHistory = (): PageHistory => ({
+  page: mockPageModel(),
+  audits: [
+    {
+      ...mockLatestAudit(),
+      publicUuid: '33333333-3333-3333-3333-333333333333',
+      status: 'done',
+      score: 86,
+      createdAt: new Date('2026-07-27T09:00:00Z'),
+      completedAt: new Date('2026-07-27T09:00:30Z')
+    },
+    // The middle of a chart is where a failed run has to survive as a point.
+    {
+      ...mockLatestAudit(),
+      publicUuid: '44444444-4444-4444-4444-444444444444',
+      status: 'failed',
+      score: null,
+      axeVersion: null,
+      error: 'Navigation timed out',
+      completedAt: new Date('2026-07-28T09:00:20Z'),
+      createdAt: new Date('2026-07-28T09:00:00Z')
+    },
+    mockLatestAudit()
+  ]
+})
+
+export const mockLoadPageHistory = () => ({
+  load: vi.fn<LoadPageHistory['load']>(async () => mockPageHistory())
 })
