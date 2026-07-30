@@ -2,7 +2,7 @@ import { reauditDelayMs, utcDay, utcDayStart } from '../../../domain/services/re
 import type {
   ReauditRunSummary, RunScheduledReaudits
 } from '../../../domain/usecases/run-scheduled-reaudits.js'
-import { enqueueAudit } from '../../helpers/audit-submission.js'
+import { ENQUEUE_TIMEOUT_MS, enqueueAudit, withTimeout } from '../../helpers/audit-submission.js'
 import type {
   AddScheduledAuditRepository
 } from '../../protocols/db/audit/add-scheduled-audit-repository.js'
@@ -199,7 +199,14 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
    */
   private async queueStillHolds (auditId: string): Promise<boolean> {
     try {
-      return await this.auditQueue.has(auditId)
+      // BOUNDED, because a `catch` alone does not implement "fails closed" -
+      // an unreachable Redis does not reject here, it hangs. BullMQ configures
+      // its connection to retry forever, which `audit-submission.ts` measured
+      // at five minutes with no resolution. Unbounded, one dead candidate
+      // would stall the fan-out until the job timeout, and the lookup would
+      // still be pending afterwards - free to resume and start mutating rows
+      // outside the attempt that was supposed to have ended.
+      return await withTimeout(this.auditQueue.has(auditId), ENQUEUE_TIMEOUT_MS)
     } catch {
       return true
     }
@@ -245,13 +252,16 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       // dashboard as permanently in progress, and while it exists it keeps
       // this page out of the worklist.
       //
-      // Swallowing a failed delete is safe only because that exclusion is time
-      // bounded. If both the enqueue and the cleanup fail, the row survives -
-      // and the eligibility query ignores unfinished audits older than the
-      // grace window, so the page returns to the worklist on its own instead
-      // of being hidden by a row nothing will ever finish. Retrying the
-      // deletion here could not close that gap anyway: the same outage that
-      // failed it would fail the retry.
+      // If the delete fails too, the row survives and the page is out of the
+      // worklist until the reclaim pass above retires it - which it will, on
+      // a later run, once the row is old enough to be a candidate and the
+      // queue confirms no job is behind it. Recovery is that pass, not this
+      // line: the eligibility query excludes unfinished audits regardless of
+      // age, deliberately, because ageing them out compounds under load.
+      //
+      // So the delete is swallowed rather than retried. The outage that failed
+      // it would fail the retry, and the cost of not having it is one page
+      // missing one night instead of monitoring stopping for good.
       //
       // `unknown` deliberately does not land here: the queue may have taken
       // the job and lost the reply, and deleting the row then would leave a

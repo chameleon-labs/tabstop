@@ -20,6 +20,7 @@ import {
   REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
 } from './config/reaudit.js'
 import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
+import { reauditRunFailure } from './jobs/reaudit-job-outcome.js'
 
 const PING_TIMEOUT_MS = 10_000
 
@@ -131,13 +132,8 @@ const reauditWorker = makeWorker<ReauditPayload>(
     // survives the failure. Retrying is safe and cheap: every page the attempt
     // did schedule now has an audit in flight and is excluded from the
     // eligibility query, so the next attempt picks up only what is still owed.
-    //
-    // A run cut short by shutdown is deliberately NOT a failure - the process
-    // is going away, and failing the job would only spend its attempts on
-    // retries the worker cannot serve.
-    if (summary.failed > 0 && !reauditShutdown.signal.aborted) {
-      throw new Error(`Re-audit run could not schedule ${summary.failed} page(s)`)
-    }
+    const failure = reauditRunFailure(summary, reauditShutdown.signal.aborted)
+    if (failure !== null) throw new Error(failure)
   }
 )
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DbRunScheduledReaudits } from './db-run-scheduled-reaudits.js'
 import { reauditDelayMs } from '../../../domain/services/reaudit-schedule.js'
+import { ENQUEUE_TIMEOUT_MS } from '../../helpers/audit-submission.js'
 import {
   mockAddScheduledAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository,
   mockAuditModel, mockLoadDueReauditsRepository, mockPagedDueReauditsRepository
@@ -326,6 +327,27 @@ describe('DbRunScheduledReaudits', () => {
 
       expect(audits.markAbandoned).not.toHaveBeenCalled()
       expect(summary.abandonedReclaimed).toBe(0)
+    })
+
+    it('leaves an old audit alone when the queue never answers', async () => {
+      // A `catch` alone does not make this fail closed: an unreachable Redis
+      // does not reject, it hangs - BullMQ retries the connection forever,
+      // measured at five minutes with no resolution. Unbounded, one dead
+      // candidate stalls the whole fan-out until the job timeout, and the
+      // lookup is still pending afterwards, free to resume and mutate rows
+      // outside the attempt that was supposed to have ended.
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockImplementation(async () => await new Promise<never>(() => {}))
+
+      const startedAt = Date.now()
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).not.toHaveBeenCalled()
+      expect(summary.abandonedReclaimed).toBe(0)
+      // The night's actual work still happened, rather than the run hanging.
+      expect(summary.auditsEnqueued).toBe(2)
+      expect(Date.now() - startedAt).toBeLessThan(ENQUEUE_TIMEOUT_MS * 3)
     })
 
     it('leaves an old audit alone when the queue cannot answer at all', async () => {
