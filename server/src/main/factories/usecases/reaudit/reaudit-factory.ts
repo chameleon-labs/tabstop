@@ -8,7 +8,7 @@ import {
 import { PostgresPageRepository } from '../../../../infra/db/postgres/page/postgres-page-repository.js'
 import { getDatabase } from '../../../config/database.js'
 import {
-  IN_FLIGHT_GRACE_MS, MAX_PAGES_PER_RUN, REAUDIT_BATCH_SIZE
+  MAX_PAGES_PER_RUN, REAUDIT_BATCH_SIZE, STALE_AFTER_MS
 } from '../../../config/reaudit.js'
 import { getAuditQueue } from '../../queue/audit-queue.js'
 
@@ -25,5 +25,5 @@ export const makeRunScheduledReaudits = (): RunScheduledReaudits => new DbRunSch
   getAuditQueue(),
   REAUDIT_BATCH_SIZE,
   MAX_PAGES_PER_RUN,
-  IN_FLIGHT_GRACE_MS
+  STALE_AFTER_MS
 )

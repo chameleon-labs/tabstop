@@ -6,6 +6,9 @@ import type {
 import type {
   DeleteQueuedAuditRepository
 } from '../protocols/db/audit/delete-queued-audit-repository.js'
+import type {
+  ReclaimAbandonedAuditsRepository
+} from '../protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { AuditJob, AuditJobQueue } from '../protocols/queue/audit-job-queue.js'
 import type { AuditModel } from '../../domain/models/audit.js'
 import type { AuditPageResult, PageAuditor } from '../protocols/audit/page-auditor.js'
@@ -82,13 +85,23 @@ export const mockAddAuditRepository = () => ({
   add: vi.fn<AddAuditRepository['add']>(async () => mockAuditModel())
 })
 
+/**
+ * The scheduler's audit-side repository: creating the night's rows, and
+ * retiring the ones nothing ever ran. One mock because one class implements
+ * both, and the run holds it as a single dependency.
+ *
+ * Nothing stale by default - the reaper is a maintenance path, and a mock that
+ * found work every time would make every unrelated spec assert around it.
+ */
 export const mockAddScheduledAuditRepository = () => ({
   // A distinct id per page, because the scheduler's whole job is one audit per
   // page - a shared id would let a spec pass while the run created one audit
   // in total and enqueued it repeatedly.
   addScheduled: vi.fn<AddScheduledAuditRepository['addScheduled']>(async (params) => ({
     ...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId
-  }))
+  })),
+  loadStaleInFlight: vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(async () => []),
+  markAbandoned: vi.fn<ReclaimAbandonedAuditsRepository['markAbandoned']>(async () => true)
 })
 
 export const mockDeleteQueuedAuditRepository = () => ({

@@ -533,16 +533,11 @@ describe('PostgresPageRepository', () => {
   describe('loadDueForReaudit', () => {
     const MIDNIGHT_TODAY = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
     const NO_CAP = 10_000
-    /** Twelve hours back, matching the grace window the scheduler passes. */
-    const IN_FLIGHT_SINCE = new Date(Date.now() - 12 * 60 * 60 * 1000)
 
     const due = async (
-      overrides: {
-        limit?: number, after?: string | null, inFlightSince?: Date, dayStart?: Date
-      } = {}
+      overrides: { limit?: number, after?: string | null, dayStart?: Date } = {}
     ): Promise<DuePage[]> => await sut.loadDueForReaudit({
       dayStart: overrides.dayStart ?? MIDNIGHT_TODAY,
-      inFlightSince: overrides.inFlightSince ?? IN_FLIGHT_SINCE,
       limit: overrides.limit ?? NO_CAP,
       after: overrides.after ?? null
     })
@@ -619,41 +614,48 @@ describe('PostgresPageRepository', () => {
       expect(ids).not.toContain(running.pageId)
     })
 
-    it('stops honouring an unfinished audit once it is older than the grace window', async () => {
-      // The bound that keeps a lost enqueue from ending a page's monitoring.
-      // A `queued` row with no job behind it stays in flight forever, and
-      // while it does its page is absent from every future worklist - silently,
-      // with nothing failing anywhere. Without this floor, one blip during one
-      // night's fan-out stops that page being monitored for good.
+    it('keeps skipping a page with an unfinished audit however old it is', async () => {
+      // No age limit here, deliberately - the first version of this had one.
+      // Ageing unfinished audits out compounds under load: once the queue stops
+      // draining inside the window, every real pending audit looks abandoned,
+      // its page is scheduled again, and each night piles more work onto a
+      // backlog the workers are already behind on.
+      //
+      // A row that genuinely has no job behind it is retired by asking the
+      // queue - a question no predicate here can answer. See the reclaim specs
+      // beside the audit repository.
       const { pageId } = await monitoredPage()
       await db.insertInto('audits').values({
         page_id: pageId,
         url: `https://${randomUUID()}.test/`,
         status: 'queued',
-        created_at: new Date(Date.now() - 36 * 60 * 60 * 1000)
-      }).execute()
-
-      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
-
-      expect(ids).toContain(pageId)
-    })
-
-    it('still honours an unfinished audit inside the window', async () => {
-      // The counterpart, and the reason the window is twelve hours rather than
-      // something shorter: a page whose scheduled audit is sitting out its
-      // six-hour jitter delay has a legitimately queued row, and treating that
-      // as abandoned would audit it twice a night.
-      const { pageId } = await monitoredPage()
-      await db.insertInto('audits').values({
-        page_id: pageId,
-        url: `https://${randomUUID()}.test/`,
-        status: 'queued',
-        created_at: new Date(Date.now() - 4 * 60 * 60 * 1000)
+        created_at: new Date(Date.now() - 90 * 86_400_000)
       }).execute()
 
       const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
 
       expect(ids).not.toContain(pageId)
+    })
+
+    it('returns the page once that audit has finished, however it finished', async () => {
+      // The release, without which the rule above is indistinguishable from "a
+      // page that has ever had an audit is never due again". `failed` because
+      // that is what the reclaim path writes: retiring an abandoned row is
+      // what puts its page back in the worklist.
+      const { pageId } = await monitoredPage()
+      const audit = await db.insertInto('audits').values({
+        page_id: pageId,
+        url: `https://${randomUUID()}.test/`,
+        status: 'queued',
+        created_at: new Date(Date.now() - 90 * 86_400_000)
+      }).returning('id').executeTakeFirstOrThrow()
+
+      await db.updateTable('audits').set({ status: 'failed', error: 'abandoned' })
+        .where('id', '=', audit.id).execute()
+
+      const ids = new Set((await due({ dayStart: NO_DAY_BOUNDARY })).map((page) => page.pageId))
+
+      expect(ids).toContain(pageId)
     })
 
     it('skips a page already audited today, however that audit came about', async () => {

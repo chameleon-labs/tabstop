@@ -148,6 +148,115 @@ describe('PostgresAuditRepository', () => {
     })
   })
 
+  describe('reclaiming abandoned audits', () => {
+    const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 3_600_000)
+
+    const inFlightAudit = async (
+      status: 'queued' | 'running', createdAt: Date
+    ): Promise<string> => {
+      const pageId = await makePage()
+      const audit = await db.insertInto('audits')
+        .values({
+          page_id: pageId, url: `https://${randomUUID()}.test/a`, status, created_at: createdAt
+        })
+        .returning('id').executeTakeFirstOrThrow()
+      return audit.id
+    }
+
+    it('offers unfinished audits older than the cutoff, in both live statuses', async () => {
+      // Both, because either can be stranded: `queued` when an enqueue was
+      // lost, `running` when the worker died holding it and its job is gone.
+      const queued = await inFlightAudit('queued', hoursAgo(30))
+      const running = await inFlightAudit('running', hoursAgo(30))
+
+      const stale = await sut.loadStaleInFlight(hoursAgo(12), 1000)
+
+      expect(stale).toContain(queued)
+      expect(stale).toContain(running)
+    })
+
+    it('leaves finished audits alone however old they are', async () => {
+      const pageId = await makePage()
+      const done = await db.insertInto('audits')
+        .values({
+          page_id: pageId,
+          url: `https://${randomUUID()}.test/a`,
+          status: 'done',
+          score: 90,
+          created_at: hoursAgo(500)
+        })
+        .returning('id').executeTakeFirstOrThrow()
+
+      expect(await sut.loadStaleInFlight(hoursAgo(12), 1000)).not.toContain(done.id)
+    })
+
+    it('leaves recent unfinished audits alone', async () => {
+      // The cutoff is what keeps this off the healthy pending work that exists
+      // on any night - a page waiting out its six-hour jitter delay is not
+      // abandoned, it has not started.
+      const recent = await inFlightAudit('queued', hoursAgo(1))
+
+      expect(await sut.loadStaleInFlight(hoursAgo(12), 1000)).not.toContain(recent)
+    })
+
+    it('offers the oldest first, since that is where the abandoned ones are', async () => {
+      // A row waiting on a busy queue gets older every night, but so does
+      // everything ahead of it. The ones with no job at all never move, so
+      // they sink to the front and a bounded scan still reaches them.
+      const older = await inFlightAudit('queued', hoursAgo(400))
+      const newer = await inFlightAudit('queued', hoursAgo(300))
+
+      const stale = await sut.loadStaleInFlight(hoursAgo(200), 1000)
+
+      expect(stale.indexOf(older)).toBeLessThan(stale.indexOf(newer))
+    })
+
+    it('honours the limit, so one run cannot become an unbounded scan', async () => {
+      await inFlightAudit('queued', hoursAgo(30))
+      await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await sut.loadStaleInFlight(hoursAgo(12), 1)).toHaveLength(1)
+    })
+
+    it('retires an abandoned audit as failed rather than deleting it', async () => {
+      // The audit is a fact: the page was due, a run was created, nothing ran
+      // it. A failure is what the dashboard should show and what the trend
+      // chart should keep as a scoreless point - deleting it would make the
+      // night look like it never happened.
+      const auditId = await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(true)
+
+      const row = await sut.loadById(auditId)
+      expect(row?.status).toBe('failed')
+      expect(row?.error).toBe('Abandoned')
+      expect(row?.completedAt).toBeInstanceOf(Date)
+    })
+
+    it('refuses to touch an audit that has already finished', async () => {
+      // The fence. Between the run deciding a row is abandoned and this
+      // statement, a worker may have picked it up after all - and overwriting
+      // a real result with "abandoned" is worse than the stranded row this
+      // exists to fix.
+      const auditId = await inFlightAudit('running', hoursAgo(30))
+      await db.updateTable('audits').set({ status: 'done', score: 88 })
+        .where('id', '=', auditId).execute()
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(false)
+
+      const row = await sut.loadById(auditId)
+      expect(row?.status).toBe('done')
+      expect(row?.score).toBe(88)
+    })
+
+    it('reports false the second time, so a race is not counted twice', async () => {
+      const auditId = await inFlightAudit('queued', hoursAgo(30))
+
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(true)
+      expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(false)
+    })
+  })
+
   describe('loadByPublicUuid', () => {
     it('returns the audit that was created', async () => {
       const created = await sut.add({ url: `https://${randomUUID()}.test/find-me`, pageId: null })

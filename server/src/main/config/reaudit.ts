@@ -31,19 +31,30 @@ export const REAUDIT_BATCH_SIZE = 500
 export const MAX_PAGES_PER_RUN = 50_000
 
 /**
- * How long an unfinished audit still counts as work in progress.
+ * How old an unfinished audit must be before the run will even ask whether it
+ * has been abandoned.
  *
- * Derived, not chosen. It has to exceed the longest a legitimately queued
- * audit can sit before running - the six-hour jitter window, plus the job
- * budget, plus its retries - or the run would treat its own scheduled work as
- * abandoned and schedule it twice. And it has to stay well under the 24-hour
- * cadence, or an abandoned row survives to hide its page from the next run,
- * which is the failure this bound exists to prevent.
+ * A filter, not a verdict. Age cannot tell an abandoned audit from one waiting
+ * behind a long queue - on a queue that has not drained, every real pending
+ * audit is old too - so the run confirms each candidate against the queue
+ * before retiring it. What this number decides is how much gets examined.
  *
- * Twelve hours sits between the two with room on both sides: the night's work
- * is finished by 08:00 UTC, and the next run is at 02:00.
+ * Twelve hours keeps it to rows that are past every legitimate reason to be
+ * waiting on an ordinary night: the jitter window is six hours and the work is
+ * done by 08:00 UTC. Being generous costs nothing but a slower reclaim, while
+ * being aggressive costs a Redis round trip per healthy pending audit.
  */
-export const IN_FLIGHT_GRACE_MS = 12 * 60 * 60 * 1000
+export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
+
+/**
+ * A ceiling on the fan-out itself, distinct from the shutdown grace.
+ *
+ * A run that has not finished in this long is not slow, it is stuck - and
+ * because the handler holds a database connection and a queue for its whole
+ * duration, a stuck one is worth ending. Retrying is safe: the eligibility
+ * query excludes every page the attempt did schedule.
+ */
+export const REAUDIT_RUN_TIMEOUT_MS = 30 * 60 * 1000
 
 /**
  * A minute, then two, rather than the queue-wide one second.

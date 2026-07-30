@@ -23,11 +23,20 @@ export type ReauditRunSummary = {
   /** Pages whose audit could not be created or queued. Their rows are removed. */
   failed: number
   /**
-   * Whether the run hit its circuit breaker with pages still due.
+   * Unfinished audits retired because the queue no longer held their job.
+   *
+   * Expected to be zero. A row like that is one a page's monitoring was
+   * silently stuck behind, so a number that keeps climbing means enqueues are
+   * being lost - which is worth knowing well before anyone notices their
+   * pages have stopped being checked.
+   */
+  abandonedReclaimed: number
+  /**
+   * Whether the run stopped with pages still due - because it hit its circuit
+   * breaker, or because it was asked to shut down.
    *
    * Normally false however many pages there are: the run pages through the
-   * whole worklist. True means something is wrong with the eligibility
-   * predicate rather than that the product got popular, so it is an alert.
+   * whole worklist.
    */
   truncated: boolean
 }
@@ -36,6 +45,12 @@ export interface RunScheduledReaudits {
   /**
    * `now` is passed rather than read, so the UTC day this run belongs to is a
    * decision the caller makes once and every row of the run shares.
+   *
+   * `signal` stops the run at the next page. A full fan-out takes far longer
+   * than a worker's shutdown grace, so without it a deploy during the run is a
+   * force-exit - which can land between creating an audit row and queueing its
+   * job. Stopping cleanly leaves the remaining pages simply unscheduled, which
+   * is what the next run is for.
    */
-  run: (now: Date) => Promise<ReauditRunSummary>
+  run: (now: Date, signal?: AbortSignal) => Promise<ReauditRunSummary>
 }

@@ -26,6 +26,9 @@ import type {
 import type {
   DeleteQueuedAuditRepository
 } from '../../../../data/protocols/db/audit/delete-queued-audit-repository.js'
+import type {
+  ReclaimAbandonedAuditsRepository
+} from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js'
 import type { Database } from '../database.js'
 import { toAuditModel } from './audit-mapper.js'
 
@@ -64,7 +67,8 @@ export class PostgresAuditRepository implements
   MarkRunningRepository,
   MarkDoneRepository,
   MarkFailedRepository,
-  DeleteQueuedAuditRepository {
+  DeleteQueuedAuditRepository,
+  ReclaimAbandonedAuditsRepository {
   constructor (
     private readonly db: Kysely<Database>,
     private readonly staleClaimAfterMs: number = DEFAULT_STALE_CLAIM_AFTER_MS
@@ -219,6 +223,38 @@ export class PostgresAuditRepository implements
       .where('status', '=', 'running')
       .where('claimed_at', '=', claimedAt)
       .execute()
+  }
+
+  async loadStaleInFlight (olderThan: Date, limit: number): Promise<string[]> {
+    // Reads `audits_in_flight_page_idx`, which is partial on the two live
+    // statuses - so this scans the handful of unfinished audits rather than
+    // the table, however much history has accumulated.
+    const rows = await this.db
+      .selectFrom('audits')
+      .select('id')
+      .where('status', 'in', ['queued', 'running'])
+      .where('created_at', '<', olderThan)
+      .orderBy('created_at')
+      .limit(limit)
+      .execute()
+
+    return rows.map((row) => row.id)
+  }
+
+  async markAbandoned (auditId: string, error: string): Promise<boolean> {
+    const updated = await this.db
+      .updateTable('audits')
+      .set({ status: 'failed', error, completed_at: new Date() })
+      .where('id', '=', auditId)
+      // Fenced on the audit still being unfinished. Between the caller
+      // deciding this row is abandoned and this statement running, a worker
+      // may have picked it up after all - and overwriting a real result with
+      // "abandoned" would be worse than the stranded row this fixes.
+      .where('status', 'in', ['queued', 'running'])
+      .returning('id')
+      .executeTakeFirst()
+
+    return updated !== undefined
   }
 
   async deleteIfQueued (auditId: string): Promise<void> {

@@ -143,12 +143,16 @@ export class PostgresPageRepository implements
    * of building a result to discard.
    *
    * The first reads `audits_in_flight_page_idx`, which is partial on `status
-   * in ('queued','running')` so it holds only live work, and carries
-   * `created_at` so the staleness floor is answered by the same scan. Without
-   * the index this check walks a page's entire audit history to find nothing -
-   * a cost that grows for as long as the account is a customer, paid once per
-   * page per night. Without the floor, a `queued` row left behind by a lost
-   * enqueue hides its page from every future night, permanently.
+   * in ('queued','running')` so it holds only live work. Without it this check
+   * walks a page's entire audit history to find nothing - a cost that grows
+   * for as long as the account is a customer, paid once per page per night.
+   *
+   * There is deliberately no age limit on that clause. Ageing unfinished
+   * audits out would compound under load: once the queue stops draining within
+   * a day, real pending audits read as abandoned and their pages are scheduled
+   * again, so each night adds work on top of a backlog. A row that is
+   * genuinely abandoned is reclaimed by asking the queue whether its job still
+   * exists, which no SQL predicate can answer.
    *
    * The second reads `audits_page_created_idx` on its leading columns. It
    * keys on `created_at`, not on `scheduled_for`: a page somebody audited
@@ -169,7 +173,6 @@ export class PostgresPageRepository implements
           .select('audits.id')
           .whereRef('audits.page_id', '=', 'pages.id')
           .where('audits.status', 'in', ['queued', 'running'])
-          .where('audits.created_at', '>=', query.inFlightSince)
       )))
       .where((eb) => eb.not(eb.exists(
         eb.selectFrom('audits')

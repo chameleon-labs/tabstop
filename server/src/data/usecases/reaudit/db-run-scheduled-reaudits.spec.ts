@@ -3,13 +3,13 @@ import { DbRunScheduledReaudits } from './db-run-scheduled-reaudits.js'
 import { reauditDelayMs } from '../../../domain/services/reaudit-schedule.js'
 import {
   mockAddScheduledAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository,
-  mockLoadDueReauditsRepository, mockPagedDueReauditsRepository
+  mockAuditModel, mockLoadDueReauditsRepository, mockPagedDueReauditsRepository
 } from '../../test/index.js'
 import type { DuePage } from '../../protocols/db/page/load-due-reaudits-repository.js'
 
 const BATCH = 100
 const MAX_PAGES = 500
-const GRACE_MS = 12 * 60 * 60 * 1000
+const STALE_AFTER_MS = 12 * 60 * 60 * 1000
 const NOW = new Date('2026-08-01T02:00:00Z')
 
 const makeSut = (limits: { batchSize?: number, maxPagesPerRun?: number } = {}) => {
@@ -19,7 +19,7 @@ const makeSut = (limits: { batchSize?: number, maxPagesPerRun?: number } = {}) =
   const queue = mockAuditQueue()
   const sut = new DbRunScheduledReaudits(
     pages, audits, deletes, queue,
-    limits.batchSize ?? BATCH, limits.maxPagesPerRun ?? MAX_PAGES, GRACE_MS
+    limits.batchSize ?? BATCH, limits.maxPagesPerRun ?? MAX_PAGES, STALE_AFTER_MS
   )
   return { sut, pages, audits, deletes, queue }
 }
@@ -53,6 +53,7 @@ describe('DbRunScheduledReaudits', () => {
       auditsEnqueued: 2,
       skippedDuplicate: 0,
       failed: 0,
+      abandonedReclaimed: 0,
       truncated: false
     })
   })
@@ -70,17 +71,15 @@ describe('DbRunScheduledReaudits', () => {
     )
   })
 
-  it('stops treating an unfinished audit as in flight once it is old enough', async () => {
-    // The floor that keeps a lost enqueue from ending a page's monitoring. A
-    // `queued` row nothing will ever run stays in flight forever, and while it
-    // does, its page is absent from every future worklist - silently, with
-    // nothing failing anywhere.
-    const { sut, pages } = makeSut()
+  it('looks for abandoned audits older than the stale cutoff', async () => {
+    // Age is the filter, not the verdict - the queue decides. See the reclaim
+    // specs below for why that distinction is the whole point.
+    const { sut, audits } = makeSut()
 
     await sut.run(NOW)
 
-    expect(pages.loadDueForReaudit).toHaveBeenCalledWith(
-      expect.objectContaining({ inFlightSince: new Date(NOW.getTime() - GRACE_MS) })
+    expect(audits.loadStaleInFlight).toHaveBeenCalledWith(
+      new Date(NOW.getTime() - STALE_AFTER_MS), BATCH
     )
   })
 
@@ -168,8 +167,9 @@ describe('DbRunScheduledReaudits', () => {
 
   it('removes the audit row when the queue genuinely refuses the job', async () => {
     // A queued audit nothing will run shows on the dashboard as permanently in
-    // progress - and it would keep the page OUT of tomorrow's eligibility
-    // query, so one lost enqueue would cost the page every future night too.
+    // progress, and it keeps the page out of the worklist until something
+    // retires it - so the row goes now rather than waiting for the reclaim
+    // path to notice it a day later.
     const { sut, queue, deletes } = makeSut()
     queue.enqueueOnce.mockRejectedValue(new Error('redis is down'))
 
@@ -214,7 +214,7 @@ describe('DbRunScheduledReaudits', () => {
     const audits = mockAddScheduledAuditRepository()
     const sut = new DbRunScheduledReaudits(
       pages, audits, mockDeleteQueuedAuditRepository(), mockAuditQueue(),
-      100, MAX_PAGES, GRACE_MS
+      100, MAX_PAGES, STALE_AFTER_MS
     )
 
     const summary = await sut.run(NOW)
@@ -233,7 +233,7 @@ describe('DbRunScheduledReaudits', () => {
     const pages = mockPagedDueReauditsRepository(all)
     const sut = new DbRunScheduledReaudits(
       pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
-      mockAuditQueue(), 100, MAX_PAGES, GRACE_MS
+      mockAuditQueue(), 100, MAX_PAGES, STALE_AFTER_MS
     )
 
     await sut.run(NOW)
@@ -251,7 +251,7 @@ describe('DbRunScheduledReaudits', () => {
     const pages = mockPagedDueReauditsRepository(all)
     const sut = new DbRunScheduledReaudits(
       pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
-      mockAuditQueue(), 100, MAX_PAGES, GRACE_MS
+      mockAuditQueue(), 100, MAX_PAGES, STALE_AFTER_MS
     )
 
     const summary = await sut.run(NOW)
@@ -269,7 +269,7 @@ describe('DbRunScheduledReaudits', () => {
     const pages = mockPagedDueReauditsRepository(all)
     const sut = new DbRunScheduledReaudits(
       pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
-      mockAuditQueue(), 100, 200, GRACE_MS
+      mockAuditQueue(), 100, 200, STALE_AFTER_MS
     )
 
     const summary = await sut.run(NOW)
@@ -288,7 +288,7 @@ describe('DbRunScheduledReaudits', () => {
     const queue = mockAuditQueue()
     const sut = new DbRunScheduledReaudits(
       pages, mockAddScheduledAuditRepository(), mockDeleteQueuedAuditRepository(),
-      queue, 2, MAX_PAGES, GRACE_MS
+      queue, 2, MAX_PAGES, STALE_AFTER_MS
     )
 
     await sut.run(NOW)
@@ -299,6 +299,121 @@ describe('DbRunScheduledReaudits', () => {
       reauditDelayMs('example.test', 2),
       reauditDelayMs('example.test', 3)
     ])
+  })
+
+  describe('reclaiming abandoned audits', () => {
+    it('retires an old unfinished audit whose job the queue no longer holds', async () => {
+      // The row that would otherwise hide its page from every future run.
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockResolvedValue(false)
+
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).toHaveBeenCalledWith('audit-7', expect.any(String))
+      expect(summary.abandonedReclaimed).toBe(1)
+    })
+
+    it('leaves an old audit alone while its job still exists', async () => {
+      // The whole reason age is not the test. On a queue that has not drained,
+      // every real pending audit is old too - retiring those would schedule
+      // their pages again and pile a second night of work onto the backlog.
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockResolvedValue(true)
+
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).not.toHaveBeenCalled()
+      expect(summary.abandonedReclaimed).toBe(0)
+    })
+
+    it('leaves an old audit alone when the queue cannot answer at all', async () => {
+      // Fails CLOSED, the opposite of the same lookup in audit-submission, and
+      // for a different consequence: there an unanswerable queue costs one
+      // stray job, here it would mark live audits as abandoned and schedule
+      // duplicates for their pages. A Redis blip during the nightly run must
+      // not manufacture work out of healthy rows.
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockRejectedValue(new Error('redis is down'))
+
+      const summary = await sut.run(NOW)
+
+      expect(audits.markAbandoned).not.toHaveBeenCalled()
+      expect(summary.abandonedReclaimed).toBe(0)
+    })
+
+    it('reclaims before building the worklist, so a freed page is scheduled tonight', async () => {
+      const { sut, audits, pages, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockResolvedValue(false)
+
+      await sut.run(NOW)
+
+      expect(audits.markAbandoned.mock.invocationCallOrder[0] as number)
+        .toBeLessThan(pages.loadDueForReaudit.mock.invocationCallOrder[0] as number)
+    })
+
+    it('does not count a row another run had already retired', async () => {
+      const { sut, audits, queue } = makeSut()
+      audits.loadStaleInFlight.mockResolvedValueOnce(['audit-7'])
+      queue.has.mockResolvedValue(false)
+      audits.markAbandoned.mockResolvedValueOnce(false)
+
+      expect((await sut.run(NOW)).abandonedReclaimed).toBe(0)
+    })
+
+    it('still runs the night when reclaiming cannot even start', async () => {
+      // Maintenance failing is not a reason to skip the actual work, and the
+      // same rows are still there tomorrow.
+      const { sut, audits } = makeSut()
+      audits.loadStaleInFlight.mockRejectedValueOnce(new Error('the database is down'))
+
+      const summary = await sut.run(NOW)
+
+      expect(summary.abandonedReclaimed).toBe(0)
+      expect(summary.auditsEnqueued).toBe(2)
+    })
+  })
+
+  describe('shutting down mid-run', () => {
+    it('stops at the next page rather than running to completion', async () => {
+      // A full fan-out is far longer than the worker's shutdown grace, so
+      // without this a SIGTERM reaches the force-exit timer - and a hard exit
+      // can land between creating an audit row and queueing its job, stranding
+      // exactly the row the reclaim path then has to clean up.
+      const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 50))
+      const audits = mockAddScheduledAuditRepository()
+      const controller = new AbortController()
+      audits.addScheduled.mockImplementation(async (params) => {
+        controller.abort()
+        return { ...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId }
+      })
+      const sut = new DbRunScheduledReaudits(
+        pages, audits, mockDeleteQueuedAuditRepository(), mockAuditQueue(),
+        10, MAX_PAGES, STALE_AFTER_MS
+      )
+
+      const summary = await sut.run(NOW, controller.signal)
+
+      expect(summary.pagesConsidered).toBe(1)
+      expect(summary.truncated).toBe(true)
+    })
+
+    it('does not start at all when it is already too late', async () => {
+      const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 50))
+      const audits = mockAddScheduledAuditRepository()
+      const sut = new DbRunScheduledReaudits(
+        pages, audits, mockDeleteQueuedAuditRepository(), mockAuditQueue(),
+        10, MAX_PAGES, STALE_AFTER_MS
+      )
+
+      const summary = await sut.run(NOW, AbortSignal.abort())
+
+      expect(pages.loadDueForReaudit).not.toHaveBeenCalled()
+      expect(summary).toMatchObject({ pagesConsidered: 0, truncated: true })
+    })
   })
 
   it('counts a page whose cleanup also failed, and moves on', async () => {
@@ -331,6 +446,7 @@ describe('DbRunScheduledReaudits', () => {
       auditsEnqueued: 0,
       skippedDuplicate: 0,
       failed: 0,
+      abandonedReclaimed: 0,
       truncated: false
     })
   })

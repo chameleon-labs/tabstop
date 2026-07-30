@@ -16,7 +16,8 @@ import { getDatabase } from './config/database.js'
 import { PostgresSessionRepository } from '../infra/db/postgres/session/postgres-session-repository.js'
 import { startSessionSweeper } from './maintenance/session-sweeper.js'
 import {
-  REAUDIT_ATTEMPTS, REAUDIT_CRON, REAUDIT_RETRY_BACKOFF_MS, REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
+  REAUDIT_ATTEMPTS, REAUDIT_CRON, REAUDIT_RETRY_BACKOFF_MS, REAUDIT_RUN_TIMEOUT_MS,
+  REAUDIT_SCHEDULER_ID, REAUDIT_TIMEZONE
 } from './config/reaudit.js'
 import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
 
@@ -90,26 +91,51 @@ await upsertDailySchedule(
   { attempts: REAUDIT_ATTEMPTS, backoff: { type: 'exponential', delay: REAUDIT_RETRY_BACKOFF_MS } }
 )
 
+/**
+ * Aborted by `shutdown` so the fan-out stops at its next page.
+ *
+ * A full run is minutes of sequential inserts and enqueues, far longer than
+ * the shutdown grace, so a SIGTERM mid-run would otherwise reach the
+ * force-exit timer - and a hard exit can land between creating an audit row
+ * and queueing its job, stranding the row. Stopping cleanly leaves the
+ * remaining pages simply unscheduled, which is what tomorrow's run is for.
+ *
+ * Separate from the timeout below, because they mean different things: this is
+ * "we are going away", that is "this run is stuck".
+ */
+const reauditShutdown = new AbortController()
+
 const reauditWorker = makeWorker<ReauditPayload>(
-  QUEUE_NAMES.reaudit, env.redisUrl, async () => {
+  QUEUE_NAMES.reaudit, env.redisUrl, async (job) => {
     const startedAt = Date.now()
-    // The clock is read here rather than taken from the job, so a run retried
-    // after an outage schedules for the day it actually runs on.
-    const summary = await makeRunScheduledReaudits().run(new Date())
+    const summary = await runWithTimeout(REAUDIT_RUN_TIMEOUT_MS, async (timeout) => {
+      // Either reason to stop stops the run: the timeout's signal or ours.
+      const stop = AbortSignal.any([timeout, reauditShutdown.signal])
+      // The clock is read here rather than taken from the job, so a run
+      // retried after an outage schedules for the day it actually runs on.
+      return await makeRunScheduledReaudits().run(new Date(), stop)
+    })
 
     // One structured line per run, emitted even when there was nothing to do.
     // A scheduler that stops firing breaks this product silently - nothing
     // errors, users simply stop being told their pages got worse - so the
     // absence of this line is the signal. #25 forwards it to PostHog.
     console.log(JSON.stringify({
-      event: 'reaudit-run', ...summary, durationMs: Date.now() - startedAt
+      event: 'reaudit-run',
+      ...summary,
+      attempt: job.attemptsMade + 1,
+      durationMs: Date.now() - startedAt
     }))
 
     // Thrown AFTER the summary is logged, so the record of what happened
     // survives the failure. Retrying is safe and cheap: every page the attempt
     // did schedule now has an audit in flight and is excluded from the
     // eligibility query, so the next attempt picks up only what is still owed.
-    if (summary.failed > 0) {
+    //
+    // A run cut short by shutdown is deliberately NOT a failure - the process
+    // is going away, and failing the job would only spend its attempts on
+    // retries the worker cannot serve.
+    if (summary.failed > 0 && !reauditShutdown.signal.aborted) {
       throw new Error(`Re-audit run could not schedule ${summary.failed} page(s)`)
     }
   }
@@ -147,6 +173,11 @@ console.log(
 
 const shutdown = (signal: string): void => {
   console.log(`${signal} received, shutting down`)
+
+  // Before close(), which waits for in-flight jobs: a fan-out that has not
+  // been told to stop would run to completion and blow through the grace
+  // period below.
+  reauditShutdown.abort()
 
   // Must stay above the longest per-job timeout, or a SIGTERM arriving
   // mid-audit force-exits before the job can finish and leaves the row

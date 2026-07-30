@@ -15,16 +15,6 @@ export type DuePage = {
 export type DuePageQuery = {
   /** Midnight UTC of the run's day. A page audited since is not due again. */
   dayStart: Date
-  /**
-   * How far back an unfinished audit still counts as work in progress.
-   *
-   * Without a floor here, one `queued` row that no job will ever run removes
-   * its page from every future night, silently and permanently - the audit
-   * stays in flight forever because nothing is left to finish it. Bounding the
-   * window makes the worklist self-healing instead: the row stops hiding the
-   * page, and the day-scoped unique index still prevents a duplicate.
-   */
-  inFlightSince: Date
   limit: number
   /**
    * Keyset cursor - the last page id of the previous batch, or null to start.
@@ -39,8 +29,15 @@ export type DuePageQuery = {
 
 export interface LoadDueReauditsRepository {
   /**
-   * One batch of pages with monitoring on that have neither a recent audit in
-   * flight nor one created since `dayStart`, ordered by id.
+   * One batch of pages with monitoring on that have neither an audit in flight
+   * nor one created since `dayStart`, ordered by id.
+   *
+   * An unfinished audit excludes its page however old it is. Ageing them out
+   * instead would compound under load: on a queue that has not drained, real
+   * pending audits would be read as abandoned and their pages scheduled again,
+   * so every night would add work the workers were already behind on. Rows
+   * that are genuinely abandoned are reclaimed by confirming them against the
+   * queue, which is a different question and lives elsewhere.
    *
    * Batched rather than fetched whole: a scheduler whose memory use is
    * "however many rows matched" fails on the night the product succeeds. The
