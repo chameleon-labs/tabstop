@@ -134,8 +134,8 @@ describe('PostgresAuditRepository', () => {
 
     it('does not block an unscheduled audit of the same page on the same day', async () => {
       // The conflict target names the partial index, so it only ever sees
-      // scheduled rows. A manual re-audit (#22) and the first audit an added
-      // page gets both carry a null scheduled_for and are untouched by it.
+      // scheduled rows. A manual re-audit and the first audit an added page
+      // gets both carry a null scheduled_for and are untouched by it.
       const pageId = await makePage()
       const url = `https://${randomUUID()}.test/a`
       await sut.addScheduled({ pageId, url, scheduledFor: DAY })

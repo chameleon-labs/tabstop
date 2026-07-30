@@ -70,9 +70,9 @@ describe('audits.scheduled_for', () => {
 
   it('leaves unscheduled audits of the same page alone, so a manual re-audit still works', async () => {
     // The reason the constraint keys on `scheduled_for` rather than on the day
-    // an audit happened to be created: #22's "re-audit now" must not be
-    // refused because the nightly run already ran, and the first audit a newly
-    // added page gets must not block that night's run either.
+    // an audit happened to be created: a "re-audit now" button, whenever one
+    // lands, must not be refused because the nightly run already ran - and the
+    // first audit a newly added page gets must not block that night's run.
     const pageId = await seedPage(db)
 
     await db.insertInto('audits')
