@@ -152,6 +152,50 @@ describe('RedisTokenBucket', () => {
       }
     })
 
+    it('shares one wait across a burst that arrives before the connection', async () => {
+      // Each wait attaches `ready` and `error` listeners, and Node warns past
+      // ten - so a burst at startup, which is exactly when the socket is still
+      // opening, would print MaxListenersExceededWarning to stderr. That is
+      // the noise this change exists to remove, reintroduced by the fix for
+      // it. Asserted on the process warning itself rather than on a listener
+      // count, because the warning is the thing that would land in CI.
+      const client = coldClient(connectionUrl())
+      const warnings: string[] = []
+      const onWarning = (warning: Error): void => { warnings.push(warning.name) }
+      process.on('warning', onWarning)
+
+      try {
+        const sut = new RedisTokenBucket(client)
+
+        const decisions = await Promise.all(
+          Array.from({ length: 30 }, async () => await sut.consume(key(), frozen))
+        )
+
+        expect(decisions.every((decision) => decision.allowed)).toBe(true)
+        expect(warnings).not.toContain('MaxListenersExceededWarning')
+      } finally {
+        process.off('warning', onWarning)
+        await client.quit().catch(() => { client.disconnect() })
+      }
+    })
+
+    it('waits again after the connection has been re-established', async () => {
+      // The shared wait is cleared on settlement rather than memoised. Held,
+      // a client that dropped and reconnected would keep answering from a
+      // promise that resolved against a socket it no longer has.
+      const client = coldClient(connectionUrl())
+      try {
+        await new RedisTokenBucket(client).consume(key(), frozen)
+        expect(client.status).toBe('ready')
+
+        const decision = await new RedisTokenBucket(client).consume(key(), frozen)
+
+        expect(decision.allowed).toBe(true)
+      } finally {
+        await client.quit().catch(() => { client.disconnect() })
+      }
+    })
+
     it('gives up on a refused connection rather than waiting it out', async () => {
       // The other half: waiting must not turn an outage into a hang. The
       // fallback limiter degrades on a rejection, and it can only do that if

@@ -107,6 +107,21 @@ export class RedisTokenBucket implements RateLimiter {
   }
 
   /**
+   * One wait shared by every request that arrives while the socket is opening.
+   *
+   * Coalesced for the same reason `CoalescingDnsResolver` is, plus one this
+   * class cannot avoid: each wait attaches `ready` and `error` listeners to the
+   * client, and Node warns past ten. A burst arriving at startup - which is
+   * precisely when a connection is still opening - would print
+   * MaxListenersExceededWarning to stderr, which is the noise this whole change
+   * exists to remove.
+   *
+   * Cleared on settlement, so a later disconnect gets a fresh wait rather than
+   * a memo of the last one.
+   */
+  private connecting: Promise<void> | null = null
+
+  /**
    * Waits for a connection that is on its way, and only for that.
    *
    * `end` is terminal - the client has been closed and will never emit
@@ -128,7 +143,19 @@ export class RedisTokenBucket implements RateLimiter {
       throw new Error('Rate limiter connection is closed')
     }
 
-    await once(this.redis, 'ready', { signal: AbortSignal.timeout(this.readyTimeoutMs) })
+    this.connecting ??= this.waitForReady()
+
+    await this.connecting
+  }
+
+  private async waitForReady (): Promise<void> {
+    try {
+      await once(this.redis, 'ready', { signal: AbortSignal.timeout(this.readyTimeoutMs) })
+    } finally {
+      // On success as well as failure: the next burst after a dropped
+      // connection has to wait for its own `ready`, not remember this one.
+      this.connecting = null
+    }
   }
 
   private async run (

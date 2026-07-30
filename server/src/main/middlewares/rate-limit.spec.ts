@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeRateLimit, emailKey, ipKey } from './rate-limit.js'
 import type {
   BucketConfig, RateLimiter
@@ -35,10 +35,19 @@ const request = (overrides: Partial<Request> = {}): Request =>
  * where it is indistinguishable from the outage it is imitating. Silencing
  * without asserting would be worse than the noise: it would delete the only
  * evidence the path logs at all.
+ *
+ * Restored after every test by the hook below. `vitest.config.ts` does not set
+ * `restoreMocks`, so a spy installed here otherwise outlives its own test and
+ * silently swallows warnings from every later one in the file - which is the
+ * same mistake as leaving the noise, made harder to notice.
  */
 const quietWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => { /* quiet */ })
 
 describe('rate limit middleware', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('calls next when the limiter allows the request', async () => {
     // Untyped: vi.fn<NextFunction>() picks one of NextFunction's overloads
     // and stops being assignable to the others, which is a vitest/TS
@@ -186,6 +195,17 @@ describe('rate limit middleware', () => {
     expect(warn).toHaveBeenCalledWith(
       'Rate limiter threw on refund; failing open:', expect.any(Error)
     )
+  })
+
+  it('hands console.warn back before the next test runs', () => {
+    // Deliberately placed after the two specs that silence it, and dependent
+    // on that order - which is the only position from which it can catch
+    // anything. `vitest.config.ts` sets no `restoreMocks`, so without the
+    // afterEach above a spy installed by either of them stays installed, and
+    // every later test in this file runs with warnings swallowed. Nothing
+    // fails when that happens, which is exactly the problem: the file would
+    // go quiet about real warnings and stay green.
+    expect(vi.isMockFunction(console.warn)).toBe(false)
   })
 
   it('skips a bucket whose key cannot be derived', async () => {
