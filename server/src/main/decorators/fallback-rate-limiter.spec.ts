@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FallbackRateLimiter } from './fallback-rate-limiter.js'
 import type {
   BucketConfig, RateLimiter
@@ -15,6 +15,25 @@ const mockLimiter = (): RateLimiter & {
 })
 
 describe('FallbackRateLimiter', () => {
+  /**
+   * Silenced for every test here, not only the two that assert on it.
+   *
+   * Most of this file drives the degraded path deliberately, and the warning
+   * it produces is correct - but printed in CI it is indistinguishable from
+   * the outage it is imitating, which is how a real one went unnoticed for
+   * weeks. Silencing file-wide and asserting where it is the subject keeps the
+   * coverage and loses the noise.
+   */
+  let warn: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => { /* quiet */ })
+  })
+
+  afterEach(() => {
+    warn.mockRestore()
+  })
+
   it('uses the primary while it works', async () => {
     const primary = mockLimiter()
     const fallback = mockLimiter()
@@ -43,25 +62,23 @@ describe('FallbackRateLimiter', () => {
   it('does not swallow the primary failure silently', async () => {
     const primary = mockLimiter()
     primary.consume.mockRejectedValue(new Error('ECONNREFUSED'))
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { /* quiet */ })
 
     await new FallbackRateLimiter(primary, mockLimiter()).consume('a', bucket)
 
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
+    expect(warn).toHaveBeenCalledWith(
+      'Rate limiter falling back to in-process buckets:', expect.any(Error)
+    )
   })
 
   it('logs the outage once rather than once per request', async () => {
     // An outage that logged per request would do more damage than the outage.
     const primary = mockLimiter()
     primary.consume.mockRejectedValue(new Error('ECONNREFUSED'))
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => { /* quiet */ })
     const sut = new FallbackRateLimiter(primary, mockLimiter())
 
     for (let i = 0; i < 50; i++) await sut.consume('a', bucket)
 
     expect(warn).toHaveBeenCalledTimes(1)
-    warn.mockRestore()
   })
 
   it('returns to the primary once it recovers, after the degraded window', async () => {

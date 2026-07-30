@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { once } from 'node:events'
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { RedisTokenBucket, WAIT_MS_FORMULA } from './redis-token-bucket.js'
+import { READY_TIMEOUT_MS, RedisTokenBucket, WAIT_MS_FORMULA } from './redis-token-bucket.js'
 import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const connectionUrl = (): string => {
@@ -98,5 +99,93 @@ describe('RedisTokenBucket', () => {
     const result = await redis.eval(script, 0, 1, 0, 1, 3_600_000)
 
     expect(Number(result)).toBe(3_600_000)
+  })
+
+  describe('a connection that is still coming up', () => {
+    /**
+     * A client with the production options, used the instant it exists.
+     *
+     * `enableOfflineQueue: false` is what makes a dead Redis reject instead of
+     * hang, and it treats "not yet connected" the same way - so a command
+     * issued in the tick after construction fails with "Stream isn't writeable
+     * and enableOfflineQueue options is false". Not a hypothetical shape: it
+     * is what the API process does with the first request it serves, and what
+     * CI logged on the first test in every route file.
+     */
+    const coldClient = (url: string): Redis => {
+      const client = new Redis(url, {
+        enableOfflineQueue: false, maxRetriesPerRequest: 1, commandTimeout: 250
+      })
+      // The factory attaches one for the same reason: an EventEmitter with no
+      // error listener takes the process down.
+      client.on('error', () => { /* expected while connecting, or when refused */ })
+      return client
+    }
+
+    it('serves a command issued before the socket is writable', async () => {
+      const client = coldClient(connectionUrl())
+      try {
+        // Nothing awaited between construction and use, so the status here is
+        // `connecting` - which is the whole point.
+        expect(client.status).not.toBe('ready')
+
+        const decision = await new RedisTokenBucket(client).consume(key(), frozen)
+
+        expect(decision.allowed).toBe(true)
+      } finally {
+        await client.quit().catch(() => { client.disconnect() })
+      }
+    })
+
+    it('records that consume in Redis, rather than only appearing to succeed', async () => {
+      // The assertion that matters. Degrading also answers `allowed: true` -
+      // the in-process bucket is happy to - so the observable difference is
+      // whether the shared bucket was actually written.
+      const client = coldClient(connectionUrl())
+      const bucketKey = key()
+      try {
+        await new RedisTokenBucket(client).consume(bucketKey, frozen)
+
+        expect(await redis.exists(`rl:${bucketKey}`)).toBe(1)
+      } finally {
+        await client.quit().catch(() => { client.disconnect() })
+      }
+    })
+
+    it('gives up on a refused connection rather than waiting it out', async () => {
+      // The other half: waiting must not turn an outage into a hang. The
+      // fallback limiter degrades on a rejection, and it can only do that if
+      // one arrives.
+      const client = coldClient('redis://127.0.0.1:1')
+      try {
+        const startedAt = Date.now()
+
+        await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow()
+
+        expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS)
+      } finally {
+        client.disconnect()
+      }
+    })
+
+    it('fails immediately once the client has been closed for good', async () => {
+      // `end` is terminal, so waiting for `ready` could only ever time out.
+      //
+      // The wait for the event matters: `disconnect()` does not reach `end`
+      // synchronously - called while connecting, the status is still
+      // `connecting` on the next line and only settles a tick later. A spec
+      // that asserted straight after it would be asserting about a client
+      // that had not closed yet, and would have measured the timeout instead.
+      const client = coldClient(connectionUrl())
+      client.disconnect()
+      await once(client, 'end')
+
+      const startedAt = Date.now()
+
+      await expect(new RedisTokenBucket(client).consume(key(), frozen))
+        .rejects.toThrow(/closed/)
+
+      expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS)
+    })
   })
 })

@@ -27,6 +27,17 @@ const mockRes = () => {
 const request = (overrides: Partial<Request> = {}): Request =>
   ({ ip: '203.0.113.9', body: {}, ...overrides }) as Request
 
+/**
+ * Silences the fail-open warning and hands it back to be asserted on.
+ *
+ * The middleware logs when it swallows a limiter error, which is right - and
+ * a spec that drives that path deliberately should not leave the line in CI,
+ * where it is indistinguishable from the outage it is imitating. Silencing
+ * without asserting would be worse than the noise: it would delete the only
+ * evidence the path logs at all.
+ */
+const quietWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => { /* quiet */ })
+
 describe('rate limit middleware', () => {
   it('calls next when the limiter allows the request', async () => {
     // Untyped: vi.fn<NextFunction>() picks one of NextFunction's overloads
@@ -137,10 +148,18 @@ describe('rate limit middleware', () => {
     }
     const next = vi.fn()
     const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: () => 'ip-key' }])
+    // Silenced AND asserted. That warning is the only trace a failing limiter
+    // leaves: printed, it reads in CI exactly like the real degradation it is
+    // imitating; silenced without an assertion, it would stop being covered
+    // at all - so the spec that causes it owns it.
+    const warn = quietWarn()
 
     await sut(request(), mockRes() as unknown as Response, next)
 
     expect(next).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      'Rate limiter threw on consume; failing open:', expect.any(Error)
+    )
   })
 
   it('fails open and calls next when the limiter throws on refund', async () => {
@@ -156,6 +175,7 @@ describe('rate limit middleware', () => {
       { name: 'ip', bucket, key: () => 'ip-key' },
       { name: 'email', bucket, key: () => 'email-key' }
     ])
+    const warn = quietWarn()
 
     await sut(request(), res as unknown as Response, next)
 
@@ -163,6 +183,9 @@ describe('rate limit middleware', () => {
     // decided on - only the consume path fails open into next().
     expect(next).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(429)
+    expect(warn).toHaveBeenCalledWith(
+      'Rate limiter threw on refund; failing open:', expect.any(Error)
+    )
   })
 
   it('skips a bucket whose key cannot be derived', async () => {
