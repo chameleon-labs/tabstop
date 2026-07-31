@@ -199,6 +199,7 @@ export class PostgresPageRepository implements
       .innerJoin('sites', 'sites.id', 'pages.site_id')
       .select([
         'pages.id', 'pages.site_id', 'pages.url', 'pages.monitoring_enabled',
+        'pages.alerts_enabled',
         'pages.created_at', 'sites.domain'
       ])
       .where('sites.user_id', '=', userId)

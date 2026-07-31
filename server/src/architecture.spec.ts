@@ -290,6 +290,7 @@ describe('layer dependencies', () => {
         kysely: [
           'infra/db/postgres/account/account-mapper.ts',
           'infra/db/postgres/account/postgres-account-repository.ts',
+          'infra/db/postgres/alert-event/postgres-alert-event-repository.ts',
           'infra/db/postgres/audit/audit-mapper.ts',
           'infra/db/postgres/audit/postgres-audit-repository.ts',
           'infra/db/postgres/database.ts',
@@ -302,6 +303,7 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/005-audit-claimed-at.ts',
           'infra/db/postgres/migrations/006-sessions-expires-at-index.ts',
           'infra/db/postgres/migrations/007-scheduled-reaudits.ts',
+          'infra/db/postgres/migrations/008-alert-delivery.ts',
           // Reached only through `kysely/migration`, so the exact-name match
           // never saw it.
           'infra/db/postgres/migrations/index.ts',

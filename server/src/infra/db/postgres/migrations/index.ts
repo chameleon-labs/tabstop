@@ -6,6 +6,7 @@ import * as violationImpactNullable from './004-violation-impact-nullable.js'
 import * as auditClaimedAt from './005-audit-claimed-at.js'
 import * as sessionsExpiresAtIndex from './006-sessions-expires-at-index.js'
 import * as scheduledReaudits from './007-scheduled-reaudits.js'
+import * as alertDelivery from './008-alert-delivery.js'
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -22,7 +23,8 @@ export const migrations: Record<string, Migration> = {
   '004-violation-impact-nullable': violationImpactNullable,
   '005-audit-claimed-at': auditClaimedAt,
   '006-sessions-expires-at-index': sessionsExpiresAtIndex,
-  '007-scheduled-reaudits': scheduledReaudits
+  '007-scheduled-reaudits': scheduledReaudits,
+  '008-alert-delivery': alertDelivery
 }
 
 export const staticMigrationProvider: MigrationProvider = {

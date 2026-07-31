@@ -197,6 +197,22 @@ describe('PostgresAuditRepository completion', () => {
     }])
   })
 
+  it('does not create new alert events after email alerts are disabled', async () => {
+    const pageId = await makePage()
+    await db.updateTable('pages').set({ alerts_enabled: false }).where('id', '=', pageId).execute()
+    await doneAudit(pageId, {
+      score: 90, createdAt: new Date('2026-01-01T10:00:00Z')
+    })
+    const current = await claimedAudit(pageId, new Date('2026-01-02T10:00:00Z'))
+
+    await complete(current, { score: 20 })
+
+    expect(await alertsFor(pageId)).toEqual([])
+    expect(await db.selectFrom('pages').select('monitoring_enabled')
+      .where('id', '=', pageId).executeTakeFirstOrThrow())
+      .toEqual({ monitoring_enabled: true })
+  })
+
   it('skips a failed audit when choosing the previous completed audit', async () => {
     const pageId = await makePage()
     const previous = await doneAudit(pageId, {

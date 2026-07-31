@@ -42,7 +42,8 @@ describe('runMigrations', () => {
     expect(result.rows.map(row => row.name)).toEqual([
       '001-initial-schema', '002-accounts', '003-audit-settled',
       '004-violation-impact-nullable', '005-audit-claimed-at',
-      '006-sessions-expires-at-index', '007-scheduled-reaudits'
+      '006-sessions-expires-at-index', '007-scheduled-reaudits',
+      '008-alert-delivery'
     ])
   })
 
