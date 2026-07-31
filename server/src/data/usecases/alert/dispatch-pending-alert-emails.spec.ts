@@ -21,8 +21,12 @@ describe('DbDispatchPendingAlertEmails', () => {
 
     await expect(sut.dispatch()).resolves.toEqual({ processed: 3 })
 
-    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(1, null, 2)
-    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(2, '2', 2)
+    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(
+      1, null, 2, 'delivery'
+    )
+    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(
+      2, '2', 2, 'delivery'
+    )
     expect(queue.enqueueOnce).toHaveBeenCalledTimes(3)
     expect(queue.enqueueOnce).toHaveBeenNthCalledWith(3, { alertEventId: '3' })
   })

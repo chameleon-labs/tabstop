@@ -32,7 +32,9 @@ const delivery: AlertDelivery = {
     violations: []
   },
   alertsEnabled: true,
-  emailedAt: null
+  emailedAt: null,
+  previewedAt: null,
+  failedAt: null
 }
 
 const setup = (overrides: Partial<{
