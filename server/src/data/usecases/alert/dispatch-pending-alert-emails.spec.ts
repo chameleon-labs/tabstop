@@ -8,7 +8,7 @@ import type {
 import { DbDispatchPendingAlertEmails } from './dispatch-pending-alert-emails.js'
 
 describe('DbDispatchPendingAlertEmails', () => {
-  it('pages through every pending event and enqueues each idempotently', async () => {
+  it('reports processed candidates without claiming each created queue work', async () => {
     const alerts: LoadPendingAlertEventsRepository = {
       loadPendingAlertEventIds: vi.fn()
         .mockResolvedValueOnce(['1', '2'])
@@ -19,7 +19,7 @@ describe('DbDispatchPendingAlertEmails', () => {
     }
     const sut = new DbDispatchPendingAlertEmails(alerts, queue, 2)
 
-    await expect(sut.dispatch()).resolves.toEqual({ enqueued: 3 })
+    await expect(sut.dispatch()).resolves.toEqual({ processed: 3 })
 
     expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(1, null, 2)
     expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(2, '2', 2)

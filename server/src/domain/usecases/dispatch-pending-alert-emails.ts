@@ -1,5 +1,6 @@
 export type AlertEmailDispatchSummary = {
-  enqueued: number
+  /** Candidates whose idempotent queue inspection completed successfully. */
+  processed: number
 }
 
 export interface DispatchPendingAlertEmails {

@@ -17,7 +17,7 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
 
   async dispatch (): Promise<AlertEmailDispatchSummary> {
     let afterId: string | null = null
-    let enqueued = 0
+    let processed = 0
 
     for (;;) {
       const ids = await this.alerts.loadPendingAlertEventIds(afterId, this.batchSize)
@@ -25,13 +25,13 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
 
       for (const alertEventId of ids) {
         await this.queue.enqueueOnce({ alertEventId })
-        enqueued += 1
+        processed += 1
       }
 
       afterId = ids[ids.length - 1] ?? null
       if (ids.length < this.batchSize) break
     }
 
-    return { enqueued }
+    return { processed }
   }
 }
