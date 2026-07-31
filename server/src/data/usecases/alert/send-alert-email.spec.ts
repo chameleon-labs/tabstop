@@ -49,6 +49,14 @@ const delivery: AlertDelivery = {
   failedAt: null
 }
 
+const onePointDelivery: AlertDelivery = {
+  ...delivery,
+  current: {
+    ...delivery.current,
+    score: 83
+  }
+}
+
 const setup = (overrides: Partial<{
   loaded: AlertDelivery | null
   send: AlertSender['send']
@@ -123,6 +131,16 @@ describe('DbSendAlertEmail', () => {
     expect(repository.markAlertEmailed).toHaveBeenCalledWith(
       '12', new Date('2026-07-30T12:00:00Z')
     )
+  })
+
+  it('uses singular score grammar for a one-point regression', async () => {
+    const { sut, sender } = setup({ loaded: onePointDelivery })
+
+    await sut.send('12')
+
+    expect(sender.send).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'example.test/checkout dropped 1 point (84 → 83)'
+    }))
   })
 
   it('leaves emailed_at untouched when the provider fails', async () => {

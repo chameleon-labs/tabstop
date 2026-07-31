@@ -81,8 +81,9 @@ const renderAlertEmail = (
 ): AlertEmail => {
   const label = pageLabel(delivery.pageUrl)
   const delta = delivery.previous.score - delivery.current.score
+  const unit = delta === 1 ? 'point' : 'points'
   const subject = delivery.kind === 'score_drop'
-    ? `${label} dropped ${delta} points (${delivery.previous.score} → ${delivery.current.score})`
+    ? `${label} dropped ${delta} ${unit} (${delivery.previous.score} → ${delivery.current.score})`
     : `${label} has a new serious accessibility issue ` +
       `(${delivery.previous.score} → ${delivery.current.score})`
   const details = worsenedViolations(delivery)
