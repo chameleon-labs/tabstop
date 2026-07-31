@@ -17,7 +17,7 @@ Dependency direction always points inward: `main` depends on everything; `domain
 
 ## Current state
 
-Six slices exist:
+Seven slices exist:
 
 - **Health** — `GET /api/health`, including a Postgres reachability probe.
 - **Accounts** — signup, login, logout and `GET /api/me`, on server-side sessions.
@@ -26,8 +26,9 @@ Six slices exist:
 
 - **Daily re-audits** — a BullMQ job scheduler in the worker fans out one audit per monitored page every night, spread over a six-hour window by a per-domain offset. See *Re-audit scheduler* below.
 - **Regression detection** — each tracked-page completion compares with its previous completed audit, records a score drop or newly severe rule, and dedupes alerts to one per page per UTC day. See *Regression detection* below.
+- **Regression email** — a durable outbox dispatches those events through Resend (or the safe local console adapter), with provider retries and page-scoped one-click unsubscribe. See *Alert email* below.
 
-Not built yet: alert email and every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
+Not built yet: every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
 
 ## Stack
 
@@ -115,7 +116,7 @@ Every bucket except the anonymous audit one is a constant in `main/config/rate-l
 
 ## Audit worker
 
-The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations, and score the page. `pnpm dev:worker` consumes `ping`, `audit` and `reaudit`.
+The `audit` queue runs accessibility audits: navigate with Chromium, inject vendored axe-core, store violations, and score the page. `pnpm dev:worker` consumes `ping`, `audit`, `reaudit` and `alert-email`.
 
 - **axe-core is vendored, not imported at runtime.** `src/infra/audit/vendor/axe.min.js` is checked in; refresh it with `pnpm vendor:axe`, which also rewrites the sibling `VERSION` file. The reported `axe_version` comes from `testEngine.version` in the run itself, so it can never disagree with the file that executed.
 - **`pnpm build` copies that file explicitly.** `tsc` compiles `.ts` and ignores everything else, so without `scripts/copy-vendor.mjs` the engine never reaches `dist/` — and it fails only in production. A spec asserts the built file exists, and CI builds before testing.
@@ -136,7 +137,27 @@ Successful tracked-page audits are completed and evaluated in one Postgres trans
 
 `domain/services/regression.ts` owns the rule-level policy shared with the future audit diff UI (#22): a newly added `serious` or `critical` rule wins over a simultaneous score drop, while an axe-version change suppresses both signals. Improvements do not alert.
 
-`alert_events_one_per_page_per_day` is the authority for the one-alert-per-UTC-day rule. The insert names that expression index as its exact `ON CONFLICT DO NOTHING` target, so two completions racing for the same page resolve normally while foreign-key and check errors still fail. `emailed_at` remains null until #15 confirms delivery.
+`alert_events_one_per_page_per_day` is the authority for the one-alert-per-UTC-day rule. The insert names that expression index as its exact `ON CONFLICT DO NOTHING` target, so two completions racing for the same page resolve normally while foreign-key and check errors still fail. `emailed_at` remains null until the email provider confirms acceptance.
+
+## Alert email
+
+`alert_events` is the durable outbox. Once a minute, a BullMQ scheduler walks every row with `emailed_at is null` and enqueues one deterministic `send` job per event. The send job never runs regression detection again: it loads that exact event, builds a plain-text comparison, and stamps `emailed_at` only after a real provider confirms acceptance. A Redis outage cannot lose the event; the next dispatch sees it again. If a job exhausts its attempts, the dispatcher revives that retained failed record and resets its allowance — a plain duplicate `add` would leave it failed for the retention period and strand the outbox row.
+
+`MAIL_DRIVER=console` is the default and never contacts an email service. It records a preview in the log but deliberately leaves `emailed_at` null. Production must explicitly select `resend` and provide `RESEND_API_KEY`; when that switch is made, the dispatcher revives any retained completed preview jobs immediately. Resend requests carry `Idempotency-Key: alert-event/<id>` so a worker that loses the provider's response can repeat the request without repeating the email inside Resend's 24-hour idempotency window.
+
+Every message carries `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The URL is authenticated by an HMAC token scoped to the page, so the POST works without a session. A normal browser GET displays a confirmation form rather than changing state on navigation — mail scanners follow links, and a state-changing GET would unsubscribe people who never clicked. Unsubscribing flips `pages.alerts_enabled`; `monitoring_enabled` remains on, preserving daily audits and history. Existing unsent events remain honest (`emailed_at` stays null) but fall out of the dispatch query, and a send job already queued checks the preference again before contacting the provider.
+
+### Production deliverability checklist
+
+Code cannot configure DNS or prove inbox placement. Before `MAIL_DRIVER=resend` is enabled:
+
+1. Add and verify a dedicated sending subdomain in Resend (for example `alerts.tabstop.dev`) and set `MAIL_FROM` to an address on it.
+2. Publish the SPF and DKIM records Resend supplies.
+3. Publish DMARC at `_dmarc.tabstop.dev`, beginning with `p=none` and a monitored `rua`, then tighten to `quarantine` or `reject` after every legitimate sender is aligned.
+4. Disable provider click rewriting; product attribution is the `utm_source=alert_email` query parameter.
+5. Send to real Gmail and Yahoo/Outlook inboxes, inspect the received headers for `spf=pass`, `dkim=pass`, and `dmarc=pass`, and exercise the one-click unsubscribe header.
+
+As of 2026-07-30, public DNS returned none of those records. This checklist is therefore a deployment prerequisite, not a completed claim.
 
 ## Re-audit scheduler
 
@@ -175,14 +196,14 @@ Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300
 
 ## Schema
 
-Seven tables, across seven migrations in `src/infra/db/postgres/migrations/`:
+Seven tables, across eight migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|
 | `users` | `email` is stored lowercased; `alert_threshold` (score points) is read by regression detection |
 | `sessions` | primary key **is** the cookie value; `expires_at` is filtered in SQL so no caller can forget it |
 | `sites` | `unique (user_id, domain)`; deleting a user cascades all the way down |
-| `pages` | `unique (site_id, url)`; deleting a page cascades to everything below |
+| `pages` | `unique (site_id, url)`; `monitoring_enabled` controls daily audits while `alerts_enabled` controls mail independently; deleting a page cascades to everything below |
 | `audits` | `page_id` null = anonymous one-off; addressed publicly by `public_uuid`; `score` and `counts_by_impact` are written by the domain score formula when the audit completes; `settled` false means the page never finished loading, so treat the result as provisional; `claimed_at` leases the row to one worker; `scheduled_for` is set only by the nightly run and is what dedupes it — null for every other audit, and never read back |
 | `violations` | `nodes` is display-only jsonb, never queried across; `impact` is nullable, because axe reports violations with no severity and dropping them would hide real findings |
 | `alert_events` | at most one row per page per **UTC** day, keyed on `created_at` (detection) — not `emailed_at`, which stays null until a confirmed send |
