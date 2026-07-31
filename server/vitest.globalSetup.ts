@@ -18,7 +18,10 @@ export async function setup (): Promise<void> {
     // env.ts parses at module load and throws on anything missing, so every
     // spec that reaches main/ needs these set before it imports.
     process.env.FRONTEND_ORIGIN ??= 'http://localhost:5173'
+    process.env.PUBLIC_API_ORIGIN ??= 'http://localhost:3000'
     process.env.SESSION_COOKIE_SECURE ??= 'false'
+    process.env.MAIL_FROM ??= 'Tabstop <alerts@alerts.example.test>'
+    process.env.ALERT_UNSUBSCRIBE_SECRET ??= 'test-secret-'.repeat(6)
     // scrypt at the production cost is ~89ms per call, which would dominate
     // the suite. 16384 is the highest cost Node accepts on default maxmem.
     process.env.SCRYPT_COST ??= '16384'
