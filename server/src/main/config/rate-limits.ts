@@ -63,5 +63,9 @@ export const RATE_LIMITS = {
    * stays strict. Its own counter also means opening a chart cannot spend the
    * budget the dashboard behind it needs.
    */
-  pageHistory: { capacity: 60, refillPerHour: 600 }
+  pageHistory: { capacity: 60, refillPerHour: 600 },
+  /** Public, token-authenticated, and one indexed update at most. */
+  alertUnsubscribe: { capacity: 10, refillPerHour: 30 },
+  /** Static confirmation page, separate so viewing it cannot spend the POST budget. */
+  alertUnsubscribeRead: { capacity: 30, refillPerHour: 120 }
 } as const satisfies Record<string, BucketConfig>

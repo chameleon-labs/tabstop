@@ -5,6 +5,11 @@ export type Env = {
   databaseUrl: string
   redisUrl: string
   frontendOrigin: string
+  publicApiOrigin: string
+  mailDriver: 'console' | 'resend'
+  resendApiKey: string | null
+  mailFrom: string
+  alertUnsubscribeSecret: string
   sessionCookieSecure: boolean
   scryptCost: number
   sessionTtlDays: number
@@ -139,6 +144,23 @@ const requiredOrigin = (source: NodeJS.ProcessEnv, name: string): string => {
   return parsed.origin
 }
 
+const mailDriver = (source: NodeJS.ProcessEnv): 'console' | 'resend' => {
+  const value = source.MAIL_DRIVER
+  if (value === undefined || value === '') return 'console'
+  if (value !== 'console' && value !== 'resend') {
+    throw new Error(`MAIL_DRIVER must be "console" or "resend", but was "${value}"`)
+  }
+  return value
+}
+
+const alertUnsubscribeSecret = (source: NodeJS.ProcessEnv): string => {
+  const secret = required(source, 'ALERT_UNSUBSCRIBE_SECRET')
+  if (Buffer.byteLength(secret) < 32) {
+    throw new Error('ALERT_UNSUBSCRIBE_SECRET must contain at least 32 bytes')
+  }
+  return secret
+}
+
 /**
  * Unset means "use the default". Set means the operator had an intention, so an
  * unusable value is a configuration error and must not be silently replaced by
@@ -203,6 +225,10 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
   const rawPort = source.PORT
   const parsedPort = Number(rawPort)
   const hasValidPort = rawPort !== undefined && rawPort !== '' && Number.isFinite(parsedPort)
+  const databaseUrl = required(source, 'DATABASE_URL')
+  const redisUrl = required(source, 'REDIS_URL')
+  const frontendOrigin = requiredOrigin(source, 'FRONTEND_ORIGIN')
+  const sessionCookieSecure = requiredBoolean(source, 'SESSION_COOKIE_SECURE')
 
   const auditJobTimeoutMs = positiveIntegerOr(
     source.AUDIT_JOB_TIMEOUT_MS, DEFAULT_AUDIT_JOB_TIMEOUT_MS, 'AUDIT_JOB_TIMEOUT_MS',
@@ -237,12 +263,24 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     )
   }
 
+  const selectedMailDriver = mailDriver(source)
+  const resendApiKey = selectedMailDriver === 'resend' ? required(source, 'RESEND_API_KEY') : null
+  const publicApiOrigin = requiredOrigin(source, 'PUBLIC_API_ORIGIN')
+  if (selectedMailDriver === 'resend' && !publicApiOrigin.startsWith('https://')) {
+    throw new Error('PUBLIC_API_ORIGIN must use https when MAIL_DRIVER=resend')
+  }
+
   return {
     port: hasValidPort ? parsedPort : DEFAULT_PORT,
-    databaseUrl: required(source, 'DATABASE_URL'),
-    redisUrl: required(source, 'REDIS_URL'),
-    frontendOrigin: requiredOrigin(source, 'FRONTEND_ORIGIN'),
-    sessionCookieSecure: requiredBoolean(source, 'SESSION_COOKIE_SECURE'),
+    databaseUrl,
+    redisUrl,
+    frontendOrigin,
+    publicApiOrigin,
+    mailDriver: selectedMailDriver,
+    resendApiKey,
+    mailFrom: required(source, 'MAIL_FROM'),
+    alertUnsubscribeSecret: alertUnsubscribeSecret(source),
+    sessionCookieSecure,
     // A tuning knob, not a correctness knob: CI lowers it, production must not.
     scryptCost: scryptCostOr(source.SCRYPT_COST, DEFAULT_SCRYPT_COST),
     sessionTtlDays: positiveIntegerOr(

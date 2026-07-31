@@ -110,6 +110,19 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       else res.set(header, value)
     }
 
-    res.status(httpResponse.statusCode).json(httpResponse.body)
+    if (httpResponse.bodyType === 'html') {
+      // HTML is an exceptional response type in this API, so lock its active
+      // capabilities down here where a controller cannot weaken them. The
+      // unsubscribe page needs only a same-origin form submission.
+      res.set({
+        'content-security-policy':
+          "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        'referrer-policy': 'no-referrer',
+        'x-frame-options': 'DENY'
+      })
+      res.status(httpResponse.statusCode).type('html').send(httpResponse.body)
+    } else {
+      res.status(httpResponse.statusCode).json(httpResponse.body)
+    }
   }
 }

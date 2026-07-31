@@ -3,6 +3,7 @@ import setupAccountRoutes from '../routes/account-routes.js'
 import setupAuditRoutes from '../routes/audit-routes.js'
 import setupHealthCheckRoutes from '../routes/health-check-routes.js'
 import setupPageRoutes from '../routes/page-routes.js'
+import setupAlertRoutes from '../routes/alert-routes.js'
 
 export const setupRoutes = (app: Express): void => {
   const router = Router()
@@ -12,4 +13,5 @@ export const setupRoutes = (app: Express): void => {
   setupAccountRoutes(router)
   setupAuditRoutes(router)
   setupPageRoutes(router)
+  setupAlertRoutes(router)
 }

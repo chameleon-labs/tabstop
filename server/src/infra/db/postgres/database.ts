@@ -51,6 +51,7 @@ export interface PagesTable {
   site_id: string
   url: string
   monitoring_enabled: Generated<boolean>
+  alerts_enabled: Generated<boolean>
   created_at: Generated<Date>
 }
 

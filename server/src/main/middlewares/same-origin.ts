@@ -24,7 +24,12 @@ export const sameOrigin = (req: Request, res: Response, next: NextFunction): voi
   }
 
   const origin = req.get('origin')
-  if (origin === undefined || origin === env.frontendOrigin) {
+  // The API also serves the unsubscribe confirmation form. Its browser POST
+  // carries PUBLIC_API_ORIGIN, not FRONTEND_ORIGIN; both are application
+  // origins under our control and neither admits a sibling subdomain.
+  if (origin === undefined ||
+      origin === env.frontendOrigin ||
+      origin === env.publicApiOrigin) {
     next()
     return
   }

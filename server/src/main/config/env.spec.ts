@@ -5,7 +5,10 @@ const validSource = {
   DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
   REDIS_URL: 'redis://localhost:6379',
   FRONTEND_ORIGIN: 'http://localhost:5173',
-  SESSION_COOKIE_SECURE: 'false'
+  PUBLIC_API_ORIGIN: 'http://localhost:3000',
+  SESSION_COOKIE_SECURE: 'false',
+  MAIL_FROM: 'Tabstop <alerts@alerts.example.test>',
+  ALERT_UNSUBSCRIBE_SECRET: 'a'.repeat(64)
 }
 
 describe('parseEnv', () => {
@@ -73,6 +76,42 @@ describe('parseEnv', () => {
       .toBe('https://app.tabstop.dev')
     expect(parseEnv({ ...validSource, FRONTEND_ORIGIN: 'http://localhost:5173' }).frontendOrigin)
       .toBe('http://localhost:5173')
+  })
+
+  it('requires a canonical public API origin for unsubscribe links', () => {
+    const { PUBLIC_API_ORIGIN, ...missing } = validSource
+    expect(() => parseEnv(missing)).toThrow('PUBLIC_API_ORIGIN')
+    expect(() => parseEnv({ ...validSource, PUBLIC_API_ORIGIN: 'https://api.tabstop.dev/path' }))
+      .toThrow('PUBLIC_API_ORIGIN')
+    expect(parseEnv(validSource).publicApiOrigin).toBe('http://localhost:3000')
+  })
+
+  it('defaults to console mail and requires an explicit key for Resend', () => {
+    expect(parseEnv(validSource)).toMatchObject({
+      mailDriver: 'console',
+      resendApiKey: null,
+      mailFrom: 'Tabstop <alerts@alerts.example.test>'
+    })
+    expect(parseEnv({
+      ...validSource,
+      PUBLIC_API_ORIGIN: 'https://api.tabstop.dev',
+      MAIL_DRIVER: 'resend',
+      RESEND_API_KEY: 're_test'
+    })).toMatchObject({ mailDriver: 'resend', resendApiKey: 're_test' })
+    expect(() => parseEnv({ ...validSource, MAIL_DRIVER: 'resend' })).toThrow('RESEND_API_KEY')
+    expect(() => parseEnv({ ...validSource, MAIL_DRIVER: 'smtp' })).toThrow('MAIL_DRIVER')
+  })
+
+  it('refuses to publish an insecure one-click URL through Resend', () => {
+    expect(() => parseEnv({
+      ...validSource, MAIL_DRIVER: 'resend', RESEND_API_KEY: 're_test'
+    })).toThrow('PUBLIC_API_ORIGIN must use https when MAIL_DRIVER=resend')
+  })
+
+  it('requires a secret long enough to resist guessing unsubscribe tokens', () => {
+    expect(parseEnv(validSource).alertUnsubscribeSecret).toHaveLength(64)
+    expect(() => parseEnv({ ...validSource, ALERT_UNSUBSCRIBE_SECRET: 'short' }))
+      .toThrow('ALERT_UNSUBSCRIBE_SECRET')
   })
 
   it('throws when SESSION_COOKIE_SECURE is missing', () => {

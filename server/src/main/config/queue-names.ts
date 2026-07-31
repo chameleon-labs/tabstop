@@ -1,7 +1,8 @@
 export const QUEUE_NAMES = {
   ping: 'ping',
   audit: 'audit',
-  reaudit: 'reaudit'
+  reaudit: 'reaudit',
+  alertEmail: 'alert-email'
 } as const
 
 export type PingPayload = {
@@ -24,3 +25,7 @@ export type AuditPayload = {
  * a Redis outage - it would keep stamping rows with a day that has passed.
  */
 export type ReauditPayload = Record<string, never>
+
+export type AlertQueuePayload =
+  | { kind: 'dispatch' }
+  | { kind: 'send', alertEventId: string }

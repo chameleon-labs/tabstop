@@ -233,9 +233,13 @@ export class PostgresAuditRepository implements
         .selectFrom('pages')
         .innerJoin('sites', 'sites.id', 'pages.site_id')
         .innerJoin('users', 'users.id', 'sites.user_id')
-        .select('users.alert_threshold')
+        .select(['users.alert_threshold', 'pages.alerts_enabled'])
         .where('pages.id', '=', current.page_id)
         .executeTakeFirstOrThrow()
+
+      // Unsubscribe is alerts-only: daily audits and history continue, but no
+      // new outbox event is created after the preference changes.
+      if (!account.alerts_enabled) return
 
       // "Previous" is chronological, not whichever audit happened to finish
       // most recently. Two jobs may complete out of order; allowing an audit

@@ -12,6 +12,9 @@ export const setupMiddlewares = (app: Express): void => {
   app.use(noStore)
   app.use(securityHeaders)
   app.use(sameOrigin)
+  // RFC 8058 one-click unsubscribe is form-encoded, as is the browser
+  // confirmation form. Keep its parser deliberately small.
+  app.use(express.urlencoded({ extended: false, limit: '10kb', parameterLimit: 10 }))
   app.use(express.json())
   app.use(contentType)
 }

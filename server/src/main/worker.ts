@@ -2,7 +2,7 @@ import { UnrecoverableError } from 'bullmq'
 import { env } from './config/env.js'
 import { connectDatabase, disconnectDatabase } from './config/database.js'
 import {
-  QUEUE_NAMES, type AuditPayload, type PingPayload, type ReauditPayload
+  QUEUE_NAMES, type AlertQueuePayload, type AuditPayload, type PingPayload, type ReauditPayload
 } from './config/queue-names.js'
 import {
   makeQueue, makeWorker, setGlobalConcurrency, upsertDailySchedule
@@ -22,6 +22,13 @@ import {
 import { makeRunScheduledReaudits } from './factories/usecases/reaudit/reaudit-factory.js'
 import type { ReauditRunSummary } from '../domain/usecases/run-scheduled-reaudits.js'
 import { reauditRunFailure } from './jobs/reaudit-job-outcome.js'
+import {
+  ALERT_DISPATCH_CRON, ALERT_DISPATCH_TIMEZONE
+} from './config/alert-email.js'
+import {
+  makeDispatchPendingAlertEmails, makeSendAlertEmail
+} from './factories/usecases/alert/alert-worker-usecase-factories.js'
+import { registerAlertEmailDispatcher } from './jobs/alert-email-scheduler.js'
 
 const PING_TIMEOUT_MS = 10_000
 
@@ -192,6 +199,37 @@ const reauditWorker = makeWorker<ReauditPayload>(
   }
 )
 
+// AlertEvent is the durable outbox; Redis is only its delivery mechanism.
+// This minute-level dispatcher means an API/worker crash between recording a
+// regression and touching Redis loses at most a minute, not the alert. Each
+// send job has a deterministic id, so overlapping dispatch runs are harmless.
+const alertQueue = makeQueue<AlertQueuePayload>(QUEUE_NAMES.alertEmail, env.redisUrl)
+alertQueue.on('error', (error) => {
+  console.error('Alert email queue error (Redis connection):', error)
+})
+
+await registerAlertEmailDispatcher(alertQueue)
+
+const dispatchPendingAlertEmails = makeDispatchPendingAlertEmails(alertQueue)
+const sendAlertEmail = makeSendAlertEmail()
+const alertWorker = makeWorker<AlertQueuePayload>(
+  QUEUE_NAMES.alertEmail, env.redisUrl, async (job) => {
+    if (job.data.kind === 'dispatch') {
+      const summary = await dispatchPendingAlertEmails.dispatch()
+      console.log(JSON.stringify({ event: 'alert-email-dispatch', ...summary }))
+      return
+    }
+
+    const outcome = await sendAlertEmail.send(job.data.alertEventId)
+    console.log(JSON.stringify({
+      event: 'alert-email-send',
+      alertEventId: job.data.alertEventId,
+      outcome,
+      attempt: job.attemptsMade + 1
+    }))
+  }
+)
+
 // Expired sessions were enforced at read time but never removed, so the
 // table only grew - one row per login, forever. This runs here rather than in
 // the API because the API scales horizontally and would have N instances
@@ -203,7 +241,7 @@ const reauditWorker = makeWorker<ReauditPayload>(
 // Redis, and a repeatable job would make session maintenance do exactly that.
 const sessionSweeper = startSessionSweeper(new PostgresSessionRepository(getDatabase()))
 
-const workers = [pingWorker, auditWorker, reauditWorker]
+const workers = [pingWorker, auditWorker, reauditWorker, alertWorker]
 
 for (const worker of workers) {
   worker.on('failed', (job, error) => {
@@ -218,8 +256,10 @@ for (const worker of workers) {
 await Promise.all(workers.map(async (worker) => { await worker.waitUntilReady() }))
 console.log(
   `Worker started, consuming "${QUEUE_NAMES.ping}", "${QUEUE_NAMES.audit}" and ` +
-  `"${QUEUE_NAMES.reaudit}" (audit concurrency ${env.auditConcurrency}, enforced across all ` +
-  `workers; re-audit fan-out at "${REAUDIT_CRON}" ${REAUDIT_TIMEZONE})`
+  `"${QUEUE_NAMES.reaudit}", and "${QUEUE_NAMES.alertEmail}" ` +
+  `(audit concurrency ${env.auditConcurrency}, enforced across all workers; re-audit fan-out at ` +
+  `"${REAUDIT_CRON}" ${REAUDIT_TIMEZONE}; alert dispatch at ` +
+  `"${ALERT_DISPATCH_CRON}" ${ALERT_DISPATCH_TIMEZONE})`
 )
 
 const shutdown = (signal: string): void => {
@@ -246,7 +286,7 @@ const shutdown = (signal: string): void => {
     .then(async () => {
       sessionSweeper.stop()
       // The queue holds its own Redis connection, separate from the worker's.
-      await reauditQueue.close()
+      await Promise.all([reauditQueue.close(), alertQueue.close()])
       await closePageAuditor()
       await disconnectDatabase()
       process.exit(0)
