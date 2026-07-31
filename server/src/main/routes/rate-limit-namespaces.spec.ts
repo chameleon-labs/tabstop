@@ -90,7 +90,8 @@ const collectRules = async (): Promise<RateLimitRule[]> => {
       import('./account-routes.js'),
       import('./audit-routes.js'),
       import('./health-check-routes.js'),
-      import('./page-routes.js')
+      import('./page-routes.js'),
+      import('./alert-routes.js')
     ])
 
     for (const module of modules) {

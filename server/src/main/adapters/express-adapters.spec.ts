@@ -34,6 +34,26 @@ const echoController: Controller = {
 }
 
 describe('adaptRoute', () => {
+  it('sends an explicit html response without JSON quoting it', async () => {
+    const controller: Controller = {
+      async handle (): Promise<HttpResponse> {
+        return { statusCode: 200, body: '<h1>Confirmed</h1>', bodyType: 'html' }
+      }
+    }
+    const app = express()
+    app.get('/probe', adaptRoute(controller))
+
+    const response = await request(app).get('/probe')
+
+    expect(response.status).toBe(200)
+    expect(response.type).toBe('text/html')
+    expect(response.text).toBe('<h1>Confirmed</h1>')
+    expect(response.headers['content-security-policy'])
+      .toBe("default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+    expect(response.headers['referrer-policy']).toBe('no-referrer')
+    expect(response.headers['x-frame-options']).toBe('DENY')
+  })
+
   it('applies the security attributes the adapter owns, not the controller', async () => {
     const expiresAt = new Date(Date.now() + 86_400_000)
     const controller: Controller = {

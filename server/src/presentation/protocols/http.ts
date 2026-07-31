@@ -11,6 +11,8 @@ export type CookieDirective =
 export type HttpResponse<T = unknown> = {
   statusCode: number
   body: T
+  /** JSON by default; HTML is reserved for browser-facing confirmation pages. */
+  bodyType?: 'json' | 'html'
   cookies?: CookieDirective[]
   /**
    * Applied after any middleware default, so a controller can opt out of the

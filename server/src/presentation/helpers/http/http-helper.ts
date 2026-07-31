@@ -6,6 +6,12 @@ export const ok = <T>(body: T): HttpResponse<T> => ({
   body
 })
 
+export const okHtml = (body: string): HttpResponse<string> => ({
+  statusCode: 200,
+  body,
+  bodyType: 'html'
+})
+
 export const created = <T>(body: T, cookies?: CookieDirective[]): HttpResponse<T> => (
   cookies === undefined
     ? { statusCode: 201, body }
