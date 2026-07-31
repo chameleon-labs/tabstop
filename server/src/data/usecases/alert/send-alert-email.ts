@@ -7,7 +7,15 @@ import type {
 import type {
   MarkAlertEmailedRepository
 } from '../../protocols/db/alert-event/mark-alert-emailed-repository.js'
-import type { AlertEmail, AlertSender } from '../../protocols/mail/alert-sender.js'
+import type {
+  MarkAlertFailedRepository
+} from '../../protocols/db/alert-event/mark-alert-failed-repository.js'
+import type {
+  MarkAlertPreviewedRepository
+} from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+import {
+  PermanentAlertDeliveryError, type AlertEmail, type AlertSender
+} from '../../protocols/mail/alert-sender.js'
 import { diffViolations } from '../../../domain/services/regression.js'
 import type { Impact } from '../../../domain/models/impact.js'
 import type {
@@ -115,7 +123,8 @@ const renderAlertEmail = (
 
 export class DbSendAlertEmail implements SendAlertEmail {
   constructor (
-    private readonly alerts: LoadAlertDeliveryRepository & MarkAlertEmailedRepository,
+    private readonly alerts: LoadAlertDeliveryRepository & MarkAlertEmailedRepository &
+      MarkAlertPreviewedRepository & MarkAlertFailedRepository,
     private readonly sender: AlertSender,
     private readonly tokens: AlertUnsubscribeTokenCodec,
     private readonly from: string,
@@ -126,15 +135,28 @@ export class DbSendAlertEmail implements SendAlertEmail {
 
   async send (alertEventId: string): Promise<SendAlertEmailOutcome> {
     const delivery = await this.alerts.loadAlertDelivery(alertEventId)
-    if (delivery === null || delivery.emailedAt !== null || !delivery.alertsEnabled) {
+    if (delivery === null || delivery.emailedAt !== null || delivery.failedAt !== null ||
+      !delivery.alertsEnabled) {
       return 'skipped'
     }
 
     const token = this.tokens.encode(delivery.pageId)
-    const sendResult = await this.sender.send(renderAlertEmail(
-      delivery, this.from, this.frontendOrigin, this.publicApiOrigin, token
-    ))
-    if (sendResult === 'previewed') return 'previewed'
+    let sendResult: Awaited<ReturnType<AlertSender['send']>>
+    try {
+      sendResult = await this.sender.send(renderAlertEmail(
+        delivery, this.from, this.frontendOrigin, this.publicApiOrigin, token
+      ))
+    } catch (error) {
+      if (error instanceof PermanentAlertDeliveryError) {
+        await this.alerts.markAlertFailed(alertEventId, this.now(), error.reason)
+        return 'failed'
+      }
+      throw error
+    }
+    if (sendResult === 'previewed') {
+      await this.alerts.markAlertPreviewed(alertEventId, this.now())
+      return 'previewed'
+    }
     await this.alerts.markAlertEmailed(alertEventId, this.now())
     return 'sent'
   }

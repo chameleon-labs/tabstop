@@ -1,15 +1,27 @@
 import { describe, expect, it, vi } from 'vitest'
+import * as mailProtocol from '../../protocols/mail/alert-sender.js'
 import type {
   AlertDelivery, LoadAlertDeliveryRepository
 } from '../../protocols/db/alert-event/load-alert-delivery-repository.js'
 import type {
   MarkAlertEmailedRepository
 } from '../../protocols/db/alert-event/mark-alert-emailed-repository.js'
-import type { AlertSender } from '../../protocols/mail/alert-sender.js'
+import type {
+  MarkAlertFailedRepository
+} from '../../protocols/db/alert-event/mark-alert-failed-repository.js'
+import type {
+  MarkAlertPreviewedRepository
+} from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+import {
+  AlertRateLimitError, PermanentAlertDeliveryError, type AlertSender
+} from '../../protocols/mail/alert-sender.js'
 import type {
   AlertUnsubscribeTokenCodec
 } from '../../protocols/cryptography/alert-unsubscribe-token-codec.js'
 import { DbSendAlertEmail } from './send-alert-email.js'
+
+type AlertRepository = LoadAlertDeliveryRepository &
+  MarkAlertEmailedRepository & MarkAlertPreviewedRepository & MarkAlertFailedRepository
 
 const delivery: AlertDelivery = {
   eventId: '12',
@@ -41,10 +53,16 @@ const setup = (overrides: Partial<{
   loaded: AlertDelivery | null
   send: AlertSender['send']
   mark: MarkAlertEmailedRepository['markAlertEmailed']
+  markPreviewed: MarkAlertPreviewedRepository['markAlertPreviewed']
+  markFailed: MarkAlertFailedRepository['markAlertFailed']
 }> = {}) => {
-  const repository: LoadAlertDeliveryRepository & MarkAlertEmailedRepository = {
-    loadAlertDelivery: vi.fn().mockResolvedValue(overrides.loaded ?? delivery),
-    markAlertEmailed: overrides.mark ?? vi.fn().mockResolvedValue(true)
+  const repository: AlertRepository = {
+    loadAlertDelivery: vi.fn().mockResolvedValue(
+      overrides.loaded === undefined ? delivery : overrides.loaded
+    ),
+    markAlertEmailed: overrides.mark ?? vi.fn().mockResolvedValue(true),
+    markAlertPreviewed: overrides.markPreviewed ?? vi.fn().mockResolvedValue(true),
+    markAlertFailed: overrides.markFailed ?? vi.fn().mockResolvedValue(true)
   }
   const sender: AlertSender = {
     send: overrides.send ?? vi.fn().mockResolvedValue('accepted')
@@ -62,6 +80,19 @@ const setup = (overrides: Partial<{
 }
 
 describe('DbSendAlertEmail', () => {
+  it('exposes permanent and rate-limit delivery errors with stable details', () => {
+    const permanentError = Reflect.get(mailProtocol, 'PermanentAlertDeliveryError')
+    const rateLimitError = Reflect.get(mailProtocol, 'AlertRateLimitError')
+
+    expect(permanentError).toEqual(expect.any(Function))
+    expect(rateLimitError).toEqual(expect.any(Function))
+
+    expect(Reflect.construct(permanentError, ['resend:403:invalid_api_key']))
+      .toMatchObject({ reason: 'resend:403:invalid_api_key' })
+    expect(Reflect.construct(rateLimitError, [30_000]))
+      .toMatchObject({ retryAfterMs: 30_000 })
+  })
+
   it('sends the regression detail and marks the event only after acceptance', async () => {
     const calls: string[] = []
     const { sut, sender, repository } = setup({
@@ -101,11 +132,50 @@ describe('DbSendAlertEmail', () => {
 
     await expect(sut.send('12')).rejects.toThrow('provider unavailable')
     expect(repository.markAlertEmailed).not.toHaveBeenCalled()
+    expect(repository.markAlertFailed).not.toHaveBeenCalled()
+  })
+
+  it('does not send an event that no longer exists', async () => {
+    const { sut, sender } = setup({ loaded: null })
+
+    await expect(sut.send('12')).resolves.toBe('skipped')
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('persists only permanent provider rejections', async () => {
+    const permanent = setup({
+      send: vi.fn().mockRejectedValue(
+        new PermanentAlertDeliveryError('resend:403:invalid_api_key')
+      )
+    })
+    const rateLimited = setup({
+      send: vi.fn().mockRejectedValue(new AlertRateLimitError(30_000))
+    })
+
+    await expect(permanent.sut.send('12')).resolves.toBe('failed')
+    expect(permanent.repository.markAlertFailed).toHaveBeenCalledWith(
+      '12', new Date('2026-07-30T12:00:00Z'), 'resend:403:invalid_api_key'
+    )
+    expect(permanent.repository.markAlertEmailed).not.toHaveBeenCalled()
+
+    await expect(rateLimited.sut.send('12')).rejects.toThrow(
+      'Alert delivery rate limited for 30000ms'
+    )
+    expect(rateLimited.repository.markAlertFailed).not.toHaveBeenCalled()
   })
 
   it('does not send an event that was already delivered', async () => {
     const { sut, sender } = setup({
       loaded: { ...delivery, emailedAt: new Date('2026-07-30T11:00:00Z') }
+    })
+
+    await expect(sut.send('12')).resolves.toBe('skipped')
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('does not send an event that was permanently rejected', async () => {
+    const { sut, sender } = setup({
+      loaded: { ...delivery, failedAt: new Date('2026-07-30T11:00:00Z') }
     })
 
     await expect(sut.send('12')).resolves.toBe('skipped')
@@ -121,29 +191,16 @@ describe('DbSendAlertEmail', () => {
     expect(sender.send).not.toHaveBeenCalled()
   })
 
-  it('previews through the console adapter without claiming the event was emailed', async () => {
-    const repository: LoadAlertDeliveryRepository & MarkAlertEmailedRepository = {
-      loadAlertDelivery: vi.fn().mockResolvedValue(delivery),
-      markAlertEmailed: vi.fn()
-    }
-    const tokens: AlertUnsubscribeTokenCodec = {
-      encode: vi.fn().mockReturnValue('signed-token'),
-      decode: vi.fn()
-    }
-    const sender: AlertSender = {
+  it('records console previews without claiming the event was emailed', async () => {
+    const { sut, repository, sender } = setup({
       send: vi.fn().mockResolvedValue('previewed')
-    }
-    const sut = new DbSendAlertEmail(
-      repository,
-      sender,
-      tokens,
-      'Tabstop <alerts@alerts.tabstop.dev>',
-      'https://app.tabstop.dev',
-      'https://api.tabstop.dev'
-    )
+    })
 
     await expect(sut.send('12')).resolves.toBe('previewed')
     expect(sender.send).toHaveBeenCalledOnce()
+    expect(repository.markAlertPreviewed).toHaveBeenCalledWith(
+      '12', new Date('2026-07-30T12:00:00Z')
+    )
     expect(repository.markAlertEmailed).not.toHaveBeenCalled()
   })
 

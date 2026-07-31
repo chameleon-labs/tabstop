@@ -42,4 +42,25 @@ describe('DbDispatchPendingAlertEmails', () => {
     await expect(new DbDispatchPendingAlertEmails(alerts, queue).dispatch())
       .rejects.toThrow('redis unavailable')
   })
+
+  it('keeps preview mode on every keyset page', async () => {
+    const alerts: LoadPendingAlertEventsRepository = {
+      loadPendingAlertEventIds: vi.fn()
+        .mockResolvedValueOnce(['1', '2'])
+        .mockResolvedValueOnce(['3'])
+    }
+    const queue: AlertEmailJobQueue = {
+      enqueueOnce: vi.fn().mockResolvedValue(undefined)
+    }
+    const sut = new DbDispatchPendingAlertEmails(alerts, queue, 2, 'preview')
+
+    await expect(sut.dispatch()).resolves.toEqual({ processed: 3 })
+
+    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(
+      1, null, 2, 'preview'
+    )
+    expect(alerts.loadPendingAlertEventIds).toHaveBeenNthCalledWith(
+      2, '2', 2, 'preview'
+    )
+  })
 })
