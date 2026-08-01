@@ -11,6 +11,9 @@ const responseName = (body: unknown): string | null =>
     ? body.name
     : null
 
+const providerNameForReason = (name: string | null): string =>
+  name !== null && /^[a-z][a-z0-9_]{0,63}$/.test(name) ? name : 'http_error'
+
 const secondsToMilliseconds = (value: string | null): number | null => {
   if (value === null || !/^\d+$/.test(value)) return null
   return Number(value) * 1_000
@@ -57,12 +60,18 @@ export class ResendAlertSender implements AlertSender {
           DAILY_QUOTA_RETRY_AFTER_MS
         throw new AlertRateLimitError(clampRetryAfter(retryAfterMs))
       }
-      if (response.status === 400 || response.status === 401 || response.status === 403 ||
-        response.status === 422 ||
-        (response.status === 409 && name === 'invalid_idempotent_request') ||
-        (response.status === 429 && name === 'monthly_quota_exceeded')) {
+      if (response.status === 429 && name === 'monthly_quota_exceeded') {
         throw new PermanentAlertDeliveryError(
-          `resend:${response.status}:${name ?? 'http_error'}`
+          `resend:${response.status}:${providerNameForReason(name)}`
+        )
+      }
+      if (response.status === 429 ||
+        (response.status === 409 && name === 'concurrent_idempotent_requests')) {
+        throw new Error(`Resend rejected alert email with ${response.status}`)
+      }
+      if (response.status >= 400 && response.status < 500) {
+        throw new PermanentAlertDeliveryError(
+          `resend:${response.status}:${providerNameForReason(name)}`
         )
       }
       throw new Error(`Resend rejected alert email with ${response.status}`)

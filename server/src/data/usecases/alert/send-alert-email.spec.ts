@@ -168,7 +168,7 @@ describe('DbSendAlertEmail', () => {
   it('persists only permanent provider rejections', async () => {
     const permanent = setup({
       send: vi.fn().mockRejectedValue(
-        new PermanentAlertDeliveryError('resend:403:invalid_api_key')
+        new PermanentAlertDeliveryError('resend:451:unavailable_for_legal_reasons')
       )
     })
     const rateLimited = setup({
@@ -177,7 +177,7 @@ describe('DbSendAlertEmail', () => {
 
     await expect(permanent.sut.send('12')).resolves.toBe('failed')
     expect(permanent.repository.markAlertFailed).toHaveBeenCalledWith(
-      '12', new Date('2026-07-30T12:00:00Z'), 'resend:403:invalid_api_key'
+      '12', new Date('2026-07-30T12:00:00Z'), 'resend:451:unavailable_for_legal_reasons'
     )
     expect(permanent.repository.markAlertEmailed).not.toHaveBeenCalled()
 

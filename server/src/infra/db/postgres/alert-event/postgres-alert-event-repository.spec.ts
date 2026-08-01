@@ -173,8 +173,9 @@ describe('PostgresAlertEventRepository', () => {
     const { event } = await fixture()
     const first = new Date('2026-07-30T10:00:00Z')
     const second = new Date('2026-07-30T11:00:00Z')
+    const failureReason = 'resend:451:unavailable_for_legal_reasons'
 
-    expect(await sut.markAlertFailed(event.id, first, 'recipient address rejected')).toBe(true)
+    expect(await sut.markAlertFailed(event.id, first, failureReason)).toBe(true)
     expect(await sut.markAlertFailed(event.id, second, 'retry must not overwrite')).toBe(false)
     expect(await sut.markAlertEmailed(event.id, second)).toBe(false)
 
@@ -184,7 +185,7 @@ describe('PostgresAlertEventRepository', () => {
     expect(stored).toEqual({
       emailed_at: null,
       failed_at: first,
-      failure_reason: 'recipient address rejected'
+      failure_reason: failureReason
     })
   })
 

@@ -69,7 +69,11 @@ describe('ResendAlertSender', () => {
     [400, 'validation_error'],
     [401, 'missing_api_key'],
     [403, 'invalid_api_key'],
+    [404, 'not_found'],
+    [405, 'method_not_allowed'],
+    [418, 'unknown_client_error'],
     [422, 'invalid_from_address'],
+    [451, 'unavailable_for_legal_reasons'],
     [409, 'invalid_idempotent_request'],
     [429, 'monthly_quota_exceeded']
   ])('classifies Resend %i %s as a permanent rejection', async (status, name) => {
@@ -84,20 +88,42 @@ describe('ResendAlertSender', () => {
     expect(error).toMatchObject({ reason: `resend:${status}:${name}` })
   })
 
-  it('uses http_error when the response name is not a string', async () => {
+  it.each([
+    { value: { value: 'validation_error' }, label: 'a non-string name' },
+    { value: 'Invalid_Name', label: 'a noncanonical name' },
+    { value: `a${'a'.repeat(64)}`, label: 'an overlong name' },
+    { value: 'validation_error\u0000untrusted', label: 'a control-character name' }
+  ])('uses a bounded reason for $label', async ({ value }) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(rejectedResponse(400, {
-      name: { value: 'validation_error' },
+      name: value,
       message: 'provider detail that must not be persisted'
     }))
 
     const error = await rejectedError(new ResendAlertSender('re_test', fetcher))
 
     expect(error).toMatchObject({ reason: 'resend:400:http_error' })
+    expect(error).not.toMatchObject({ reason: expect.stringContaining(String(value)) })
+    if (!(error instanceof PermanentAlertDeliveryError)) {
+      throw new Error('expected a permanent delivery error')
+    }
+    expect(error.reason.length).toBeLessThan(100)
   })
 
   it('keeps concurrent idempotency conflicts retryable', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(rejectedResponse(409, {
       name: 'concurrent_idempotent_requests'
+    }))
+
+    const error = await rejectedError(new ResendAlertSender('re_test', fetcher))
+
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(PermanentAlertDeliveryError)
+    expect(error).not.toBeInstanceOf(AlertRateLimitError)
+  })
+
+  it('keeps unclassified 429 responses retryable', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(rejectedResponse(429, {
+      name: 'unexpected_quota_error'
     }))
 
     const error = await rejectedError(new ResendAlertSender('re_test', fetcher))
