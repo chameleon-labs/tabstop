@@ -157,6 +157,18 @@ where id = $1 and emailed_at is null;
 
 That scope is the safety boundary: clear one known event, or a bulk set chosen explicitly by the operator, and let the normal dispatcher pick it up again. Bulk retry must always use an operator-chosen predicate and must never happen automatically on deploy. There is no public retry endpoint.
 
+### Coordinated rollback
+
+Migration 009 never auto-discards preview or terminal delivery state. Its downgrade refuses to run while any `previewed_at`, `failed_at`, or `failure_reason` value remains. To deliberately return to workers that do not understand this state, first stop the alert-email workers so they cannot write more of it, then inspect and resolve the affected events. Only after accepting that the older workers may preview or deliver those events again, explicitly clear the selected rows:
+
+```sql
+update alert_events
+set previewed_at = null, failed_at = null, failure_reason = null
+where id = $1 and emailed_at is null;
+```
+
+Use an operator-chosen predicate for any bulk operation. Once no delivery-state values remain, the migration can be downgraded; it will never silently erase them.
+
 Every message carries `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The URL is authenticated by an HMAC token scoped to the page, so the POST works without a session. A normal browser GET displays a confirmation form rather than changing state on navigation — mail scanners follow links, and a state-changing GET would unsubscribe people who never clicked. Unsubscribing flips `pages.alerts_enabled`; `monitoring_enabled` remains on, preserving daily audits and history. Existing unsent events remain honest (`emailed_at` stays null) but fall out of the dispatch query, and a send job already queued checks the preference again before contacting the provider.
 
 ### Production deliverability checklist
@@ -208,7 +220,7 @@ Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300
 
 ## Schema
 
-Seven tables, across eight migrations in `src/infra/db/postgres/migrations/`:
+Seven tables, across nine migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|

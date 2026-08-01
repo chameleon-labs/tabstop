@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql, type Kysely } from 'kysely'
 import type { Database } from '../database.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
+import { migrations } from './index.js'
 
 describe('009 alert delivery state', () => {
   let db: Kysely<Database>
@@ -92,5 +93,47 @@ describe('009 alert delivery state', () => {
       .rejects.toThrow(/alert_events_failure_reason_pair/)
     await expect(insertAlertEvent(pageId, auditId, null, new Date(), null))
       .rejects.toThrow(/alert_events_failure_reason_pair/)
+  })
+
+  it('refuses a downgrade that would discard preview or terminal state', async () => {
+    const previewed = await makeAlertEvent()
+    const failed = await makeAlertEvent()
+    await sql`
+      insert into alert_events (page_id, audit_id, kind, previewed_at)
+      values (${previewed.pageId}::bigint, ${previewed.auditId}::bigint, 'score_drop', now())
+    `.execute(db)
+    await insertAlertEvent(
+      failed.pageId, failed.auditId, null, new Date(), 'resend:451:unavailable_for_legal_reasons'
+    )
+
+    const migration = migrations['009-alert-delivery-state']
+    if (migration === undefined || migration.down === undefined) {
+      throw new Error('009 downgrade is not registered')
+    }
+    const downgrade = migration.down
+    await expect(downgrade(db)).rejects.toThrow(
+      /cannot downgrade 009-alert-delivery-state while delivery state data exists/
+    )
+
+    const columns = await sql<{ column_name: string }>`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'alert_events'
+        and column_name in ('previewed_at', 'failed_at', 'failure_reason')
+    `.execute(db)
+    expect(columns.rows.map((column) => column.column_name).sort()).toEqual([
+      'failed_at', 'failure_reason', 'previewed_at'
+    ])
+
+    const index = await sql<{ indexdef: string }>`
+      select indexdef
+      from pg_indexes
+      where schemaname = 'public'
+        and indexname = 'alert_events_unsent_idx'
+    `.execute(db)
+    expect(index.rows[0]?.indexdef).toContain(
+      'WHERE ((emailed_at IS NULL) AND (failed_at IS NULL))'
+    )
   })
 })

@@ -20,6 +20,22 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
   await sql`
+    do $$
+    begin
+      if exists (
+        select 1
+        from alert_events
+        where previewed_at is not null
+          or failed_at is not null
+          or failure_reason is not null
+      ) then
+        raise exception
+          'cannot downgrade 009-alert-delivery-state while delivery state data exists';
+      end if;
+    end $$;
+  `.execute(db)
+
+  await sql`
     drop index alert_events_unsent_idx;
     create index alert_events_unsent_idx
       on alert_events (id) where emailed_at is null;
