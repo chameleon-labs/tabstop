@@ -63,7 +63,7 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
         try {
           await taken.refund()
         } catch (error) {
-          console.warn('Rate limiter threw on refund; failing open:', error)
+          console.warn('Rate limiter refund failed; preserving denial:', error)
         }
       }))
 

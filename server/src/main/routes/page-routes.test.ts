@@ -101,12 +101,11 @@ describe('page routes', () => {
   /**
    * A page owned by this session, created through the repository.
    *
-   * Not through `POST /api/pages`, because an accepted add enqueues to a live
-   * Redis with a 2s timeout and three retries - so a spec that only needs an
-   * owned page to exist pays for the queue, and enough of them in one file
-   * turns a busy container into a 30s timeout that reports as whatever spec
-   * happened to be running. Specs that are ABOUT creating a page still go
-   * through the API; these are about what you can then do with one.
+   * Not through `POST /api/pages`, because these specs need an owned page as
+   * a precondition, not the add endpoint's enqueue semantics. Keeping that
+   * setup at the repository boundary isolates assertions about an existing
+   * page from whether an accepted add enqueues work; specs about creating a
+   * page still exercise the API.
    */
   const seedPage = async (cookie: string): Promise<{ pageId: string, url: string }> => {
     const url = auditableUrl()
@@ -253,13 +252,11 @@ describe('page routes', () => {
 
     it('refuses the page past the account cap, with a body the UI can render', async () => {
       const cookie = await signUp()
-      // Seeded through the repository rather than through ten more requests.
-      // Each accepted POST enqueues to a real Redis with a 2s timeout and
-      // three retries, so ten of them in sequence is minutes of wall clock
-      // whenever the shared container is busy - which timed the whole file out
-      // rather than failing anything. What this spec is actually about is the
-      // ELEVENTH call's body, so only that one goes through the API. The cap
-      // itself, including under concurrency, is pinned in the repository spec.
+      // Seeded through the repository so the setup does not couple this cap
+      // response assertion to the enqueue semantics of the first ten adds.
+      // This spec is about the ELEVENTH request's body, so only that request
+      // goes through the API. The cap itself, including under concurrency, is
+      // pinned in the repository spec.
       const pages = new PostgresPageRepository(db)
       const userId = await accountIdFor(cookie)
       for (let index = 0; index < PAGE_LIMIT; index++) {

@@ -164,7 +164,7 @@ describe('rate limit middleware', () => {
     )
   })
 
-  it('fails open and calls next when the limiter throws on refund', async () => {
+  it('preserves the denial when the limiter throws on refund', async () => {
     const refund = vi.fn(async () => { throw new Error('redis is on fire') })
     const limiter: RateLimiter = {
       consume: vi.fn()
@@ -186,7 +186,7 @@ describe('rate limit middleware', () => {
     expect(next).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(429)
     expect(warn).toHaveBeenCalledWith(
-      'Rate limiter threw on refund; failing open:', expect.any(Error)
+      'Rate limiter refund failed; preserving denial:', expect.any(Error)
     )
   })
 
