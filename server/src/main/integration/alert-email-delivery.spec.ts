@@ -4,7 +4,8 @@ import type { Kysely } from 'kysely'
 import { DbDispatchPendingAlertEmails } from '../../data/usecases/alert/dispatch-pending-alert-emails.js'
 import { DbSendAlertEmail } from '../../data/usecases/alert/send-alert-email.js'
 import type {
-  AlertDispatchMode
+  AlertDispatchMode,
+  LoadPendingAlertEventsRepository
 } from '../../data/protocols/db/alert-event/load-pending-alert-events-repository.js'
 import type { AlertSender } from '../../data/protocols/mail/alert-sender.js'
 import type { Database } from '../../infra/db/postgres/database.js'
@@ -106,11 +107,13 @@ describe('alert email delivery pipeline', () => {
 
   const start = async (
     sender: AlertSender,
+    alertEventId: string,
     mode: AlertDispatchMode = 'delivery'
   ): Promise<DbDispatchPendingAlertEmails> => {
     const redisUrl = process.env.REDIS_URL
     if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup')
     const repository = new PostgresAlertEventRepository(db)
+    const dispatchAlerts = makeScopedPendingAlertEventsRepository(alertEventId)
     const send = new DbSendAlertEmail(
       repository,
       sender,
@@ -122,7 +125,7 @@ describe('alert email delivery pipeline', () => {
     worker = makeWorker<AlertQueuePayload>(queue.name, redisUrl, makeAlertEmailJobProcessor({
       rateLimit: async (durationMs) => { await queue.rateLimit(durationMs) },
       dispatch: async () => await new DbDispatchPendingAlertEmails(
-        repository,
+        dispatchAlerts,
         new BullMqAlertEmailQueue(queue),
         100,
         mode
@@ -130,13 +133,46 @@ describe('alert email delivery pipeline', () => {
       send: send.send.bind(send)
     }), { limiter: ALERT_EMAIL_WORKER_LIMITER })
     await worker.waitUntilReady()
-    return new DbDispatchPendingAlertEmails(repository, new BullMqAlertEmailQueue(queue), 100, mode)
+    return new DbDispatchPendingAlertEmails(
+      dispatchAlerts,
+      new BullMqAlertEmailQueue(queue),
+      100,
+      mode
+    )
   }
+
+  const makeScopedPendingAlertEventsRepository = (
+    alertEventId: string
+  ): LoadPendingAlertEventsRepository => ({
+    loadPendingAlertEventIds: async (afterId, limit, mode) => {
+      if (limit <= 0) return []
+
+      const event = await db.selectFrom('alert_events')
+        .innerJoin('pages', 'pages.id', 'alert_events.page_id')
+        .select([
+          'alert_events.id',
+          'alert_events.emailed_at',
+          'alert_events.previewed_at',
+          'alert_events.failed_at',
+          'pages.alerts_enabled'
+        ])
+        .where('alert_events.id', '=', alertEventId)
+        .executeTakeFirst()
+
+      if (event === undefined) return []
+      if (afterId !== null && event.id <= afterId) return []
+      if (event.emailed_at !== null || event.failed_at !== null) return []
+      if (!event.alerts_enabled) return []
+      if (mode === 'preview' && event.previewed_at !== null) return []
+
+      return [event.id]
+    }
+  })
 
   it('sends one message when overlapping dispatch runs see the same event', async () => {
     const alertEventId = await seedEvent()
     const sender: AlertSender = { send: vi.fn().mockResolvedValue('accepted') }
-    const dispatch = await start(sender)
+    const dispatch = await start(sender, alertEventId)
 
     await Promise.all([dispatch.dispatch(), dispatch.dispatch()])
 
@@ -157,7 +193,7 @@ describe('alert email delivery pipeline', () => {
         .mockRejectedValueOnce(new Error('provider unavailable'))
         .mockResolvedValue('accepted')
     }
-    const dispatch = await start(sender)
+    const dispatch = await start(sender, alertEventId)
 
     await dispatch.dispatch()
 
@@ -171,10 +207,11 @@ describe('alert email delivery pipeline', () => {
       .where('id', '=', alertEventId).execute()).toHaveLength(1)
   })
 
-  it('does not preview twice after completed-job cleanup, and delivery mode still sends once', async () => {
+  it('does not preview twice after completed-job cleanup, and delivery mode still sends once for the seeded event', async () => {
     const alertEventId = await seedEvent()
+    const unrelatedAlertEventId = await seedEvent()
     const previewSender: AlertSender = { send: vi.fn().mockResolvedValue('previewed') }
-    const previewDispatch = await start(previewSender, 'preview')
+    const previewDispatch = await start(previewSender, alertEventId, 'preview')
 
     expect(await previewDispatch.dispatch()).toEqual({ processed: 1 })
 
@@ -186,6 +223,14 @@ describe('alert email delivery pipeline', () => {
         .executeTakeFirstOrThrow()
       expect(event.previewed_at).not.toBeNull()
       expect(event.emailed_at).toBeNull()
+    })
+    expect(await db.selectFrom('alert_events')
+      .select(['previewed_at', 'emailed_at', 'failed_at'])
+      .where('id', '=', unrelatedAlertEventId)
+      .executeTakeFirstOrThrow()).toEqual({
+      previewed_at: null,
+      emailed_at: null,
+      failed_at: null
     })
 
     const previewJob = await queue.getJob(`alert-email-${alertEventId}`)
@@ -200,7 +245,7 @@ describe('alert email delivery pipeline', () => {
     worker = null
 
     const deliverySender: AlertSender = { send: vi.fn().mockResolvedValue('accepted') }
-    const deliveryDispatch = await start(deliverySender, 'delivery')
+    const deliveryDispatch = await start(deliverySender, alertEventId, 'delivery')
 
     expect(await deliveryDispatch.dispatch()).toEqual({ processed: 1 })
 
@@ -213,5 +258,15 @@ describe('alert email delivery pipeline', () => {
       expect(event.previewed_at).not.toBeNull()
       expect(event.emailed_at).not.toBeNull()
     })
+    expect(await db.selectFrom('alert_events')
+      .select(['previewed_at', 'emailed_at', 'failed_at'])
+      .where('id', '=', unrelatedAlertEventId)
+      .executeTakeFirstOrThrow()).toEqual({
+      previewed_at: null,
+      emailed_at: null,
+      failed_at: null
+    })
+    expect(previewSender.send).toHaveBeenCalledOnce()
+    expect(deliverySender.send).toHaveBeenCalledOnce()
   })
 })
