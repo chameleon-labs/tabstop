@@ -120,7 +120,8 @@ describe('alert email delivery pipeline', () => {
       new HmacAlertUnsubscribeToken('integration-secret-'.repeat(3)),
       'Tabstop <alerts@alerts.example.test>',
       'https://app.tabstop.dev',
-      'https://api.tabstop.dev'
+      'https://api.tabstop.dev',
+      mode
     )
     worker = makeWorker<AlertQueuePayload>(queue.name, redisUrl, makeAlertEmailJobProcessor({
       rateLimit: async (durationMs) => { await queue.rateLimit(durationMs) },
@@ -237,6 +238,17 @@ describe('alert email delivery pipeline', () => {
     expect(await previewJob?.getState()).toBe('completed')
     await previewJob?.remove()
     expect(await queue.getJob(`alert-email-${alertEventId}`)).toBeUndefined()
+
+    const redeliveredPreviewJob = await queue.add('send', {
+      kind: 'send',
+      alertEventId
+    }, { jobId: `queued-redelivery-${alertEventId}`, attempts: 1 })
+
+    await eventually(async () => {
+      expect(await redeliveredPreviewJob.getState()).toBe('completed')
+    })
+    expect(previewSender.send).toHaveBeenCalledOnce()
+    await redeliveredPreviewJob.remove()
 
     expect(await previewDispatch.dispatch()).toEqual({ processed: 0 })
     expect(previewSender.send).toHaveBeenCalledOnce()

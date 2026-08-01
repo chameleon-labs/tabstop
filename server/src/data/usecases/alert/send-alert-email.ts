@@ -13,6 +13,9 @@ import type {
 import type {
   MarkAlertPreviewedRepository
 } from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+import type {
+  AlertDispatchMode
+} from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
 import {
   PermanentAlertDeliveryError, type AlertEmail, type AlertSender
 } from '../../protocols/mail/alert-sender.js'
@@ -131,13 +134,14 @@ export class DbSendAlertEmail implements SendAlertEmail {
     private readonly from: string,
     private readonly frontendOrigin: string,
     private readonly publicApiOrigin: string,
+    private readonly mode: AlertDispatchMode,
     private readonly now: () => Date = () => new Date()
   ) {}
 
   async send (alertEventId: string): Promise<SendAlertEmailOutcome> {
     const delivery = await this.alerts.loadAlertDelivery(alertEventId)
     if (delivery === null || delivery.emailedAt !== null || delivery.failedAt !== null ||
-      !delivery.alertsEnabled) {
+      !delivery.alertsEnabled || (this.mode === 'preview' && delivery.previewedAt !== null)) {
       return 'skipped'
     }
 

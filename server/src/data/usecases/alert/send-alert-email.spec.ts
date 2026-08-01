@@ -12,6 +12,9 @@ import type {
 import type {
   MarkAlertPreviewedRepository
 } from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+import type {
+  AlertDispatchMode
+} from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
 import {
   AlertRateLimitError, PermanentAlertDeliveryError, type AlertSender
 } from '../../protocols/mail/alert-sender.js'
@@ -63,6 +66,7 @@ const setup = (overrides: Partial<{
   mark: MarkAlertEmailedRepository['markAlertEmailed']
   markPreviewed: MarkAlertPreviewedRepository['markAlertPreviewed']
   markFailed: MarkAlertFailedRepository['markAlertFailed']
+  mode: AlertDispatchMode
 }> = {}) => {
   const repository: AlertRepository = {
     loadAlertDelivery: vi.fn().mockResolvedValue(
@@ -82,7 +86,8 @@ const setup = (overrides: Partial<{
   const clock = vi.fn().mockReturnValue(new Date('2026-07-30T12:00:00Z'))
   const sut = new DbSendAlertEmail(
     repository, sender, tokens, 'Tabstop <alerts@alerts.tabstop.dev>',
-    'https://app.tabstop.dev', 'https://api.tabstop.dev', clock
+    'https://app.tabstop.dev', 'https://api.tabstop.dev',
+    overrides.mode ?? 'delivery', clock
   )
   return { sut, repository, sender, tokens }
 }
@@ -211,7 +216,8 @@ describe('DbSendAlertEmail', () => {
 
   it('records console previews without claiming the event was emailed', async () => {
     const { sut, repository, sender } = setup({
-      send: vi.fn().mockResolvedValue('previewed')
+      send: vi.fn().mockResolvedValue('previewed'),
+      mode: 'preview'
     })
 
     await expect(sut.send('12')).resolves.toBe('previewed')
@@ -220,6 +226,28 @@ describe('DbSendAlertEmail', () => {
       '12', new Date('2026-07-30T12:00:00Z')
     )
     expect(repository.markAlertEmailed).not.toHaveBeenCalled()
+  })
+
+  it('skips an already previewed event in preview mode', async () => {
+    const { sut, sender } = setup({
+      loaded: { ...delivery, previewedAt: new Date('2026-07-30T11:00:00Z') },
+      mode: 'preview'
+    })
+
+    await expect(sut.send('12')).resolves.toBe('skipped')
+
+    expect(sender.send).not.toHaveBeenCalled()
+  })
+
+  it('sends an already previewed event in delivery mode', async () => {
+    const { sut, sender } = setup({
+      loaded: { ...delivery, previewedAt: new Date('2026-07-30T11:00:00Z') },
+      mode: 'delivery'
+    })
+
+    await expect(sut.send('12')).resolves.toBe('sent')
+
+    expect(sender.send).toHaveBeenCalledOnce()
   })
 
   it('renders before and after values for an existing rule that became worse', async () => {

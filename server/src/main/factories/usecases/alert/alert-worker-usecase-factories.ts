@@ -39,5 +39,6 @@ export const makeSendAlertEmail = (): SendAlertEmail =>
     new HmacAlertUnsubscribeToken(env.alertUnsubscribeSecret),
     env.mailFrom,
     env.frontendOrigin,
-    env.publicApiOrigin
+    env.publicApiOrigin,
+    alertDispatchMode(env.mailDriver)
   )
