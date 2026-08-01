@@ -3,6 +3,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AlertRateLimitError } from '../../data/protocols/mail/alert-sender.js'
 import { makeAlertEmailJobProcessor } from './alert-email-job-processor.js'
 
+const createDeferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void
+
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+
+  return { promise, resolve }
+}
+
+const flushMicrotasks = async (): Promise<void> => {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 describe('makeAlertEmailJobProcessor', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -25,17 +40,37 @@ describe('makeAlertEmailJobProcessor', () => {
     }))
   })
 
-  it('applies the retry delay and throws BullMQ RateLimitError on provider rate limiting', async () => {
+  it('waits for the retry delay before throwing BullMQ RateLimitError on provider rate limiting', async () => {
+    const retryDelay = createDeferred<void>()
     const dispatch = vi.fn(async () => ({ processed: 0 }))
     const send = vi.fn(async () => { throw new AlertRateLimitError(7_000) })
-    const rateLimit = vi.fn(async () => {})
+    const rateLimit = vi.fn(() => retryDelay.promise)
     const process = makeAlertEmailJobProcessor({ dispatch, send, rateLimit })
-
-    await expect(process({
+    const processing = process({
       data: { kind: 'send', alertEventId: 'alert-1' },
       attemptsMade: 0
-    })).rejects.toBeInstanceOf(RateLimitError)
+    })
+    let settlement: 'pending' | 'resolved' | 'rejected' = 'pending'
+
+    processing.then(
+      () => {
+        settlement = 'resolved'
+      },
+      () => {
+        settlement = 'rejected'
+      }
+    )
+
+    await flushMicrotasks()
+
+    expect(settlement).toBe('pending')
+    expect(rateLimit).toHaveBeenCalledOnce()
     expect(rateLimit).toHaveBeenCalledWith(7_000)
+
+    retryDelay.resolve()
+
+    await expect(processing).rejects.toBeInstanceOf(RateLimitError)
+    expect(settlement).toBe('rejected')
   })
 
   it('propagates ordinary transient send failures unchanged', async () => {
