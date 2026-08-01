@@ -11,8 +11,8 @@ import type {
   MarkAlertFailedRepository
 } from '../../protocols/db/alert-event/mark-alert-failed-repository.js'
 import type {
-  MarkAlertPreviewedRepository
-} from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+  ClaimAlertPreviewRepository
+} from '../../protocols/db/alert-event/claim-alert-preview-repository.js'
 import type {
   AlertDispatchMode
 } from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
@@ -128,7 +128,7 @@ const renderAlertEmail = (
 export class DbSendAlertEmail implements SendAlertEmail {
   constructor (
     private readonly alerts: LoadAlertDeliveryRepository & MarkAlertEmailedRepository &
-      MarkAlertPreviewedRepository & MarkAlertFailedRepository,
+      ClaimAlertPreviewRepository & MarkAlertFailedRepository,
     private readonly sender: AlertSender,
     private readonly tokens: AlertUnsubscribeTokenCodec,
     private readonly from: string,
@@ -142,6 +142,11 @@ export class DbSendAlertEmail implements SendAlertEmail {
     const delivery = await this.alerts.loadAlertDelivery(alertEventId)
     if (delivery === null || delivery.emailedAt !== null || delivery.failedAt !== null ||
       !delivery.alertsEnabled || (this.mode === 'preview' && delivery.previewedAt !== null)) {
+      return 'skipped'
+    }
+
+    if (this.mode === 'preview' &&
+      !await this.alerts.claimAlertPreview(alertEventId, this.now())) {
       return 'skipped'
     }
 
@@ -159,7 +164,6 @@ export class DbSendAlertEmail implements SendAlertEmail {
       throw error
     }
     if (sendResult === 'previewed') {
-      await this.alerts.markAlertPreviewed(alertEventId, this.now())
       return 'previewed'
     }
     await this.alerts.markAlertEmailed(alertEventId, this.now())

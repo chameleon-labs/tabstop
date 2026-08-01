@@ -130,7 +130,7 @@ describe('PostgresAlertEventRepository', () => {
     const previewedEvent = await fixture()
     const failedEvent = await fixture()
 
-    expect(await sut.markAlertPreviewed(
+    expect(await sut.claimAlertPreview(
       previewedEvent.event.id,
       new Date('2026-07-30T10:00:00Z')
     )).toBe(true)
@@ -156,13 +156,13 @@ describe('PostgresAlertEventRepository', () => {
       .toContain(failedEvent.event.id)
   })
 
-  it('marks previews once and never rewrites their first recorded time', async () => {
+  it('claims previews once and never rewrites their first recorded time', async () => {
     const { event } = await fixture()
     const first = new Date('2026-07-30T10:00:00Z')
     const second = new Date('2026-07-30T11:00:00Z')
 
-    expect(await sut.markAlertPreviewed(event.id, first)).toBe(true)
-    expect(await sut.markAlertPreviewed(event.id, second)).toBe(false)
+    expect(await sut.claimAlertPreview(event.id, first)).toBe(true)
+    expect(await sut.claimAlertPreview(event.id, second)).toBe(false)
 
     const stored = await db.selectFrom('alert_events').select('previewed_at')
       .where('id', '=', event.id).executeTakeFirstOrThrow()

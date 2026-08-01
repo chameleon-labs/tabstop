@@ -9,8 +9,8 @@ import type {
   MarkAlertEmailedRepository
 } from '../../../../data/protocols/db/alert-event/mark-alert-emailed-repository.js'
 import type {
-  MarkAlertPreviewedRepository
-} from '../../../../data/protocols/db/alert-event/mark-alert-previewed-repository.js'
+  ClaimAlertPreviewRepository
+} from '../../../../data/protocols/db/alert-event/claim-alert-preview-repository.js'
 import type {
   MarkAlertFailedRepository
 } from '../../../../data/protocols/db/alert-event/mark-alert-failed-repository.js'
@@ -23,7 +23,7 @@ export class PostgresAlertEventRepository implements
 LoadAlertDeliveryRepository,
 LoadPendingAlertEventsRepository,
 MarkAlertEmailedRepository,
-MarkAlertPreviewedRepository,
+ClaimAlertPreviewRepository,
 MarkAlertFailedRepository,
 DisablePageAlertsRepository {
   constructor (private readonly db: Kysely<Database>) {}
@@ -127,10 +127,10 @@ DisablePageAlertsRepository {
     return row !== undefined
   }
 
-  async markAlertPreviewed (alertEventId: string, previewedAt: Date): Promise<boolean> {
+  async claimAlertPreview (alertEventId: string, claimedAt: Date): Promise<boolean> {
     const row = await this.db
       .updateTable('alert_events')
-      .set({ previewed_at: previewedAt })
+      .set({ previewed_at: claimedAt })
       .where('id', '=', alertEventId)
       .where('previewed_at', 'is', null)
       .where('failed_at', 'is', null)

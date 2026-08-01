@@ -10,8 +10,8 @@ import type {
   MarkAlertFailedRepository
 } from '../../protocols/db/alert-event/mark-alert-failed-repository.js'
 import type {
-  MarkAlertPreviewedRepository
-} from '../../protocols/db/alert-event/mark-alert-previewed-repository.js'
+  ClaimAlertPreviewRepository
+} from '../../protocols/db/alert-event/claim-alert-preview-repository.js'
 import type {
   AlertDispatchMode
 } from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
@@ -24,7 +24,7 @@ import type {
 import { DbSendAlertEmail } from './send-alert-email.js'
 
 type AlertRepository = LoadAlertDeliveryRepository &
-  MarkAlertEmailedRepository & MarkAlertPreviewedRepository & MarkAlertFailedRepository
+  MarkAlertEmailedRepository & ClaimAlertPreviewRepository & MarkAlertFailedRepository
 
 const delivery: AlertDelivery = {
   eventId: '12',
@@ -64,7 +64,7 @@ const setup = (overrides: Partial<{
   loaded: AlertDelivery | null
   send: AlertSender['send']
   mark: MarkAlertEmailedRepository['markAlertEmailed']
-  markPreviewed: MarkAlertPreviewedRepository['markAlertPreviewed']
+  claimPreview: ClaimAlertPreviewRepository['claimAlertPreview']
   markFailed: MarkAlertFailedRepository['markAlertFailed']
   mode: AlertDispatchMode
 }> = {}) => {
@@ -73,7 +73,7 @@ const setup = (overrides: Partial<{
       overrides.loaded === undefined ? delivery : overrides.loaded
     ),
     markAlertEmailed: overrides.mark ?? vi.fn().mockResolvedValue(true),
-    markAlertPreviewed: overrides.markPreviewed ?? vi.fn().mockResolvedValue(true),
+    claimAlertPreview: overrides.claimPreview ?? vi.fn().mockResolvedValue(true),
     markAlertFailed: overrides.markFailed ?? vi.fn().mockResolvedValue(true)
   }
   const sender: AlertSender = {
@@ -222,7 +222,7 @@ describe('DbSendAlertEmail', () => {
 
     await expect(sut.send('12')).resolves.toBe('previewed')
     expect(sender.send).toHaveBeenCalledOnce()
-    expect(repository.markAlertPreviewed).toHaveBeenCalledWith(
+    expect(repository.claimAlertPreview).toHaveBeenCalledWith(
       '12', new Date('2026-07-30T12:00:00Z')
     )
     expect(repository.markAlertEmailed).not.toHaveBeenCalled()

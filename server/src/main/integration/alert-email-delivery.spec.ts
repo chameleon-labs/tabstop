@@ -39,6 +39,14 @@ const eventually = async (assertion: () => Promise<void>): Promise<void> => {
   }
 }
 
+const deferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 describe('alert email delivery pipeline', () => {
   let db: Kysely<Database>
   let queue: PayloadQueue<AlertQueuePayload>
@@ -170,6 +178,18 @@ describe('alert email delivery pipeline', () => {
     }
   })
 
+  const makePreviewSender = (
+    sender: AlertSender
+  ): DbSendAlertEmail => new DbSendAlertEmail(
+    new PostgresAlertEventRepository(db),
+    sender,
+    new HmacAlertUnsubscribeToken('integration-secret-'.repeat(3)),
+    'Tabstop <alerts@alerts.example.test>',
+    'https://app.tabstop.dev',
+    'https://api.tabstop.dev',
+    'preview'
+  )
+
   it('sends one message when overlapping dispatch runs see the same event', async () => {
     const alertEventId = await seedEvent()
     const sender: AlertSender = { send: vi.fn().mockResolvedValue('accepted') }
@@ -280,5 +300,44 @@ describe('alert email delivery pipeline', () => {
     })
     expect(previewSender.send).toHaveBeenCalledOnce()
     expect(deliverySender.send).toHaveBeenCalledOnce()
+  })
+
+  it('lets only one overlapping worker emit a console preview', async () => {
+    const alertEventId = await seedEvent()
+    const firstWrite = deferred<'previewed'>()
+    const sender: AlertSender = {
+      send: vi.fn()
+        .mockImplementationOnce(() => firstWrite.promise)
+        .mockResolvedValue('previewed')
+    }
+    const send = makePreviewSender(sender)
+
+    const first = send.send(alertEventId)
+    await eventually(async () => {
+      expect(sender.send).toHaveBeenCalledOnce()
+    })
+
+    const second = send.send(alertEventId)
+    await expect(second).resolves.toBe('skipped')
+    expect(sender.send).toHaveBeenCalledOnce()
+
+    firstWrite.resolve('previewed')
+    await expect(first).resolves.toBe('previewed')
+  })
+
+  it('does not repeat a preview whose writer fails after the durable claim', async () => {
+    const alertEventId = await seedEvent()
+    const sender: AlertSender = {
+      send: vi.fn().mockRejectedValue(new Error('preview writer closed'))
+    }
+    const send = makePreviewSender(sender)
+
+    await expect(send.send(alertEventId)).rejects.toThrow('preview writer closed')
+    await expect(send.send(alertEventId)).resolves.toBe('skipped')
+
+    expect(sender.send).toHaveBeenCalledOnce()
+    expect(await db.selectFrom('alert_events').select('previewed_at')
+      .where('id', '=', alertEventId).executeTakeFirstOrThrow())
+      .toEqual({ previewed_at: expect.any(Date) })
   })
 })
