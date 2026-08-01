@@ -25,7 +25,7 @@ describe('makeAlertEmailJobProcessor', () => {
     vi.restoreAllMocks()
   })
 
-  it('uses Resend’s default team-wide rate limit', () => {
+  it('reserves headroom in Resend’s team-wide rate limit', () => {
     expect(ALERT_EMAIL_WORKER_LIMITER).toEqual({ max: 5, duration: 1000 })
   })
 
