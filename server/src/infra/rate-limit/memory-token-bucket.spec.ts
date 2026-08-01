@@ -1,19 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryTokenBucket } from './memory-token-bucket.js'
 import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const frozen: BucketConfig = { capacity: 3, refillPerHour: 1 }
 
 describe('MemoryTokenBucket', () => {
-  it('returns an allowance to its original bucket before a wider next read', async () => {
-    const sut = new MemoryTokenBucket()
-    const wide: BucketConfig = { capacity: 10, refillPerHour: 1 }
+  it('caps a refunded allowance after its original bucket has refilled', async () => {
+    vi.useFakeTimers()
+    try {
+      const sut = new MemoryTokenBucket()
+      const wide: BucketConfig = { capacity: 10, refillPerHour: 1 }
 
-    const allowance = await sut.consume('a', frozen)
-    if (!allowance.allowed) throw new Error('expected allowance')
-    await allowance.refund()
+      const allowance = await sut.consume('a', frozen)
+      if (!allowance.allowed) throw new Error('expected allowance')
+      vi.advanceTimersByTime(3_600_000)
+      await allowance.refund()
 
-    expect(await sut.consume('a', wide)).toMatchObject({ allowed: true, remaining: 2 })
+      expect(await sut.consume('a', wide)).toMatchObject({ allowed: true, remaining: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('evicts rather than growing without bound', async () => {

@@ -117,7 +117,7 @@ describe('FallbackRateLimiter', () => {
     primary.consume
       .mockResolvedValueOnce(allowance(primaryRefund))
       .mockRejectedValueOnce(new Error('redis unavailable'))
-    fallback.consume.mockResolvedValue({ allowed: false, retryAfterMs: 1_000 })
+    fallback.consume.mockResolvedValueOnce(allowance(fallbackRefund))
     const sut = new FallbackRateLimiter(primary, fallback)
 
     const first = await sut.consume('first', bucket)
@@ -136,12 +136,15 @@ describe('FallbackRateLimiter', () => {
     const fallback = mockLimiter()
     const primaryRefund = vi.fn().mockResolvedValue(undefined)
     const fallbackRefund = vi.fn().mockResolvedValue(undefined)
-    primary.consume.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    primary.consume
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      .mockResolvedValueOnce(allowance(primaryRefund))
     fallback.consume.mockResolvedValueOnce(allowance(fallbackRefund))
     const sut = new FallbackRateLimiter(primary, fallback)
 
     const first = await sut.consume('ip:1.2.3.4', bucket)
     vi.advanceTimersByTime(5_000)
+    await sut.consume('primary-is-healthy-again', bucket)
     if (!first.allowed) throw new Error('expected allowance')
     await first.refund()
 
