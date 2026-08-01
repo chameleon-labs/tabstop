@@ -133,6 +133,7 @@ DisablePageAlertsRepository {
       .set({ previewed_at: claimedAt })
       .where('id', '=', alertEventId)
       .where('previewed_at', 'is', null)
+      .where('emailed_at', 'is', null)
       .where('failed_at', 'is', null)
       .returning('id')
       .executeTakeFirst()

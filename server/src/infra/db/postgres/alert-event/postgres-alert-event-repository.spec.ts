@@ -169,6 +169,21 @@ describe('PostgresAlertEventRepository', () => {
     expect(stored.previewed_at).toEqual(first)
   })
 
+  it('refuses a preview claim after real delivery completed', async () => {
+    const { event } = await fixture()
+    const deliveredAt = new Date('2026-07-30T10:00:00Z')
+
+    expect(await sut.markAlertEmailed(event.id, deliveredAt)).toBe(true)
+    expect(await sut.claimAlertPreview(
+      event.id, new Date('2026-07-30T10:01:00Z')
+    )).toBe(false)
+
+    expect(await db.selectFrom('alert_events')
+      .select(['emailed_at', 'previewed_at'])
+      .where('id', '=', event.id).executeTakeFirstOrThrow())
+      .toEqual({ emailed_at: deliveredAt, previewed_at: null })
+  })
+
   it('marks permanent failures once and prevents a failure from being emailed', async () => {
     const { event } = await fixture()
     const first = new Date('2026-07-30T10:00:00Z')
