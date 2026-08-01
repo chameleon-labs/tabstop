@@ -6,6 +6,20 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-01 — deterministic HTTP route specs use per-app dependencies
+
+- HTTP route specs receive complete per-app dependencies: a fresh in-memory
+  limiter and recording audit queue. Real Redis/BullMQ behavior remains in
+  adapter integration specs.
+- Successful rate-limit decisions own an idempotent refund bound to the
+  adapter and cost that produced them. Changing fallback degraded state
+  cannot redirect a refund.
+
+The five-second degraded window deliberately does not reconcile historical
+token counts between Redis and memory. It bounds the outage behavior from the
+point of fallback; attempting to merge prior histories would make the fallback
+state depend on unavailable Redis state and undermine that guarantee.
+
 ## 2026-07-31 — Resend for regression alerts, with Postgres as the outbox
 
 Regression alerts use **Resend's HTTP API**. The volume is tiny, so provider price is irrelevant beside deliverability and operational surface. Resend has the smallest API for a plain-text message today and leaves a clean path to React Email if HTML ever earns its cost. Postmark was the strongest rejected alternative — excellent transactional deliverability, but no advantage this feature currently uses. SES was rejected because its lower unit price buys nothing at this volume and its account, IAM and reputation setup are materially heavier. The adapter calls HTTP directly rather than adding an SDK whose only work here would be one `POST /emails`.
