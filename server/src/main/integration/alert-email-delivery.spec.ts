@@ -12,9 +12,6 @@ import type { Database } from '../../infra/db/postgres/database.js'
 import {
   PostgresAlertEventRepository
 } from '../../infra/db/postgres/alert-event/postgres-alert-event-repository.js'
-import {
-  PostgresAuditRepository
-} from '../../infra/db/postgres/audit/postgres-audit-repository.js'
 import { makeDatabase } from '../../infra/db/postgres/helpers/postgres-helper.js'
 import { BullMqAlertEmailQueue } from '../../infra/queue/bullmq-alert-email-queue.js'
 import {
@@ -85,32 +82,29 @@ describe('alert email delivery pipeline', () => {
       site_id: site.id,
       url: 'https://example.test/checkout'
     }).returning('id').executeTakeFirstOrThrow()
-    await db.insertInto('audits').values({
+    const previous = await db.insertInto('audits').values({
       page_id: page.id,
       url: 'https://example.test/checkout',
       status: 'done',
       score: 90,
-      axe_version: '4.12.1'
-    }).execute()
+      axe_version: '4.12.1',
+      created_at: new Date('2026-07-29T12:00:00Z')
+    }).returning('id').executeTakeFirstOrThrow()
     const current = await db.insertInto('audits').values({
       page_id: page.id,
       url: 'https://example.test/checkout',
-      status: 'queued'
-    }).returning('id').executeTakeFirstOrThrow()
-    const audits = new PostgresAuditRepository(db)
-    const claimedAt = await audits.claimForRun(current.id)
-    if (claimedAt === null) throw new Error('fixture could not claim its audit')
-    await audits.complete(current.id, claimedAt, {
+      status: 'done',
       score: 80,
-      countsByImpact: { minor: 0, moderate: 0, serious: 0, critical: 0 },
-      axeVersion: '4.12.1',
-      durationMs: 10,
-      settled: true,
-      violations: []
-    })
+      axe_version: '4.12.1',
+      created_at: new Date('2026-07-30T12:00:00Z')
+    }).returning('id').executeTakeFirstOrThrow()
 
-    return (await db.selectFrom('alert_events').select('id')
-      .where('audit_id', '=', current.id).executeTakeFirstOrThrow()).id
+    return (await db.insertInto('alert_events').values({
+      page_id: page.id,
+      audit_id: current.id,
+      previous_audit_id: previous.id,
+      kind: 'score_drop'
+    }).returning('id').executeTakeFirstOrThrow()).id
   }
 
   const start = async (
