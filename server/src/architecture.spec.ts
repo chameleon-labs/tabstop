@@ -304,6 +304,7 @@ describe('layer dependencies', () => {
           'infra/db/postgres/migrations/006-sessions-expires-at-index.ts',
           'infra/db/postgres/migrations/007-scheduled-reaudits.ts',
           'infra/db/postgres/migrations/008-alert-delivery.ts',
+          'infra/db/postgres/migrations/009-alert-delivery-state.ts',
           // Reached only through `kysely/migration`, so the exact-name match
           // never saw it.
           'infra/db/postgres/migrations/index.ts',

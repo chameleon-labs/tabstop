@@ -3,11 +3,17 @@ import type {
   AlertDelivery, AlertViolation, LoadAlertDeliveryRepository
 } from '../../../../data/protocols/db/alert-event/load-alert-delivery-repository.js'
 import type {
-  LoadPendingAlertEventsRepository
+  AlertDispatchMode, LoadPendingAlertEventsRepository
 } from '../../../../data/protocols/db/alert-event/load-pending-alert-events-repository.js'
 import type {
   MarkAlertEmailedRepository
 } from '../../../../data/protocols/db/alert-event/mark-alert-emailed-repository.js'
+import type {
+  ClaimAlertPreviewRepository
+} from '../../../../data/protocols/db/alert-event/claim-alert-preview-repository.js'
+import type {
+  MarkAlertFailedRepository
+} from '../../../../data/protocols/db/alert-event/mark-alert-failed-repository.js'
 import type {
   DisablePageAlertsRepository
 } from '../../../../data/protocols/db/alert-event/disable-page-alerts-repository.js'
@@ -17,15 +23,22 @@ export class PostgresAlertEventRepository implements
 LoadAlertDeliveryRepository,
 LoadPendingAlertEventsRepository,
 MarkAlertEmailedRepository,
+ClaimAlertPreviewRepository,
+MarkAlertFailedRepository,
 DisablePageAlertsRepository {
   constructor (private readonly db: Kysely<Database>) {}
 
-  async loadPendingAlertEventIds (afterId: string | null, limit: number): Promise<string[]> {
+  async loadPendingAlertEventIds (
+    afterId: string | null,
+    limit: number,
+    mode: AlertDispatchMode
+  ): Promise<string[]> {
     let query = this.db
       .selectFrom('alert_events')
       .innerJoin('pages', 'pages.id', 'alert_events.page_id')
       .select('alert_events.id')
       .where('alert_events.emailed_at', 'is', null)
+      .where('alert_events.failed_at', 'is', null)
       // Unsubscribe intentionally cancels pending delivery without falsifying
       // emailed_at. Excluding it here keeps the retained event as history
       // without redispatching a job every minute forever.
@@ -33,6 +46,7 @@ DisablePageAlertsRepository {
       .orderBy('alert_events.id')
       .limit(limit)
 
+    if (mode === 'preview') query = query.where('alert_events.previewed_at', 'is', null)
     if (afterId !== null) query = query.where('alert_events.id', '>', afterId)
 
     return (await query.execute()).map(({ id }) => id)
@@ -54,6 +68,8 @@ DisablePageAlertsRepository {
         'alert_events.id as event_id',
         'alert_events.kind',
         'alert_events.emailed_at',
+        'alert_events.previewed_at',
+        'alert_events.failed_at',
         'pages.id as page_id',
         'pages.url as page_url',
         'pages.alerts_enabled',
@@ -93,7 +109,9 @@ DisablePageAlertsRepository {
         violations: previousViolations
       },
       alertsEnabled: row.alerts_enabled,
-      emailedAt: row.emailed_at
+      emailedAt: row.emailed_at,
+      previewedAt: row.previewed_at,
+      failedAt: row.failed_at
     }
   }
 
@@ -103,6 +121,36 @@ DisablePageAlertsRepository {
       .set({ emailed_at: emailedAt })
       .where('id', '=', alertEventId)
       .where('emailed_at', 'is', null)
+      .where('failed_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+    return row !== undefined
+  }
+
+  async claimAlertPreview (alertEventId: string, claimedAt: Date): Promise<boolean> {
+    const row = await this.db
+      .updateTable('alert_events')
+      .set({ previewed_at: claimedAt })
+      .where('id', '=', alertEventId)
+      .where('previewed_at', 'is', null)
+      .where('emailed_at', 'is', null)
+      .where('failed_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+    return row !== undefined
+  }
+
+  async markAlertFailed (
+    alertEventId: string,
+    failedAt: Date,
+    failureReason: string
+  ): Promise<boolean> {
+    const row = await this.db
+      .updateTable('alert_events')
+      .set({ failed_at: failedAt, failure_reason: failureReason })
+      .where('id', '=', alertEventId)
+      .where('emailed_at', 'is', null)
+      .where('failed_at', 'is', null)
       .returning('id')
       .executeTakeFirst()
     return row !== undefined

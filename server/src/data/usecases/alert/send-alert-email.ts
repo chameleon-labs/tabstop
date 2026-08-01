@@ -7,7 +7,18 @@ import type {
 import type {
   MarkAlertEmailedRepository
 } from '../../protocols/db/alert-event/mark-alert-emailed-repository.js'
-import type { AlertEmail, AlertSender } from '../../protocols/mail/alert-sender.js'
+import type {
+  MarkAlertFailedRepository
+} from '../../protocols/db/alert-event/mark-alert-failed-repository.js'
+import type {
+  ClaimAlertPreviewRepository
+} from '../../protocols/db/alert-event/claim-alert-preview-repository.js'
+import type {
+  AlertDispatchMode
+} from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
+import {
+  PermanentAlertDeliveryError, type AlertEmail, type AlertSender
+} from '../../protocols/mail/alert-sender.js'
 import { diffViolations } from '../../../domain/services/regression.js'
 import type { Impact } from '../../../domain/models/impact.js'
 import type {
@@ -73,8 +84,9 @@ const renderAlertEmail = (
 ): AlertEmail => {
   const label = pageLabel(delivery.pageUrl)
   const delta = delivery.previous.score - delivery.current.score
+  const unit = delta === 1 ? 'point' : 'points'
   const subject = delivery.kind === 'score_drop'
-    ? `${label} dropped ${delta} points (${delivery.previous.score} → ${delivery.current.score})`
+    ? `${label} dropped ${delta} ${unit} (${delivery.previous.score} → ${delivery.current.score})`
     : `${label} has a new serious accessibility issue ` +
       `(${delivery.previous.score} → ${delivery.current.score})`
   const details = worsenedViolations(delivery)
@@ -115,26 +127,45 @@ const renderAlertEmail = (
 
 export class DbSendAlertEmail implements SendAlertEmail {
   constructor (
-    private readonly alerts: LoadAlertDeliveryRepository & MarkAlertEmailedRepository,
+    private readonly alerts: LoadAlertDeliveryRepository & MarkAlertEmailedRepository &
+      ClaimAlertPreviewRepository & MarkAlertFailedRepository,
     private readonly sender: AlertSender,
     private readonly tokens: AlertUnsubscribeTokenCodec,
     private readonly from: string,
     private readonly frontendOrigin: string,
     private readonly publicApiOrigin: string,
+    private readonly mode: AlertDispatchMode,
     private readonly now: () => Date = () => new Date()
   ) {}
 
   async send (alertEventId: string): Promise<SendAlertEmailOutcome> {
     const delivery = await this.alerts.loadAlertDelivery(alertEventId)
-    if (delivery === null || delivery.emailedAt !== null || !delivery.alertsEnabled) {
+    if (delivery === null || delivery.emailedAt !== null || delivery.failedAt !== null ||
+      !delivery.alertsEnabled || (this.mode === 'preview' && delivery.previewedAt !== null)) {
+      return 'skipped'
+    }
+
+    if (this.mode === 'preview' &&
+      !await this.alerts.claimAlertPreview(alertEventId, this.now())) {
       return 'skipped'
     }
 
     const token = this.tokens.encode(delivery.pageId)
-    const sendResult = await this.sender.send(renderAlertEmail(
-      delivery, this.from, this.frontendOrigin, this.publicApiOrigin, token
-    ))
-    if (sendResult === 'previewed') return 'previewed'
+    let sendResult: Awaited<ReturnType<AlertSender['send']>>
+    try {
+      sendResult = await this.sender.send(renderAlertEmail(
+        delivery, this.from, this.frontendOrigin, this.publicApiOrigin, token
+      ))
+    } catch (error) {
+      if (error instanceof PermanentAlertDeliveryError) {
+        await this.alerts.markAlertFailed(alertEventId, this.now(), error.reason)
+        return 'failed'
+      }
+      throw error
+    }
+    if (sendResult === 'previewed') {
+      return 'previewed'
+    }
     await this.alerts.markAlertEmailed(alertEventId, this.now())
     return 'sent'
   }

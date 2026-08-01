@@ -104,6 +104,9 @@ export interface AlertEventsTable {
   kind: AlertKind
   created_at: Generated<Date>
   emailed_at: Nullable<Date>
+  previewed_at: Nullable<Date>
+  failed_at: Nullable<Date>
+  failure_reason: Nullable<string>
 }
 
 export interface Database {

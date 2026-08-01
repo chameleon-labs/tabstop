@@ -38,6 +38,6 @@ describe('008 alert delivery', () => {
 
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0]?.indexdef).toContain('(id)')
-    expect(result.rows[0]?.indexdef).toContain('WHERE (emailed_at IS NULL)')
+    expect(result.rows[0]?.indexdef).toContain('emailed_at IS NULL')
   })
 })

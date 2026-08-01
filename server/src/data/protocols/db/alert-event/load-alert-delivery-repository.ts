@@ -25,6 +25,8 @@ export type AlertDelivery = {
   }
   alertsEnabled: boolean
   emailedAt: Date | null
+  previewedAt: Date | null
+  failedAt: Date | null
 }
 
 export interface LoadAlertDeliveryRepository {

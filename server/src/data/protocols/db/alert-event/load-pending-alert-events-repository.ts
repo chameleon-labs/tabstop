@@ -1,3 +1,5 @@
+export type AlertDispatchMode = 'preview' | 'delivery'
+
 export interface LoadPendingAlertEventsRepository {
   /**
    * Keyset page of unsent ids whose page still permits alerts, ascending. The
@@ -6,6 +8,7 @@ export interface LoadPendingAlertEventsRepository {
    */
   loadPendingAlertEventIds: (
     afterId: string | null,
-    limit: number
+    limit: number,
+    mode: AlertDispatchMode
   ) => Promise<string[]>
 }

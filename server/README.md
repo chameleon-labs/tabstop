@@ -141,9 +141,33 @@ Successful tracked-page audits are completed and evaluated in one Postgres trans
 
 ## Alert email
 
-`alert_events` is the durable outbox. Once a minute, a BullMQ scheduler walks every row with `emailed_at is null` and enqueues one deterministic `send` job per event. The send job never runs regression detection again: it loads that exact event, builds a plain-text comparison, and stamps `emailed_at` only after a real provider confirms acceptance. A Redis outage cannot lose the event; the next dispatch sees it again. If a job exhausts its attempts, the dispatcher revives that retained failed record and resets its allowance — a plain duplicate `add` would leave it failed for the retention period and strand the outbox row.
+`alert_events` is the durable outbox. Once a minute, a BullMQ scheduler walks every row with `emailed_at is null` **and** `failed_at is null` and enqueues one deterministic `send` job per event. The send job never runs regression detection again: it loads that exact event, builds a plain-text comparison, and stamps `emailed_at` only after a real provider confirms acceptance. A Redis outage cannot lose the event; the next dispatch sees it again. If a job exhausts its attempts, the dispatcher revives that retained failed record and resets its allowance — a plain duplicate `add` would leave it failed for the retention period and strand the outbox row.
 
-`MAIL_DRIVER=console` is the default and never contacts an email service. It records a preview in the log but deliberately leaves `emailed_at` null. Production must explicitly select `resend` and provide `RESEND_API_KEY`; when that switch is made, the dispatcher revives any retained completed preview jobs immediately. Resend requests carry `Idempotency-Key: alert-event/<id>` so a worker that loses the provider's response can repeat the request without repeating the email inside Resend's 24-hour idempotency window.
+`previewed_at`, `emailed_at`, `failed_at` and `failure_reason` are the delivery-state facts on the row, not guesses from BullMQ retention. `previewed_at` is the durable at-most-once claim acquired before the safe local console adapter writes the message. Only the worker that wins that conditional claim may emit the preview. A crash after the claim can therefore omit a preview, but cannot repeat one; exactly-once output is impossible across PostgreSQL and stdout. The claim suppresses repeated preview-mode dispatch, but it does **not** claim provider delivery and does **not** block a later real send. `emailed_at` means a real provider accepted the request, so delivery is complete. `failed_at` paired with `failure_reason` means delivery hit a deliberate terminal stop and the minute dispatcher now leaves that row alone until an operator clears it.
+
+`MAIL_DRIVER=console` is the default and never contacts an email service. It claims the preview in `previewed_at` before writing it to the log and deliberately leaves `emailed_at` null. Production must explicitly select `resend` and provide `RESEND_API_KEY`; when that switch is made, the dispatcher revives any retained completed preview jobs immediately. Resend requests carry `Idempotency-Key: alert-event/<id>` so a worker that loses the provider's response can repeat the request without repeating the email inside Resend's 24-hour idempotency window.
+
+The deliberate manual retry, only after the operator has repaired the configuration that caused the failure, is:
+
+```sql
+update alert_events
+set failed_at = null, failure_reason = null
+where id = $1 and emailed_at is null;
+```
+
+That scope is the safety boundary: clear one known event, or a bulk set chosen explicitly by the operator, and let the normal dispatcher pick it up again. Bulk retry must always use an operator-chosen predicate and must never happen automatically on deploy. There is no public retry endpoint.
+
+### Coordinated rollback
+
+Migration 009 never auto-discards preview or terminal delivery state. Its downgrade refuses to run while any `previewed_at`, `failed_at`, or `failure_reason` value remains. To deliberately return to workers that do not understand this state, first stop the alert-email workers so they cannot write more of it, then inspect and resolve the affected events. Only after accepting that the older workers may preview or deliver those events again, explicitly erase that metadata for the selected rows:
+
+```sql
+update alert_events
+set previewed_at = null, failed_at = null, failure_reason = null
+where id = $1;
+```
+
+This is coordinated rollback metadata erasure after workers stop, not the manual retry operation above: it intentionally includes a previewed event that was later delivered. Use an operator-chosen predicate for any bulk operation. Once no delivery-state values remain, the migration can be downgraded; it will never silently erase them.
 
 Every message carries `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. The URL is authenticated by an HMAC token scoped to the page, so the POST works without a session. A normal browser GET displays a confirmation form rather than changing state on navigation — mail scanners follow links, and a state-changing GET would unsubscribe people who never clicked. Unsubscribing flips `pages.alerts_enabled`; `monitoring_enabled` remains on, preserving daily audits and history. Existing unsent events remain honest (`emailed_at` stays null) but fall out of the dispatch query, and a send job already queued checks the preference again before contacting the provider.
 
@@ -196,7 +220,7 @@ Budgets are env-configurable: `AUDIT_CONCURRENCY` (default 1 — Chromium is 300
 
 ## Schema
 
-Seven tables, across eight migrations in `src/infra/db/postgres/migrations/`:
+Seven tables, across nine migrations in `src/infra/db/postgres/migrations/`:
 
 | Table | Notes |
 |---|---|

@@ -29,6 +29,9 @@ import {
   makeDispatchPendingAlertEmails, makeSendAlertEmail
 } from './factories/usecases/alert/alert-worker-usecase-factories.js'
 import { registerAlertEmailDispatcher } from './jobs/alert-email-scheduler.js'
+import {
+  ALERT_EMAIL_WORKER_LIMITER, makeAlertEmailJobProcessor
+} from './jobs/alert-email-job-processor.js'
 
 const PING_TIMEOUT_MS = 10_000
 
@@ -213,21 +216,14 @@ await registerAlertEmailDispatcher(alertQueue)
 const dispatchPendingAlertEmails = makeDispatchPendingAlertEmails(alertQueue)
 const sendAlertEmail = makeSendAlertEmail()
 const alertWorker = makeWorker<AlertQueuePayload>(
-  QUEUE_NAMES.alertEmail, env.redisUrl, async (job) => {
-    if (job.data.kind === 'dispatch') {
-      const summary = await dispatchPendingAlertEmails.dispatch()
-      console.log(JSON.stringify({ event: 'alert-email-dispatch', ...summary }))
-      return
-    }
-
-    const outcome = await sendAlertEmail.send(job.data.alertEventId)
-    console.log(JSON.stringify({
-      event: 'alert-email-send',
-      alertEventId: job.data.alertEventId,
-      outcome,
-      attempt: job.attemptsMade + 1
-    }))
-  }
+  QUEUE_NAMES.alertEmail,
+  env.redisUrl,
+  makeAlertEmailJobProcessor({
+    rateLimit: alertQueue.rateLimit.bind(alertQueue),
+    dispatch: dispatchPendingAlertEmails.dispatch.bind(dispatchPendingAlertEmails),
+    send: sendAlertEmail.send.bind(sendAlertEmail)
+  }),
+  { limiter: ALERT_EMAIL_WORKER_LIMITER }
 )
 
 // Expired sessions were enforced at read time but never removed, so the

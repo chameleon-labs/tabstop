@@ -17,6 +17,18 @@ export type AlertEmail = {
 
 export type AlertSendResult = 'accepted' | 'previewed'
 
+export class PermanentAlertDeliveryError extends Error {
+  constructor (readonly reason: string) {
+    super(reason)
+  }
+}
+
+export class AlertRateLimitError extends Error {
+  constructor (readonly retryAfterMs: number) {
+    super(`Alert delivery rate limited for ${retryAfterMs}ms`)
+  }
+}
+
 export interface AlertSender {
   /**
    * `accepted` means a real provider confirmed the request. `previewed` is

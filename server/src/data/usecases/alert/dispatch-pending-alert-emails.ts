@@ -1,5 +1,5 @@
 import type {
-  LoadPendingAlertEventsRepository
+  AlertDispatchMode, LoadPendingAlertEventsRepository
 } from '../../protocols/db/alert-event/load-pending-alert-events-repository.js'
 import type { AlertEmailJobQueue } from '../../protocols/queue/alert-email-job-queue.js'
 import type {
@@ -12,7 +12,8 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
   constructor (
     private readonly alerts: LoadPendingAlertEventsRepository,
     private readonly queue: AlertEmailJobQueue,
-    private readonly batchSize = DEFAULT_BATCH_SIZE
+    private readonly batchSize = DEFAULT_BATCH_SIZE,
+    private readonly mode: AlertDispatchMode = 'delivery'
   ) {}
 
   async dispatch (): Promise<AlertEmailDispatchSummary> {
@@ -20,7 +21,9 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
     let processed = 0
 
     for (;;) {
-      const ids = await this.alerts.loadPendingAlertEventIds(afterId, this.batchSize)
+      const ids = await this.alerts.loadPendingAlertEventIds(
+        afterId, this.batchSize, this.mode
+      )
       if (ids.length === 0) break
 
       for (const alertEventId of ids) {
