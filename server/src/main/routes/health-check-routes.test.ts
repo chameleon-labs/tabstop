@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { setupApp } from '../config/app.js'
 import { connectDatabase, disconnectDatabase } from '../config/database.js'
+import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
 
 describe('GET /api/health', () => {
   beforeAll(() => {
@@ -15,7 +16,8 @@ describe('GET /api/health', () => {
   })
 
   it('returns 200 with an up status and a reachable database', async () => {
-    const app = setupApp()
+    const dependencies = makeTestAppDependencies()
+    const app = setupApp(dependencies)
 
     const response = await request(app).get('/api/health')
 

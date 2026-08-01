@@ -5,6 +5,9 @@ import type { Express } from 'express'
 import type { Kysely } from 'kysely'
 import { setupApp } from '../config/app.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from '../config/database.js'
+import {
+  makeTestAppDependencies, type TestAppDependencies
+} from '../test/test-app-dependencies.js'
 import { PAGE_LIMIT } from '../config/page-limits.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
 import type { Database } from '../../infra/db/postgres/database.js'
@@ -19,13 +22,15 @@ const password = 'correct horse battery staple'
 describe('page routes', () => {
   let app: Express
   let db: Kysely<Database>
+  let dependencies: TestAppDependencies
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     connectDatabase(url)
     db = getDatabase()
-    app = setupApp()
+    dependencies = makeTestAppDependencies()
+    app = setupApp(dependencies)
   })
 
   afterAll(async () => {
@@ -68,8 +73,8 @@ describe('page routes', () => {
   }
 
   /** A signed-in account, as its session cookie. */
-  const signUp = async (): Promise<string> => {
-    const response = await request(app).post('/api/signup')
+  const signUp = async (target: Express = app): Promise<string> => {
+    const response = await request(target).post('/api/signup')
       .set('x-forwarded-for', uniqueIp())
       .send({ email: `${randomUUID()}@pages.test`, password })
       .expect(201)
@@ -180,6 +185,10 @@ describe('page routes', () => {
         .executeTakeFirstOrThrow()
       expect(audit.status).toBe('queued')
       expect(audit.page_id).toBe(response.body.id)
+      const queued = await db.selectFrom('audits').select('id')
+        .where('public_uuid', '=', response.body.firstAuditId as string).executeTakeFirstOrThrow()
+      expect(dependencies.auditQueue.jobs.get(queued.id))
+        .toEqual({ auditId: queued.id })
     })
 
     it('answers with exactly the documented fields and nothing else', async () => {
@@ -313,6 +322,28 @@ describe('page routes', () => {
   })
 
   describe('GET /api/pages', () => {
+    it('does not enqueue while reading or updating a repository-seeded page', async () => {
+      const isolatedDependencies = makeTestAppDependencies()
+      let enqueueCalls = 0
+      isolatedDependencies.auditQueue.enqueueOnce = async (): Promise<void> => {
+        enqueueCalls += 1
+        throw new Error('non-POST page routes must not enqueue')
+      }
+      const isolatedApp = setupApp(isolatedDependencies)
+      const cookie = await signUp(isolatedApp)
+      const { pageId } = await seedPage(cookie)
+
+      const listed = await request(isolatedApp).get('/api/pages')
+        .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
+      const patched = await request(isolatedApp).patch(`/api/pages/${pageId}`)
+        .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
+        .send({ monitoringEnabled: false })
+
+      expect(listed.status).toBe(200)
+      expect(patched.status).toBe(200)
+      expect(enqueueCalls).toBe(0)
+    })
+
     it('answers the empty state with the cap, not just an empty list', async () => {
       const cookie = await signUp()
 
@@ -325,18 +356,17 @@ describe('page routes', () => {
 
     it('serves the dashboard row: score, previous score, sparkline and status', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
+      const { pageId, url } = await seedPage(cookie)
 
       // Three finished audits and then a failure, so the row exercises both
       // halves: a trend to draw, and a latest run that has no score.
       for (const score of [70, 82, 91]) {
         await db.insertInto('audits').values({
-          page_id: pageId, url: added.body.url as string, status: 'done', score
+          page_id: pageId, url, status: 'done', score
         }).execute()
       }
       await db.insertInto('audits').values({
-        page_id: pageId, url: added.body.url as string, status: 'failed',
+        page_id: pageId, url, status: 'failed',
         error: 'Navigation timed out'
       }).execute()
 
@@ -365,7 +395,7 @@ describe('page routes', () => {
 
     it('never returns another account\'s pages', async () => {
       const [alice, bob] = await Promise.all([signUp(), signUp()])
-      await addPage(alice, auditableUrl())
+      await seedPage(alice)
 
       const response = await request(app).get('/api/pages')
         .set('x-forwarded-for', uniqueIp()).set('cookie', bob)
@@ -377,8 +407,7 @@ describe('page routes', () => {
   describe('PATCH /api/pages/:id', () => {
     it('pauses and resumes monitoring without losing history', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
+      const { pageId } = await seedPage(cookie)
 
       const paused = await request(app).patch(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
@@ -399,18 +428,18 @@ describe('page routes', () => {
 
     it('rejects a body that does not carry a boolean', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
+      const { pageId } = await seedPage(cookie)
 
       // "false" as a STRING is the trap: a coercing schema reads it as true
       // and silently resumes monitoring the client asked to pause.
-      const coerced = await request(app).patch(`/api/pages/${added.body.id as string}`)
+      const coerced = await request(app).patch(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
         .send({ monitoringEnabled: 'false' })
 
       expect(coerced.status).toBe(400)
 
       const row = await db.selectFrom('pages').select('monitoring_enabled')
-        .where('id', '=', added.body.id as string).executeTakeFirstOrThrow()
+        .where('id', '=', pageId).executeTakeFirstOrThrow()
       expect(row.monitoring_enabled).toBe(true)
     })
   })
@@ -418,8 +447,7 @@ describe('page routes', () => {
   describe('DELETE /api/pages/:id', () => {
     it('removes the page and its whole audit history', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
+      const { pageId } = await seedPage(cookie)
 
       const response = await request(app).delete(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', cookie)
@@ -435,8 +463,7 @@ describe('page routes', () => {
 
     it('answers 404 for a second delete rather than pretending it worked', async () => {
       const cookie = await signUp()
-      const added = await addPage(cookie, auditableUrl())
-      const pageId = added.body.id as string
+      const { pageId } = await seedPage(cookie)
 
       await request(app).delete(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', cookie).expect(204)
@@ -577,8 +604,7 @@ describe('page routes', () => {
      */
     it('answers 404, never 403, on every route that names a page', async () => {
       const [alice, bob] = await Promise.all([signUp(), signUp()])
-      const hers = await addPage(alice, auditableUrl())
-      const pageId = hers.body.id as string
+      const { pageId } = await seedPage(alice)
 
       const patched = await request(app).patch(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp()).set('cookie', bob)

@@ -5,6 +5,7 @@ import type { Express } from 'express'
 import { setupApp } from '../config/app.js'
 import { connectDatabase, disconnectDatabase } from '../config/database.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
+import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
 
 const password = 'correct horse battery staple'
 const newEmail = (): string => `${randomUUID()}@routes.test`
@@ -36,7 +37,8 @@ describe('account routes', () => {
     const url = process.env.DATABASE_URL
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     connectDatabase(url)
-    app = setupApp()
+    const dependencies = makeTestAppDependencies()
+    app = setupApp(dependencies)
 
     // Shared by the login rate-limit specs below, which need an account that
     // is known to exist without spending their own signup bucket allowance.
@@ -47,6 +49,25 @@ describe('account routes', () => {
 
   afterAll(async () => {
     await disconnectDatabase()
+  })
+
+  it('does not share the me quota between independently constructed apps', async () => {
+    const first = setupApp(makeTestAppDependencies())
+    const second = setupApp(makeTestAppDependencies())
+    const isolatedIp = '198.51.100.57'
+
+    for (let attempt = 0; attempt < RATE_LIMITS.me.capacity; attempt++) {
+      await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)
+    }
+
+    expect(
+      (await request(first).get('/api/me')
+        .set('X-Forwarded-For', isolatedIp)).status
+    ).toBe(429)
+    expect(
+      (await request(second).get('/api/me')
+        .set('X-Forwarded-For', isolatedIp)).status
+    ).toBe(401)
   })
 
   describe('POST /api/signup', () => {
