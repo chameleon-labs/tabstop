@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import { randomUUID } from 'node:crypto'
 import type { Express } from 'express'
@@ -52,22 +52,30 @@ describe('account routes', () => {
   })
 
   it('does not share the me quota between independently constructed apps', async () => {
-    const first = setupApp(makeTestAppDependencies())
-    const second = setupApp(makeTestAppDependencies())
-    const isolatedIp = '198.51.100.57'
+    // The real in-memory limiter refills from Date.now(). Freeze only that
+    // clock so this isolation check cannot cross me's six-second refill
+    // boundary while issuing its 60 HTTP requests under a loaded test worker.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(0)
+    try {
+      const first = setupApp(makeTestAppDependencies())
+      const second = setupApp(makeTestAppDependencies())
+      const isolatedIp = '198.51.100.57'
 
-    for (let attempt = 0; attempt < RATE_LIMITS.me.capacity; attempt++) {
-      await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)
+      for (let attempt = 0; attempt < RATE_LIMITS.me.capacity; attempt++) {
+        await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)
+      }
+
+      expect(
+        (await request(first).get('/api/me')
+          .set('X-Forwarded-For', isolatedIp)).status
+      ).toBe(429)
+      expect(
+        (await request(second).get('/api/me')
+          .set('X-Forwarded-For', isolatedIp)).status
+      ).toBe(401)
+    } finally {
+      now.mockRestore()
     }
-
-    expect(
-      (await request(first).get('/api/me')
-        .set('X-Forwarded-For', isolatedIp)).status
-    ).toBe(429)
-    expect(
-      (await request(second).get('/api/me')
-        .set('X-Forwarded-For', isolatedIp)).status
-    ).toBe(401)
   })
 
   describe('POST /api/signup', () => {
