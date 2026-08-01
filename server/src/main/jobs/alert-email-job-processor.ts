@@ -16,7 +16,7 @@ type AlertEmailJobProcessorDependencies = {
   send: SendAlertEmail['send']
 }
 
-export const ALERT_EMAIL_WORKER_LIMITER = { max: 10, duration: 1000 }
+export const ALERT_EMAIL_WORKER_LIMITER = { max: 5, duration: 1000 }
 
 const logDispatch = (summary: AlertEmailDispatchSummary): void => {
   console.log(JSON.stringify({ event: 'alert-email-dispatch', ...summary }))

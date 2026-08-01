@@ -1,7 +1,9 @@
 import { RateLimitError } from 'bullmq'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AlertRateLimitError } from '../../data/protocols/mail/alert-sender.js'
-import { makeAlertEmailJobProcessor } from './alert-email-job-processor.js'
+import {
+  ALERT_EMAIL_WORKER_LIMITER, makeAlertEmailJobProcessor
+} from './alert-email-job-processor.js'
 
 const createDeferred = <T>() => {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -21,6 +23,10 @@ const flushMicrotasks = async (): Promise<void> => {
 describe('makeAlertEmailJobProcessor', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('uses Resend’s default team-wide rate limit', () => {
+    expect(ALERT_EMAIL_WORKER_LIMITER).toEqual({ max: 5, duration: 1000 })
   })
 
   it('logs dispatch summaries for dispatch jobs', async () => {
