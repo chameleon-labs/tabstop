@@ -15,6 +15,9 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     create index alert_events_unsent_idx
       on alert_events (id)
       where emailed_at is null and failed_at is null;
+    create index alert_events_unpreviewed_idx
+      on alert_events (id)
+      where emailed_at is null and failed_at is null and previewed_at is null;
   `.execute(db)
 }
 
@@ -36,6 +39,7 @@ export const down = async (db: Kysely<unknown>): Promise<void> => {
   `.execute(db)
 
   await sql`
+    drop index alert_events_unpreviewed_idx;
     drop index alert_events_unsent_idx;
     create index alert_events_unsent_idx
       on alert_events (id) where emailed_at is null;

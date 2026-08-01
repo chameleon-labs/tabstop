@@ -79,6 +79,20 @@ describe('009 alert delivery state', () => {
     expect(indexDefinition).toContain('WHERE ((emailed_at IS NULL) AND (failed_at IS NULL))')
   })
 
+  it('keeps completed previews out of the preview dispatcher index', async () => {
+    const result = await sql<{ indexdef: string }>`
+      select indexdef
+      from pg_indexes
+      where schemaname = 'public'
+        and indexname = 'alert_events_unpreviewed_idx'
+    `.execute(db)
+
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]?.indexdef).toContain(
+      'WHERE ((emailed_at IS NULL) AND (failed_at IS NULL) AND (previewed_at IS NULL))'
+    )
+  })
+
   it('rejects an alert event that is both emailed and failed', async () => {
     const { pageId, auditId } = await makeAlertEvent()
 
