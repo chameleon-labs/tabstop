@@ -16,15 +16,15 @@ import { DEFAULT_URL_POLICY } from '../../../../infra/net/ip-address-policy.js'
 import { NodeDnsResolver } from '../../../../infra/net/node-dns-resolver.js'
 import { getDatabase } from '../../../config/database.js'
 import { PAGE_LIMIT } from '../../../config/page-limits.js'
-import { getAuditQueue } from '../../queue/audit-queue.js'
+import type { AuditJobQueue } from '../../../../data/protocols/queue/audit-job-queue.js'
 
-export const makeAddPage = (): AddPage => new DbAddPage(
+export const makeAddPage = (auditQueue: AuditJobQueue): DbAddPage => new DbAddPage(
   new PostgresPageRepository(getDatabase()),
   // Only for the cleanup path when the queue refuses the first job. The page
   // repository owns every other audit write in this flow, inside its
   // transaction.
   new PostgresAuditRepository(getDatabase()),
-  getAuditQueue(),
+  auditQueue,
   new NodeDnsResolver(),
   DEFAULT_URL_POLICY,
   PAGE_LIMIT

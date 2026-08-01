@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import request from 'supertest'
 import { setupApp } from './app.js'
 import { connectDatabase, disconnectDatabase } from './database.js'
 import { closeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
+import { MemoryTokenBucket } from '../../infra/rate-limit/memory-token-bucket.js'
+import type { AuditJobQueue } from '../../data/protocols/queue/audit-job-queue.js'
+
+if (false) {
+  // @ts-expect-error partial composition must not fall through to globals
+  setupApp({ rateLimiter: new MemoryTokenBucket() })
+}
 
 // setupApp reaches into route composition, which builds controllers that
 // grab a database connection eagerly (not per-request), so a real connection
@@ -77,5 +85,24 @@ describe('setupApp', () => {
       vi.doUnmock('./env.js')
       vi.resetModules()
     }
+  })
+
+  it('uses supplied dependencies for guarded routes', async () => {
+    const rateLimiter = new MemoryTokenBucket()
+    const consume = vi.spyOn(rateLimiter, 'consume')
+    const auditQueue: AuditJobQueue = {
+      enqueueOnce: async () => undefined,
+      has: async () => false,
+      isPending: async () => false,
+      backlogCount: async () => 0
+    }
+
+    connectDatabase(connectionString())
+    const app = setupApp({ rateLimiter, auditQueue })
+
+    const response = await request(app).post('/api/audits').send({})
+
+    expect(response.status).toBe(400)
+    expect(consume).toHaveBeenCalledOnce()
   })
 })
