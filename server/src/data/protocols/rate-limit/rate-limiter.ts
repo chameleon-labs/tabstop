@@ -1,5 +1,11 @@
+export type RateLimitAllowance = {
+  allowed: true
+  remaining: number
+  refund: () => Promise<void>
+}
+
 export type RateLimitDecision =
-  | { allowed: true, remaining: number }
+  | RateLimitAllowance
   | { allowed: false, retryAfterMs: number }
 
 export type BucketConfig = {
@@ -19,6 +25,4 @@ export type BucketConfig = {
  */
 export interface RateLimiter {
   consume: (key: string, bucket: BucketConfig, cost?: number) => Promise<RateLimitDecision>
-  /** Returns tokens taken for a request that was then rejected elsewhere. Never exceeds capacity. */
-  refund: (key: string, bucket: BucketConfig, amount?: number) => Promise<void>
 }

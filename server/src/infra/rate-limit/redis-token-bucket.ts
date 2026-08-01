@@ -3,6 +3,7 @@ import type { Redis } from 'ioredis'
 import type {
   BucketConfig, RateLimitDecision, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
+import { makeRateLimitAllowance } from './rate-limit-allowance.js'
 
 const MS_PER_HOUR = 3_600_000
 
@@ -98,12 +99,12 @@ export class RedisTokenBucket implements RateLimiter {
   async consume (key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
     const [allowed, remaining, retryAfterMs] = await this.run(key, bucket, cost)
 
-    if (allowed === 1) return { allowed: true, remaining }
+    if (allowed === 1) {
+      return makeRateLimitAllowance(remaining, async () => {
+        await this.run(key, bucket, -cost)
+      })
+    }
     return { allowed: false, retryAfterMs }
-  }
-
-  async refund (key: string, bucket: BucketConfig, amount = 1): Promise<void> {
-    await this.run(key, bucket, -amount)
   }
 
   /**

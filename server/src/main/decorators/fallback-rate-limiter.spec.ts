@@ -1,17 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FallbackRateLimiter } from './fallback-rate-limiter.js'
 import type {
-  BucketConfig, RateLimiter
+  BucketConfig, RateLimitAllowance, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const bucket: BucketConfig = { capacity: 3, refillPerHour: 1 }
 
+const allowance = (refund = vi.fn().mockResolvedValue(undefined)): RateLimitAllowance => ({
+  allowed: true, remaining: 2, refund
+})
+
 const mockLimiter = (): RateLimiter & {
   consume: ReturnType<typeof vi.fn>
-  refund: ReturnType<typeof vi.fn>
 } => ({
-  consume: vi.fn(async () => ({ allowed: true as const, remaining: 2 })),
-  refund: vi.fn(async () => { /* no-op */ })
+  consume: vi.fn(async () => allowance())
 })
 
 describe('FallbackRateLimiter', () => {
@@ -107,35 +109,46 @@ describe('FallbackRateLimiter', () => {
     }
   })
 
-  it('refunds to whichever backend served the consume', async () => {
-    // makeRateLimit takes a token from the per-IP bucket, then finds the
-    // per-email bucket empty, and gives the first one back. If Redis was down
-    // for the consume and up again by the refund - milliseconds later, which
-    // is exactly what a flapping connection looks like - a naive
-    // try-primary-first refund credits Redis for a token it never issued and
-    // leaves the memory bucket debited for good.
+  it('refunds an earlier primary consume after a later consume degrades', async () => {
     const primary = mockLimiter()
     const fallback = mockLimiter()
-    primary.consume.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    const primaryRefund = vi.fn().mockResolvedValue(undefined)
+    const fallbackRefund = vi.fn().mockResolvedValue(undefined)
+    primary.consume
+      .mockResolvedValueOnce(allowance(primaryRefund))
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+    fallback.consume.mockResolvedValue({ allowed: false, retryAfterMs: 1_000 })
     const sut = new FallbackRateLimiter(primary, fallback)
 
-    await sut.consume('ip:1.2.3.4', bucket)
-    // The primary is healthy again by now, and must still not be the one
-    // refunded.
-    await sut.refund('ip:1.2.3.4', bucket)
+    const first = await sut.consume('first', bucket)
+    await sut.consume('second', bucket)
+    if (!first.allowed) throw new Error('expected allowance')
+    await first.refund()
 
-    expect(fallback.refund).toHaveBeenCalledWith('ip:1.2.3.4', bucket, 1)
-    expect(primary.refund).not.toHaveBeenCalled()
+    expect(primaryRefund).toHaveBeenCalledOnce()
+    expect(fallbackRefund).not.toHaveBeenCalled()
   })
 
-  it('falls back on refund too', async () => {
+  it('refunds a fallback allowance after the primary recovers', async () => {
+    vi.useFakeTimers()
+    try {
     const primary = mockLimiter()
     const fallback = mockLimiter()
-    primary.refund.mockRejectedValue(new Error('ECONNREFUSED'))
+    const primaryRefund = vi.fn().mockResolvedValue(undefined)
+    const fallbackRefund = vi.fn().mockResolvedValue(undefined)
+    primary.consume.mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    fallback.consume.mockResolvedValueOnce(allowance(fallbackRefund))
     const sut = new FallbackRateLimiter(primary, fallback)
 
-    await sut.refund('a', bucket)
+    const first = await sut.consume('ip:1.2.3.4', bucket)
+    vi.advanceTimersByTime(5_000)
+    if (!first.allowed) throw new Error('expected allowance')
+    await first.refund()
 
-    expect(fallback.refund).toHaveBeenCalledWith('a', bucket, 1)
+    expect(fallbackRefund).toHaveBeenCalledOnce()
+    expect(primaryRefund).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

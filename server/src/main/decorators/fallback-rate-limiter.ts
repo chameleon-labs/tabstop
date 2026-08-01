@@ -9,21 +9,9 @@ const LOG_INTERVAL_MS = 30_000
  * How long one failure keeps traffic on the fallback before the primary is
  * tried again.
  *
- * It exists for `refund`. `makeRateLimit` consumes from several buckets and
- * gives the earlier ones back when a later one rejects, and that pair has to
- * land on the same backend: without a window, a consume served by memory
- * because Redis was down, followed a millisecond later by a refund that finds
- * Redis back up, leaves the memory bucket permanently debited and hands Redis
- * a token nobody took. A window comfortably longer than a request makes both
- * halves see the same state.
- *
- * It also stops a dead Redis from charging every single request its command
- * timeout before the fallback runs, which is the difference between degraded
- * and unusable.
- *
- * What it costs is up to this long of per-instance counting after Redis
- * actually recovers - the same thing the fallback costs generally, and the
- * reason it is seconds rather than minutes.
+ * It avoids paying a dead Redis command timeout on every request and accepts
+ * up to five seconds of per-process counting after recovery. It no longer
+ * provides refund consistency; the allowance capability does.
  */
 const DEGRADED_WINDOW_MS = 5_000
 
@@ -51,23 +39,6 @@ export class FallbackRateLimiter implements RateLimiter {
     } catch (error) {
       this.degrade(error)
       return await this.fallback.consume(key, bucket, cost)
-    }
-  }
-
-  async refund (key: string, bucket: BucketConfig, amount = 1): Promise<void> {
-    if (this.degraded()) {
-      await this.fallback.refund(key, bucket, amount)
-      return
-    }
-
-    try {
-      await this.primary.refund(key, bucket, amount)
-    } catch (error) {
-      this.degrade(error)
-      // Refunding a bucket the fallback never debited is harmless: both
-      // implementations cap a refund at the bucket's capacity, so the worst
-      // it can do is leave an untouched bucket untouched.
-      await this.fallback.refund(key, bucket, amount)
     }
   }
 

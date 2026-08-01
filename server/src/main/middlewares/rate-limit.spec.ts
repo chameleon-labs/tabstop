@@ -2,15 +2,16 @@ import type { Request, Response } from 'express'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeRateLimit, emailKey, ipKey } from './rate-limit.js'
 import type {
-  BucketConfig, RateLimiter
+  BucketConfig, RateLimitAllowance, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const bucket: BucketConfig = { capacity: 3, refillPerHour: 60 }
 
-const allowingLimiter = (): RateLimiter => ({
-  consume: vi.fn(async () => ({ allowed: true as const, remaining: 2 })),
-  refund: vi.fn(async () => { /* no-op */ })
+const allowance = (refund = vi.fn().mockResolvedValue(undefined)): RateLimitAllowance => ({
+  allowed: true, remaining: 2, refund
 })
+
+const allowingLimiter = (): RateLimiter => ({ consume: vi.fn(async () => allowance()) })
 
 const mockRes = () => {
   const res = {
@@ -62,8 +63,7 @@ describe('rate limit middleware', () => {
 
   it('answers 429 with Retry-After in whole seconds', async () => {
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 1500 })),
-      refund: vi.fn(async () => { /* no-op */ })
+      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 1500 }))
     }
     const res = mockRes()
     const next = vi.fn()
@@ -81,8 +81,7 @@ describe('rate limit middleware', () => {
 
   it('never reports Retry-After: 0, which would invite an immediate retry', async () => {
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 10 })),
-      refund: vi.fn(async () => { /* no-op */ })
+      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 10 }))
     }
     const res = mockRes()
     const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: (req) => req.ip }])
@@ -99,8 +98,7 @@ describe('rate limit middleware', () => {
     // limiter can legitimately report a zero-millisecond deficit right at
     // the moment a bucket refills to exactly the requested cost.
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 0 })),
-      refund: vi.fn(async () => { /* no-op */ })
+      consume: vi.fn(async () => ({ allowed: false as const, retryAfterMs: 0 }))
     }
     const res = mockRes()
     const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: (req) => req.ip }])
@@ -125,11 +123,11 @@ describe('rate limit middleware', () => {
   it('refunds the buckets that allowed when another rejects', async () => {
     // Otherwise one attacker draining the email bucket also drains the shared
     // IP bucket of every legitimate user behind that address.
+    const refund = vi.fn().mockResolvedValue(undefined)
     const limiter: RateLimiter = {
       consume: vi.fn()
-        .mockResolvedValueOnce({ allowed: true, remaining: 2 })
-        .mockResolvedValueOnce({ allowed: false, retryAfterMs: 1000 }),
-      refund: vi.fn(async () => { /* no-op */ })
+        .mockResolvedValueOnce(allowance(refund))
+        .mockResolvedValueOnce({ allowed: false, retryAfterMs: 1000 })
     }
     const sut = makeRateLimit(limiter, [
       { name: 'ip', bucket, key: () => 'ip-key' },
@@ -138,11 +136,7 @@ describe('rate limit middleware', () => {
 
     await sut(request(), mockRes() as unknown as Response, vi.fn())
 
-    // The middleware itself prefixes the key with the rule's name (that is
-    // what closes the collision bug), so the refund call carries that same
-    // prefixed key, not the bare string the rule's `key` function returned.
-    expect(limiter.refund).toHaveBeenCalledWith('ip:ip-key', bucket)
-    expect(limiter.refund).not.toHaveBeenCalledWith('email:email-key', bucket)
+    expect(refund).toHaveBeenCalledOnce()
   })
 
   it('fails open and calls next when the limiter throws on consume', async () => {
@@ -152,8 +146,7 @@ describe('rate limit middleware', () => {
     // "never 500s on the limiter's own account" invariant has to hold here
     // too, not only inside that one collaborator.
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => { throw new Error('redis is on fire') }),
-      refund: vi.fn(async () => { /* no-op */ })
+      consume: vi.fn(async () => { throw new Error('redis is on fire') })
     }
     const next = vi.fn()
     const sut = makeRateLimit(limiter, [{ name: 'ip', bucket, key: () => 'ip-key' }])
@@ -172,11 +165,11 @@ describe('rate limit middleware', () => {
   })
 
   it('fails open and calls next when the limiter throws on refund', async () => {
+    const refund = vi.fn(async () => { throw new Error('redis is on fire') })
     const limiter: RateLimiter = {
       consume: vi.fn()
-        .mockResolvedValueOnce({ allowed: true, remaining: 2 })
-        .mockResolvedValueOnce({ allowed: false, retryAfterMs: 1000 }),
-      refund: vi.fn(async () => { throw new Error('redis is on fire') })
+        .mockResolvedValueOnce(allowance(refund))
+        .mockResolvedValueOnce({ allowed: false, retryAfterMs: 1000 })
     }
     const next = vi.fn()
     const res = mockRes()

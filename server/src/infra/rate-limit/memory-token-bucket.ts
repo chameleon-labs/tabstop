@@ -1,6 +1,7 @@
 import type {
   BucketConfig, RateLimitDecision, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
+import { makeRateLimitAllowance } from './rate-limit-allowance.js'
 
 const MS_PER_HOUR = 3_600_000
 const DEFAULT_MAX_KEYS = 10_000
@@ -44,10 +45,12 @@ export class MemoryTokenBucket implements RateLimiter {
 
     const remaining = Math.min(bucket.capacity, tokens - cost)
     this.store(key, { tokens: remaining, updated: Date.now() })
-    return { allowed: true, remaining: Math.floor(remaining) }
+    return makeRateLimitAllowance(Math.floor(remaining), async () => {
+      this.returnTokens(key, bucket, cost)
+    })
   }
 
-  async refund (key: string, bucket: BucketConfig, amount = 1): Promise<void> {
+  private returnTokens (key: string, bucket: BucketConfig, amount: number): void {
     const refillPerMs = bucket.refillPerHour / MS_PER_HOUR
     const tokens = this.refilled(key, bucket, refillPerMs)
 
