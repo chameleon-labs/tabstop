@@ -8,6 +8,7 @@ import type {
 } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const frozen: BucketConfig = { capacity: 3, refillPerHour: 1 }
+const oneFrozen: BucketConfig = { capacity: 1, refillPerHour: 1 }
 const fast: BucketConfig = { capacity: 3, refillPerHour: 36_000 }
 
 let redis: Redis
@@ -51,8 +52,8 @@ describe.each<[string, () => RateLimiter]>([
     const first = await sut.consume(k, frozen)
     const second = await sut.consume(k, frozen)
 
-    expect(first).toEqual({ allowed: true, remaining: 2 })
-    expect(second).toEqual({ allowed: true, remaining: 1 })
+    expect(first).toMatchObject({ allowed: true, remaining: 2 })
+    expect(second).toMatchObject({ allowed: true, remaining: 1 })
   })
 
   it('reports a wait scaled to the deficit rather than a constant', async () => {
@@ -115,21 +116,25 @@ describe.each<[string, () => RateLimiter]>([
   it('returns a token on refund', async () => {
     const sut = make()
     const k = key()
-    for (let i = 0; i < 3; i++) await sut.consume(k, frozen)
+    const first = await sut.consume(k, frozen)
+    if (!first.allowed) throw new Error('expected allowance')
+    for (let i = 0; i < 2; i++) await sut.consume(k, frozen)
 
-    await sut.refund(k, frozen)
+    await first.refund()
 
     expect((await sut.consume(k, frozen)).allowed).toBe(true)
   })
 
-  it('cannot refund a full bucket past its capacity', async () => {
+  it('refunds an allowance at most once', async () => {
     const sut = make()
     const k = key()
-    for (let i = 0; i < 5; i++) await sut.refund(k, frozen)
+    const first = await sut.consume(k, oneFrozen)
+    if (!first.allowed) throw new Error('expected allowance')
 
-    const results = []
-    for (let i = 0; i < 4; i++) results.push(await sut.consume(k, frozen))
+    await first.refund()
+    expect((await sut.consume(k, oneFrozen)).allowed).toBe(true)
 
-    expect(results.filter((result) => result.allowed)).toHaveLength(3)
+    await first.refund()
+    expect((await sut.consume(k, oneFrozen)).allowed).toBe(false)
   })
 })

@@ -7,9 +7,10 @@ import {
 } from '../factories/controllers/page/page-controller-factories.js'
 import { makeAuthMiddleware } from '../factories/middlewares/auth-middleware-factory.js'
 import { makeRateLimit, ipKey, type RateLimitRule } from '../middlewares/rate-limit.js'
-import { makeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
 import type { Controller } from '../../presentation/protocols/controller.js'
+import type { RateLimiter } from '../../data/protocols/rate-limit/rate-limiter.js'
+import type { AuditJobQueue } from '../../data/protocols/queue/audit-job-queue.js'
 
 /**
  * Limit, then authenticate, then handle - as one unit, because the order is
@@ -31,25 +32,25 @@ import type { Controller } from '../../presentation/protocols/controller.js'
  * the fifth route remembering a line.
  */
 const guarded = <TRequest>(
-  rule: RateLimitRule, controller: Controller<TRequest>
+  rateLimiter: RateLimiter, rule: RateLimitRule, controller: Controller<TRequest>
 ): RequestHandler[] => [
-  makeRateLimit(makeRateLimiter(), [rule]),
+  makeRateLimit(rateLimiter, [rule]),
   adaptMiddleware(makeAuthMiddleware()),
   adaptRoute(controller)
 ]
 
-export default (router: Router): void => {
+export default (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
   // The tightest bucket here by a distance, because an accepted add is roughly
   // thirty seconds of Chromium - the same cost the anonymous audit endpoint is
   // metered for. The ten-page cap bounds how many pages an account can HOLD,
   // not how many times it can ask.
-  router.post('/pages', ...guarded(
+  router.post('/pages', ...guarded(rateLimiter,
     { name: 'pageAdd', bucket: RATE_LIMITS.pageAdd, key: ipKey },
-    makeAddPageController()
+    makeAddPageController(auditQueue)
   ))
 
   // The dashboard's only call, so it is polled rather than requested once.
-  router.get('/pages', ...guarded(
+  router.get('/pages', ...guarded(rateLimiter,
     { name: 'pageRead', bucket: RATE_LIMITS.pageRead, key: ipKey },
     makeLoadPagesController()
   ))
@@ -57,12 +58,12 @@ export default (router: Router): void => {
   // The trend chart's data (#21). Registered before the parameterless routes'
   // siblings only by convention - Express matches on the full path, so
   // `/pages/:id/history` and `/pages/:id` cannot shadow each other.
-  router.get('/pages/:id/history', ...guarded(
+  router.get('/pages/:id/history', ...guarded(rateLimiter,
     { name: 'pageHistory', bucket: RATE_LIMITS.pageHistory, key: ipKey },
     makeLoadPageHistoryController()
   ))
 
-  router.patch('/pages/:id', ...guarded(
+  router.patch('/pages/:id', ...guarded(rateLimiter,
     { name: 'pageUpdate', bucket: RATE_LIMITS.pageUpdate, key: ipKey },
     makeUpdatePageController()
   ))
@@ -70,7 +71,7 @@ export default (router: Router): void => {
   // Cascades to the page's audits, their violations and their alert events, so
   // every public share link for that history stops resolving. #20 owns saying
   // so before the confirmation.
-  router.delete('/pages/:id', ...guarded(
+  router.delete('/pages/:id', ...guarded(rateLimiter,
     { name: 'pageDelete', bucket: RATE_LIMITS.pageDelete, key: ipKey },
     makeDeletePageController()
   ))

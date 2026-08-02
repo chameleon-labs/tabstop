@@ -5,7 +5,7 @@ import { setupApp } from '../config/app.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from '../config/database.js'
 import { env } from '../config/env.js'
 import { HmacAlertUnsubscribeToken } from '../../infra/cryptography/hmac-alert-unsubscribe-token.js'
-import { closeRateLimiter } from '../factories/middlewares/rate-limit-factory.js'
+import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
 
 describe('page alert unsubscribe routes', () => {
   beforeAll(() => {
@@ -16,7 +16,6 @@ describe('page alert unsubscribe routes', () => {
 
   afterAll(async () => {
     await disconnectDatabase()
-    await closeRateLimiter()
   })
 
   const seedPage = async (): Promise<string> => {
@@ -39,7 +38,9 @@ describe('page alert unsubscribe routes', () => {
     const pageId = await seedPage()
     const token = new HmacAlertUnsubscribeToken(env.alertUnsubscribeSecret).encode(pageId)
 
-    const response = await request(setupApp())
+    const dependencies = makeTestAppDependencies()
+    const app = setupApp(dependencies)
+    const response = await request(app)
       .get(`/api/alerts/unsubscribe/${token}`)
       .set('x-forwarded-for', '172.22.0.1')
 
@@ -56,7 +57,9 @@ describe('page alert unsubscribe routes', () => {
     const pageId = await seedPage()
     const token = new HmacAlertUnsubscribeToken(env.alertUnsubscribeSecret).encode(pageId)
 
-    const response = await request(setupApp())
+    const dependencies = makeTestAppDependencies()
+    const app = setupApp(dependencies)
+    const response = await request(app)
       .post(`/api/alerts/unsubscribe/${token}`)
       .set('x-forwarded-for', '172.22.0.2')
       .type('form')
@@ -74,7 +77,9 @@ describe('page alert unsubscribe routes', () => {
     const pageId = await seedPage()
     const token = new HmacAlertUnsubscribeToken(env.alertUnsubscribeSecret).encode(pageId)
 
-    const response = await request(setupApp())
+    const dependencies = makeTestAppDependencies()
+    const app = setupApp(dependencies)
+    const response = await request(app)
       .post(`/api/alerts/unsubscribe/${token}`)
       .set('Origin', env.publicApiOrigin)
       .set('x-forwarded-for', '172.22.0.4')
@@ -92,7 +97,9 @@ describe('page alert unsubscribe routes', () => {
     const token = new HmacAlertUnsubscribeToken(env.alertUnsubscribeSecret).encode(pageId)
     const tampered = token.replace(`v1.${pageId}.`, `v1.${BigInt(pageId) + 1n}.`)
 
-    const response = await request(setupApp())
+    const dependencies = makeTestAppDependencies()
+    const app = setupApp(dependencies)
+    const response = await request(app)
       .post(`/api/alerts/unsubscribe/${tampered}`)
       .set('x-forwarded-for', '172.22.0.3')
       .type('form')

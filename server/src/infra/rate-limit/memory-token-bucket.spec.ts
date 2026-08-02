@@ -1,23 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MemoryTokenBucket } from './memory-token-bucket.js'
 import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 const frozen: BucketConfig = { capacity: 3, refillPerHour: 1 }
 
 describe('MemoryTokenBucket', () => {
-  it('caps a refund at capacity even when the next read uses a wider bucket', async () => {
-    // `refilled` re-clamps to `bucket.capacity` on every read, so a same-config
-    // round trip can never observe an uncapped store: the clamp on read hides
-    // a missing clamp on write. Only a capacity change between the refund and
-    // the following read exposes it. (Redis has the same defect shape but a
-    // different, already-observable side effect - an uncapped value pushes its
-    // PEXPIRE negative, deleting the key outright.)
-    const sut = new MemoryTokenBucket()
-    const wide: BucketConfig = { capacity: 10, refillPerHour: 1 }
+  it('caps a refunded allowance after its original bucket has refilled', async () => {
+    vi.useFakeTimers()
+    try {
+      const sut = new MemoryTokenBucket()
+      const wide: BucketConfig = { capacity: 10, refillPerHour: 1 }
 
-    await sut.refund('a', frozen) // a cold bucket is already full
+      const allowance = await sut.consume('a', frozen)
+      if (!allowance.allowed) throw new Error('expected allowance')
+      vi.advanceTimersByTime(3_600_000)
+      await allowance.refund()
 
-    expect(await sut.consume('a', wide)).toEqual({ allowed: true, remaining: 2 })
+      expect(await sut.consume('a', wide)).toMatchObject({ allowed: true, remaining: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('evicts rather than growing without bound', async () => {

@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import { randomUUID } from 'node:crypto'
 import type { Express } from 'express'
 import { setupApp } from '../config/app.js'
 import { connectDatabase, disconnectDatabase } from '../config/database.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
+import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
 
 const password = 'correct horse battery staple'
 const newEmail = (): string => `${randomUUID()}@routes.test`
@@ -36,7 +37,8 @@ describe('account routes', () => {
     const url = process.env.DATABASE_URL
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     connectDatabase(url)
-    app = setupApp()
+    const dependencies = makeTestAppDependencies()
+    app = setupApp(dependencies)
 
     // Shared by the login rate-limit specs below, which need an account that
     // is known to exist without spending their own signup bucket allowance.
@@ -47,6 +49,33 @@ describe('account routes', () => {
 
   afterAll(async () => {
     await disconnectDatabase()
+  })
+
+  it('does not share the me quota between independently constructed apps', async () => {
+    // The real in-memory limiter refills from Date.now(). Freeze only that
+    // clock so this isolation check cannot cross me's six-second refill
+    // boundary while issuing its 60 HTTP requests under a loaded test worker.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(0)
+    try {
+      const first = setupApp(makeTestAppDependencies())
+      const second = setupApp(makeTestAppDependencies())
+      const isolatedIp = '198.51.100.57'
+
+      for (let attempt = 0; attempt < RATE_LIMITS.me.capacity; attempt++) {
+        await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)
+      }
+
+      expect(
+        (await request(first).get('/api/me')
+          .set('X-Forwarded-For', isolatedIp)).status
+      ).toBe(429)
+      expect(
+        (await request(second).get('/api/me')
+          .set('X-Forwarded-For', isolatedIp)).status
+      ).toBe(401)
+    } finally {
+      now.mockRestore()
+    }
   })
 
   describe('POST /api/signup', () => {

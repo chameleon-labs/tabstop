@@ -6,6 +6,9 @@ import type { Kysely } from 'kysely'
 import { setupApp } from '../config/app.js'
 import { env } from '../config/env.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from '../config/database.js'
+import {
+  makeTestAppDependencies, type TestAppDependencies
+} from '../test/test-app-dependencies.js'
 import type { Database } from '../../infra/db/postgres/database.js'
 import { PostgresAuditRepository } from '../../infra/db/postgres/audit/postgres-audit-repository.js'
 import {
@@ -17,13 +20,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 describe('audit routes', () => {
   let app: Express
   let db: Kysely<Database>
+  let dependencies: TestAppDependencies
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     connectDatabase(url)
     db = getDatabase()
-    app = setupApp()
+    dependencies = makeTestAppDependencies()
+    app = setupApp(dependencies)
   })
 
   afterAll(async () => {
@@ -59,6 +64,10 @@ describe('audit routes', () => {
       expect(response.body.auditId).toMatch(UUID)
       expect(response.body.status).toBe('queued')
       expect(response.body.pollAfterMs).toBeGreaterThan(0)
+      const audit = await db.selectFrom('audits').select('id')
+        .where('public_uuid', '=', response.body.auditId as string).executeTakeFirstOrThrow()
+      expect(dependencies.auditQueue.jobs.get(audit.id))
+        .toEqual({ auditId: audit.id })
     })
 
     it('never returns the internal id', async () => {

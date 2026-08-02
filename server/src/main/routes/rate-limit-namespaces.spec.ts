@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Router } from 'express'
-import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
+import type {
+  BucketConfig, RateLimitAllowance, RateLimiter
+} from '../../data/protocols/rate-limit/rate-limiter.js'
+import type { AuditJobQueue } from '../../data/protocols/queue/audit-job-queue.js'
 import type { RateLimitRule } from '../middlewares/rate-limit.js'
 import { RATE_LIMITS } from '../config/rate-limits.js'
 
@@ -37,16 +40,8 @@ import { RATE_LIMITS } from '../config/rate-limits.js'
  * stronger argument for keeping this file.
  */
 
-// The real factory opens a Redis connection the moment it is called, and
-// registering a route calls it.
-vi.mock('../factories/middlewares/rate-limit-factory.js', () => ({
-  makeRateLimiter: () => ({
-    consume: async () => ({ allowed: true as const, remaining: 1 }),
-    refund: async () => undefined
-  })
-}))
-
 const recorded: RateLimitRule[] = []
+const recordedLimiters: RateLimiter[] = []
 
 vi.mock('../middlewares/rate-limit.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../middlewares/rate-limit.js')>()
@@ -56,6 +51,7 @@ vi.mock('../middlewares/rate-limit.js', async (importOriginal) => {
       limiter: Parameters<typeof actual.makeRateLimit>[0], rules: RateLimitRule[]
     ) => {
       recorded.push(...rules)
+      recordedLimiters.push(limiter)
       return actual.makeRateLimit(limiter, rules)
     }
   }
@@ -70,6 +66,23 @@ const recordingRouter = (): Router => {
   })
 }
 
+const allowed: RateLimitAllowance = {
+  allowed: true,
+  remaining: 1,
+  refund: async () => undefined
+}
+
+const rateLimiter: RateLimiter = {
+  consume: async () => allowed
+}
+
+const auditQueue: AuditJobQueue = {
+  enqueueOnce: async () => undefined,
+  has: async () => false,
+  isPending: async () => false,
+  backlogCount: async () => 0
+}
+
 /**
  * Registering a route builds its controllers, and those reach for the pool -
  * so the connection has to be established against the SAME module instance the
@@ -78,6 +91,7 @@ const recordingRouter = (): Router => {
  */
 const collectRules = async (): Promise<RateLimitRule[]> => {
   recorded.length = 0
+  recordedLimiters.length = 0
 
   const url = process.env.DATABASE_URL
   if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
@@ -86,17 +100,17 @@ const collectRules = async (): Promise<RateLimitRule[]> => {
   database.connectDatabase(url)
 
   try {
-    const modules = await Promise.all([
-      import('./account-routes.js'),
-      import('./audit-routes.js'),
-      import('./health-check-routes.js'),
-      import('./page-routes.js'),
-      import('./alert-routes.js')
-    ])
+    const accountRoutes = (await import('./account-routes.js')).default
+    const auditRoutes = (await import('./audit-routes.js')).default
+    const healthCheckRoutes = (await import('./health-check-routes.js')).default
+    const pageRoutes = (await import('./page-routes.js')).default
+    const alertRoutes = (await import('./alert-routes.js')).default
 
-    for (const module of modules) {
-      module.default(recordingRouter())
-    }
+    accountRoutes(recordingRouter(), rateLimiter)
+    auditRoutes(recordingRouter(), rateLimiter, auditQueue)
+    healthCheckRoutes(recordingRouter())
+    pageRoutes(recordingRouter(), rateLimiter, auditQueue)
+    alertRoutes(recordingRouter(), rateLimiter)
     return [...recorded]
   } finally {
     await database.disconnectDatabase()
@@ -115,6 +129,13 @@ describe('rate limit namespaces', () => {
     // all would otherwise satisfy every assertion below vacuously.
     expect(names.length).toBeGreaterThan(0)
     expect([...new Set(names)]).toHaveLength(names.length)
+  })
+
+  it('uses the supplied limiter for every guarded route', async () => {
+    await collectRules()
+
+    expect(recordedLimiters).not.toHaveLength(0)
+    expect(recordedLimiters.every((limiter) => limiter === rateLimiter)).toBe(true)
   })
 
   it('never lets one name stand for two different buckets', async () => {

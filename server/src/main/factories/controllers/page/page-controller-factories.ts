@@ -14,6 +14,7 @@ import {
   UpdatePageController, type UpdatePageRequest
 } from '../../../../presentation/controllers/page/update-page-controller.js'
 import type { Controller } from '../../../../presentation/protocols/controller.js'
+import type { AuditJobQueue } from '../../../../data/protocols/queue/audit-job-queue.js'
 import {
   makeAddPage, makeDeletePage, makeLoadPageHistory, makeLoadPages, makeUpdatePage
 } from '../../usecases/page/page-usecase-factories.js'
@@ -21,8 +22,8 @@ import {
   makeAddPageValidation, makeLoadPageHistoryValidation, makeUpdatePageValidation
 } from '../../validation/page-validation-factory.js'
 
-export const makeAddPageController = (): Controller<AddPageRequest> =>
-  new AddPageController(makeAddPageValidation(), makeAddPage())
+export const makeAddPageController = (auditQueue: AuditJobQueue): AddPageController =>
+  new AddPageController(makeAddPageValidation(), makeAddPage(auditQueue))
 
 export const makeLoadPagesController = (): Controller<LoadPagesRequest> =>
   new LoadPagesController(makeLoadPages())

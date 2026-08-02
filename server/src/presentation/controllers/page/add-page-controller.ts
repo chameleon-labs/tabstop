@@ -9,6 +9,8 @@ import type { HttpResponse } from '../../protocols/http.js'
 import type { Validation } from '../../protocols/validation.js'
 
 export type AddPageRequest = {
+  /** Supplied by the request body and narrowed by validation before use. */
+  url?: unknown
   /**
    * Written by the auth middleware into res.locals, which adaptRoute merges
    * LAST - after body, query and params - so a client cannot post its own.

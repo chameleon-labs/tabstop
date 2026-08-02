@@ -8,9 +8,9 @@ import { NodeDnsResolver } from '../../../../infra/net/node-dns-resolver.js'
 import { DEFAULT_URL_POLICY } from '../../../../infra/net/ip-address-policy.js'
 import { getDatabase } from '../../../config/database.js'
 import { env } from '../../../config/env.js'
-import { getAuditQueue } from '../../queue/audit-queue.js'
+import type { AuditJobQueue } from '../../../../data/protocols/queue/audit-job-queue.js'
 
-export const makeRequestAudit = (): RequestAudit => {
+export const makeRequestAudit = (auditQueue: AuditJobQueue): DbRequestAudit => {
   const audits = new PostgresAuditRepository(getDatabase())
   // The policy is injected rather than defaulted inside the usecase: data/
   // must not name the concrete rule set, and a default there would have been
@@ -18,7 +18,7 @@ export const makeRequestAudit = (): RequestAudit => {
   // runtime. The composition root is where a concrete belongs - and the same
   // goes for the queue cap, which is operator configuration.
   return new DbRequestAudit(
-    audits, audits, getAuditQueue(), new NodeDnsResolver(),
+    audits, audits, auditQueue, new NodeDnsResolver(),
     DEFAULT_URL_POLICY, env.auditQueueMaxDepth
   )
 }

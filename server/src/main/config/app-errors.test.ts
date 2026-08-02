@@ -3,6 +3,7 @@ import request from 'supertest'
 import type { Express } from 'express'
 import { setupApp } from './app.js'
 import { connectDatabase, disconnectDatabase } from './database.js'
+import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
 
 /**
  * Everything reaching Express that no controller ever sees.
@@ -20,7 +21,8 @@ describe('framework-level failures', () => {
     const url = process.env.DATABASE_URL
     if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
     connectDatabase(url)
-    app = setupApp()
+    const dependencies = makeTestAppDependencies()
+    app = setupApp(dependencies)
   })
 
   afterAll(async () => {

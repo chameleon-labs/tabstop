@@ -41,20 +41,11 @@ describe('RedisTokenBucket', () => {
     expect(results.filter((result) => result.allowed)).toHaveLength(3)
   })
 
-  it('does not let a single refund on a full bucket blow past its TTL budget', async () => {
-    // The contract spec `cannot refund a full bucket past its capacity` only
-    // observes an over-refund through a later consume, and that goes through
-    // the refill step's own cap first - which quietly re-clamps the excess
-    // before a consume ever sees it. But an uncapped refund on a full bucket
-    // leaves `tokens` above `capacity`, so `capacity - tokens` goes negative;
-    // PEXPIRE with a negative value deletes the key outright, rather than
-    // setting a small TTL. That deletion - visible via PTTL, the same channel
-    // the TTL spec below uses - is the externally observable symptom of the
-    // cap being missing, and it is Redis-specific: memory has no TTL to leak
-    // through, which is why its own version of this defect needed a different
-    // probe (see `caps a refund at capacity...` in memory-token-bucket.spec).
+  it('sets a bounded TTL after refunding an allowance', async () => {
     const k = key()
-    await sut.refund(k, frozen) // a cold bucket is already full
+    const allowance = await sut.consume(k, frozen)
+    if (!allowance.allowed) throw new Error('expected allowance')
+    await allowance.refund()
 
     const ttl = await redis.pttl(`rl:${k}`)
 

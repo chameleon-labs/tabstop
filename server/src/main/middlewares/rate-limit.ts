@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import ipaddr from 'ipaddr.js'
 import type { NextFunction, Request, Response } from 'express'
 import type {
-  BucketConfig, RateLimiter
+  BucketConfig, RateLimitAllowance, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
 
 export type RateLimitRule = {
@@ -30,7 +30,7 @@ export type RateLimitRule = {
  */
 export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const consumed: Array<{ key: string, bucket: BucketConfig }> = []
+    const consumed: RateLimitAllowance[] = []
 
     for (const rule of rules) {
       const rawKey = rule.key(req)
@@ -52,7 +52,7 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
         continue
       }
       if (decision.allowed) {
-        consumed.push({ key, bucket: rule.bucket })
+        consumed.push(decision)
         continue
       }
 
@@ -61,9 +61,9 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
       // shared by everyone behind that address.
       await Promise.all(consumed.map(async (taken) => {
         try {
-          await limiter.refund(taken.key, taken.bucket)
+          await taken.refund()
         } catch (error) {
-          console.warn('Rate limiter threw on refund; failing open:', error)
+          console.warn('Rate limiter refund failed; preserving denial:', error)
         }
       }))
 
