@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import {
-  makeQueue, makeWorker, setGlobalConcurrency, upsertDailySchedule
+  makeQueue, makeWorker, rateLimitForAtLeast, setGlobalConcurrency, upsertDailySchedule
 } from './bullmq-helper.js'
 import type { PayloadQueue, PayloadWorker } from './bullmq-helper.js'
 
@@ -183,5 +183,104 @@ describe('upsertDailySchedule', () => {
     const schedulers = await target.getJobSchedulers()
     expect(schedulers).toHaveLength(1)
     expect(schedulers[0]?.pattern).toBe('30 3 * * *')
+  })
+})
+
+describe('rateLimitForAtLeast', () => {
+  let queues: Array<PayloadQueue<TestPayload>> = []
+
+  afterEach(async () => {
+    try {
+      await queues[0]?.obliterate({ force: true })
+    } finally {
+      await Promise.all(queues.map(async (queue) => { await queue.close() }))
+      queues = []
+    }
+  })
+
+  const replicas = (): [PayloadQueue<TestPayload>, PayloadQueue<TestPayload>] => {
+    const name = `provider-backoff-${randomUUID()}`
+    const first = makeQueue<TestPayload>(name, connectionUrl())
+    const second = makeQueue<TestPayload>(name, connectionUrl())
+    queues.push(first, second)
+    return [first, second]
+  }
+
+  const limiterState = async (queue: PayloadQueue<TestPayload>) => {
+    const client = await queue.client
+    return {
+      value: await client.get(queue.toKey('limiter')),
+      ttl: await queue.getRateLimitTtl()
+    }
+  }
+
+  it('creates BullMQ’s manual limiter value when no backoff exists', async () => {
+    const [queue] = replicas()
+
+    await rateLimitForAtLeast(queue, 10_000)
+
+    const state = await limiterState(queue)
+    expect(state.value).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect(state.ttl).toBeGreaterThan(8_000)
+    expect(state.ttl).toBeLessThanOrEqual(10_000)
+  })
+
+  it('promotes the counter without replacing a longer delay with a shorter one', async () => {
+    const [first, second] = replicas()
+    const client = await first.client
+    await client.set(first.toKey('limiter'), '1', { PX: 10_000 })
+    const before = await limiterState(first)
+
+    await rateLimitForAtLeast(second, 1_000)
+
+    const after = await limiterState(first)
+    expect(after.value).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect(after.ttl).toBeGreaterThan(8_000)
+    expect(after.ttl).toBeLessThanOrEqual(before.ttl)
+  })
+
+  it('extends a shorter delay to the requested longer delay', async () => {
+    const [first, second] = replicas()
+    const client = await first.client
+    await client.set(first.toKey('limiter'), '1', { PX: 1_000 })
+
+    await rateLimitForAtLeast(second, 10_000)
+
+    const state = await limiterState(first)
+    expect(state.value).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect(state.ttl).toBeGreaterThan(8_000)
+    expect(state.ttl).toBeLessThanOrEqual(10_000)
+  })
+
+  it.each([
+    ['short request starts first', 1_000, 10_000],
+    ['long request starts first', 10_000, 1_000]
+  ])('keeps the longest delay when replicas race: %s', async (
+    _case, firstDelay, secondDelay
+  ) => {
+    const [first, second] = replicas()
+
+    await Promise.all([
+      rateLimitForAtLeast(first, firstDelay),
+      rateLimitForAtLeast(second, secondDelay)
+    ])
+
+    const state = await limiterState(first)
+    expect(state.value).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect(state.ttl).toBeGreaterThan(8_000)
+    expect(state.ttl).toBeLessThanOrEqual(10_000)
+  })
+
+  it('installs the manual sentinel without expiring an infinite limiter', async () => {
+    const [queue] = replicas()
+    const client = await queue.client
+    await client.set(queue.toKey('limiter'), '1')
+
+    await rateLimitForAtLeast(queue, 10_000)
+
+    expect(await limiterState(queue)).toEqual({
+      value: String(Number.MAX_SAFE_INTEGER),
+      ttl: -1
+    })
   })
 })
