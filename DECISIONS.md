@@ -6,6 +6,30 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-02 — provider backoff is a monotonic queue-wide deadline
+
+BullMQ's manual `Queue.rateLimit` writes its limiter key with `SET ... PX`, so
+the latest caller replaces the existing TTL. That is unsafe across alert worker
+replicas: a short ordinary rate-limit response can arrive after a daily-quota
+response and reopen provider traffic hours early.
+
+Alert delivery now installs backoff with one Redis Lua transition equivalent to
+`max(current TTL, requested delay)`. Every path writes BullMQ's exact
+manual-limiter sentinel: this matters because the same key can hold an ordinary
+throughput counter below the worker's maximum, and extending that counter's TTL
+would not pause anything. A longer finite expiry is kept, a shorter one is
+extended, and a non-expiring key remains non-expiring. The script uses the
+queue's existing client and public limiter key, preserving its name and prefix
+without another connection, a read-then-write race, WATCH retries, or a lock
+key.
+
+The processor awaits that transition before throwing BullMQ `RateLimitError`,
+which returns the job without spending a normal attempt. If Redis cannot
+install the shared delay, that failure propagates instead: claiming a safe
+rate-limited retry when other replicas remain free to send would be false.
+Effective-TTL metrics and policy changes remain deferred because no caller
+currently needs them.
+
 ## 2026-08-01 — deterministic HTTP route specs use per-app dependencies
 
 - HTTP route specs receive complete per-app dependencies: a fresh in-memory
