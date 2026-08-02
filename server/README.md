@@ -147,6 +147,13 @@ Successful tracked-page audits are completed and evaluated in one Postgres trans
 
 `MAIL_DRIVER=console` is the default and never contacts an email service. It claims the preview in `previewed_at` before writing it to the log and deliberately leaves `emailed_at` null. Production must explicitly select `resend` and provide `RESEND_API_KEY`; when that switch is made, the dispatcher revives any retained completed preview jobs immediately. Resend requests carry `Idempotency-Key: alert-event/<id>` so a worker that loses the provider's response can repeat the request without repeating the email inside Resend's 24-hour idempotency window.
 
+Provider rate-limit responses pause the alert queue across every worker
+replica. Concurrent delays are monotonic: the longest active delay wins, and
+BullMQ's `RateLimitError` retry path does not consume a normal delivery
+attempt. If the shared Redis delay cannot be installed, the job fails through
+the ordinary retry path rather than allowing other replicas to continue
+sending under a falsely acknowledged backoff.
+
 The deliberate manual retry, only after the operator has repaired the configuration that caused the failure, is:
 
 ```sql

@@ -79,6 +79,20 @@ describe('makeAlertEmailJobProcessor', () => {
     expect(settlement).toBe('rejected')
   })
 
+  it('propagates a shared-backoff installation failure instead of claiming a rate-limited retry', async () => {
+    const redisFailure = new Error('cannot install shared provider backoff')
+    const dispatch = vi.fn(async () => ({ processed: 0 }))
+    const send = vi.fn(async () => { throw new AlertRateLimitError(7_000) })
+    const rateLimit = vi.fn(async () => { throw redisFailure })
+    const process = makeAlertEmailJobProcessor({ dispatch, send, rateLimit })
+
+    await expect(process({
+      data: { kind: 'send', alertEventId: 'alert-rate-limit-failure' },
+      attemptsMade: 0
+    })).rejects.toBe(redisFailure)
+    expect(rateLimit).toHaveBeenCalledWith(7_000)
+  })
+
   it('propagates ordinary transient send failures unchanged', async () => {
     const transient = new Error('provider unavailable')
     const dispatch = vi.fn(async () => ({ processed: 0 }))

@@ -27,6 +27,39 @@ export const makeQueue = <TPayload>(name: string, connectionUrl: string): Payloa
     defaultJobOptions: DEFAULT_JOB_OPTIONS
   })
 
+const MANUAL_RATE_LIMIT_VALUE = String(Number.MAX_SAFE_INTEGER)
+const RATE_LIMIT_FOR_AT_LEAST_COMMAND = 'tabstopRateLimitForAtLeast'
+const clientsWithRateLimitCommand = new WeakSet<object>()
+
+const RATE_LIMIT_FOR_AT_LEAST_SCRIPT = `
+local ttl = redis.call('PTTL', KEYS[1])
+local requested = tonumber(ARGV[1])
+
+if ttl == -1 or ttl >= requested then
+  redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL')
+else
+  redis.call('SET', KEYS[1], ARGV[2], 'PX', requested)
+end
+`
+
+export const rateLimitForAtLeast = async <TPayload>(
+  queue: PayloadQueue<TPayload>, durationMs: number
+): Promise<void> => {
+  const client = await queue.client
+  if (!clientsWithRateLimitCommand.has(client)) {
+    client.defineCommand(RATE_LIMIT_FOR_AT_LEAST_COMMAND, {
+      numberOfKeys: 1,
+      lua: RATE_LIMIT_FOR_AT_LEAST_SCRIPT
+    })
+    clientsWithRateLimitCommand.add(client)
+  }
+  await client.runCommand(RATE_LIMIT_FOR_AT_LEAST_COMMAND, [
+    queue.toKey('limiter'),
+    durationMs,
+    MANUAL_RATE_LIMIT_VALUE
+  ])
+}
+
 /**
  * Caps how many of this queue's jobs run at once across EVERY worker process.
  *
