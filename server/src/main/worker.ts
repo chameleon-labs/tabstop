@@ -5,7 +5,7 @@ import {
   QUEUE_NAMES, type AlertQueuePayload, type AuditPayload, type PingPayload, type ReauditPayload
 } from './config/queue-names.js'
 import {
-  makeQueue, makeWorker, setGlobalConcurrency, upsertDailySchedule
+  makeQueue, makeWorker, rateLimitForAtLeast, setGlobalConcurrency, upsertDailySchedule
 } from '../infra/queue/helpers/bullmq-helper.js'
 import { runWithTimeout } from '../infra/queue/run-with-timeout.js'
 import { PermanentAuditError } from '../domain/errors/permanent-audit-error.js'
@@ -219,7 +219,9 @@ const alertWorker = makeWorker<AlertQueuePayload>(
   QUEUE_NAMES.alertEmail,
   env.redisUrl,
   makeAlertEmailJobProcessor({
-    rateLimit: alertQueue.rateLimit.bind(alertQueue),
+    rateLimit: async (durationMs) => {
+      await rateLimitForAtLeast(alertQueue, durationMs)
+    },
     dispatch: dispatchPendingAlertEmails.dispatch.bind(dispatchPendingAlertEmails),
     send: sendAlertEmail.send.bind(sendAlertEmail)
   }),

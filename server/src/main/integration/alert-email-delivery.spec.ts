@@ -7,7 +7,9 @@ import type {
   AlertDispatchMode,
   LoadPendingAlertEventsRepository
 } from '../../data/protocols/db/alert-event/load-pending-alert-events-repository.js'
-import type { AlertSender } from '../../data/protocols/mail/alert-sender.js'
+import {
+  AlertRateLimitError, type AlertSender
+} from '../../data/protocols/mail/alert-sender.js'
 import type { Database } from '../../infra/db/postgres/database.js'
 import {
   PostgresAlertEventRepository
@@ -15,7 +17,7 @@ import {
 import { makeDatabase } from '../../infra/db/postgres/helpers/postgres-helper.js'
 import { BullMqAlertEmailQueue } from '../../infra/queue/bullmq-alert-email-queue.js'
 import {
-  makeQueue, makeWorker, type PayloadQueue, type PayloadWorker
+  makeQueue, makeWorker, rateLimitForAtLeast, type PayloadQueue, type PayloadWorker
 } from '../../infra/queue/helpers/bullmq-helper.js'
 import { HmacAlertUnsubscribeToken } from '../../infra/cryptography/hmac-alert-unsubscribe-token.js'
 import type { AlertQueuePayload } from '../config/queue-names.js'
@@ -126,7 +128,9 @@ describe('alert email delivery pipeline', () => {
       mode
     )
     worker = makeWorker<AlertQueuePayload>(queue.name, redisUrl, makeAlertEmailJobProcessor({
-      rateLimit: async (durationMs) => { await queue.rateLimit(durationMs) },
+      rateLimit: async (durationMs) => {
+        await rateLimitForAtLeast(queue, durationMs)
+      },
       dispatch: async () => await new DbDispatchPendingAlertEmails(
         dispatchAlerts,
         new BullMqAlertEmailQueue(queue),
@@ -220,6 +224,37 @@ describe('alert email delivery pipeline', () => {
     })
     expect(await db.selectFrom('alert_events').select('id')
       .where('id', '=', alertEventId).execute()).toHaveLength(1)
+  })
+
+  it('pauses provider traffic without consuming a normal job attempt', async () => {
+    const alertEventId = await seedEvent()
+    const sender: AlertSender = {
+      send: vi.fn()
+        .mockRejectedValueOnce(new AlertRateLimitError(2_000))
+        .mockResolvedValue('accepted')
+    }
+    const dispatch = await start(sender, alertEventId)
+
+    await dispatch.dispatch()
+
+    await eventually(async () => {
+      expect(sender.send).toHaveBeenCalledOnce()
+      expect(await queue.getRateLimitTtl(ALERT_EMAIL_WORKER_LIMITER.max))
+        .toBeGreaterThan(1_250)
+    })
+
+    const paused = await queue.getJob(`alert-email-${alertEventId}`)
+    expect(paused?.attemptsMade).toBe(0)
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 250))
+    expect(sender.send).toHaveBeenCalledOnce()
+    expect((await queue.getJob(`alert-email-${alertEventId}`))?.attemptsMade).toBe(0)
+
+    await eventually(async () => {
+      expect(sender.send).toHaveBeenCalledTimes(2)
+      expect(await paused?.getState()).toBe('completed')
+    })
+    expect((await queue.getJob(`alert-email-${alertEventId}`))?.attemptsMade).toBe(1)
   })
 
   it('does not preview twice after completed-job cleanup, and delivery mode still sends once for the seeded event', async () => {
