@@ -1,8 +1,0 @@
-onlyBuiltDependencies:
-  - esbuild
-allowBuilds:
-  cpu-features: true
-  esbuild: true
-  msgpackr-extract: false
-  protobufjs: true
-  ssh2: true

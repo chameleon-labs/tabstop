@@ -1,5 +1,16 @@
+import type { ApiErrorBody, CodedConflictBody } from '@tabstop/contract'
 import { ServerError } from '../../errors/server-error.js'
 import type { CookieDirective, HttpResponse } from '../../protocols/http.js'
+
+/**
+ * Every error response is annotated with the type `@tabstop/contract` publishes,
+ * rather than with an inline `{ error: string }` that merely looks like it.
+ *
+ * The client BRANCHES on these - it reads `error` on every failure, `code` on a
+ * 409, `retryAfter`/`resetAt` on a 429 - so the shapes are as load-bearing as
+ * any success payload. Left unannotated, renaming `error` here would typecheck
+ * on both sides and only surface as a blank message in a browser.
+ */
 
 export const ok = <T>(body: T): HttpResponse<T> => ({
   statusCode: 200,
@@ -23,7 +34,7 @@ export const accepted = <T>(body: T): HttpResponse<T> => ({
   body
 })
 
-export const notFound = (error: Error): HttpResponse<{ error: string }> => ({
+export const notFound = (error: Error): HttpResponse<ApiErrorBody> => ({
   statusCode: 404,
   body: { error: error.message }
 })
@@ -55,17 +66,17 @@ export const noContent = (cookies?: CookieDirective[]): HttpResponse<null> => (
     : { statusCode: 204, body: null, cookies }
 )
 
-export const badRequest = (error: Error): HttpResponse<{ error: string }> => ({
+export const badRequest = (error: Error): HttpResponse<ApiErrorBody> => ({
   statusCode: 400,
   body: { error: error.message }
 })
 
-export const unauthorized = (error: Error): HttpResponse<{ error: string }> => ({
+export const unauthorized = (error: Error): HttpResponse<ApiErrorBody> => ({
   statusCode: 401,
   body: { error: error.message }
 })
 
-export const conflict = (error: Error): HttpResponse<{ error: string }> => ({
+export const conflict = (error: Error): HttpResponse<ApiErrorBody> => ({
   statusCode: 409,
   body: { error: error.message }
 })
@@ -83,12 +94,12 @@ export const conflict = (error: Error): HttpResponse<{ error: string }> => ({
  */
 export const codedConflict = (
   code: string, error: Error, details: Record<string, number | string> = {}
-): HttpResponse<{ code: string, error: string }> => ({
+): HttpResponse<CodedConflictBody> => ({
   statusCode: 409,
   body: { code, error: error.message, ...details }
 })
 
-export const serverError = (error: Error): HttpResponse<{ error: string }> => ({
+export const serverError = (error: Error): HttpResponse<ApiErrorBody> => ({
   statusCode: 500,
   body: { error: new ServerError(error).message }
 })

@@ -6,7 +6,6 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@11.15.1",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/main/server.ts",
     "dev:worker": "tsx watch --env-file=.env src/main/worker.ts",
@@ -30,6 +29,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@tabstop/contract": "workspace:*",
     "@testcontainers/postgresql": "^12.0.4",
     "@testcontainers/redis": "^12.0.4",
     "@types/express": "^5.0.6",

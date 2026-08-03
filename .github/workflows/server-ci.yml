@@ -1,12 +1,32 @@
 name: Server CI
 
+# `contract/**` is in the filter because the server typechecks against it: a
+# change there can break this build while touching nothing under `server/`, and
+# a path filter that misses that turns a compile error into a merged one.
+#
+# The root `package.json`, lockfile and workspace file are here for the same
+# reason. The root manifest is where `packageManager` now lives, so
+# `pnpm/action-setup` reads its pnpm version from it - a bump there changes what
+# this job runs with while touching nothing under `server/`.
 on:
   push:
     branches: [main]
-    paths: ['server/**']
+    paths:
+      - 'server/**'
+      - 'contract/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/server-ci.yml'
   pull_request:
     branches: [main]
-    paths: ['server/**']
+    paths:
+      - 'server/**'
+      - 'contract/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/server-ci.yml'
 
 jobs:
   test:
@@ -18,12 +38,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: server/package.json
+          package_json_file: package.json
       - uses: actions/setup-node@v4
         with:
           node-version-file: 'server/.nvmrc'
           cache: 'pnpm'
-          cache-dependency-path: 'server/pnpm-lock.yaml'
+          cache-dependency-path: 'pnpm-lock.yaml'
+      # Run from `server/`, but pnpm walks up to `pnpm-workspace.yaml` and
+      # installs every project - including `web/`, whose dependencies this job
+      # never uses. Deliberate: `--filter` would install a different tree from
+      # the one a developer has, and the difference is exactly the kind of thing
+      # that only shows up as a CI-only failure. The extra time is seconds.
       - run: pnpm install --frozen-lockfile
 
       # The audit worker drives real Chromium, so CI needs the browser. Cached

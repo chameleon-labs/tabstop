@@ -1,4 +1,5 @@
 import type { RequestAudit } from '../../../domain/usecases/request-audit.js'
+import { toRequestAuditResponse } from '../../helpers/audit-view.js'
 import {
   accepted, badRequest, serverError, serviceUnavailable
 } from '../../helpers/http/http-helper.js'
@@ -34,12 +35,9 @@ export class RequestAuditController implements Controller<RequestAuditRequest> {
         return serviceUnavailable({ error: 'Could not queue that audit, please try again' })
       }
 
-      return accepted({
-        // The public uuid only. The internal id is never exposed.
-        auditId: result.audit.publicUuid,
-        status: result.audit.status,
-        pollAfterMs: POLL_AFTER_MS
-      })
+      // Through the view helper, so this payload is checked against the type
+      // the frontend compiles from rather than merely resembling it.
+      return accepted(toRequestAuditResponse(result.audit, POLL_AFTER_MS))
     } catch (error) {
       return serverError(error as Error)
     }

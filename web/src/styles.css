@@ -1,0 +1,106 @@
+/*
+ * Enough to make the shell usable and the accessibility affordances real.
+ * Anything beyond that belongs to the screens that need it - there is no design
+ * system here on purpose (#17: build four screens first, extract later if ever).
+ */
+
+:root {
+  --ink: #16181d;
+  --muted: #5b6270;
+  --surface: #ffffff;
+  --accent: #1f4ed8;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8eaf0;
+    --muted: #9aa2b1;
+    --surface: #14161b;
+    --accent: #8fb0ff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a { color: var(--accent); }
+
+/*
+ * Visible to assistive technology, not to the eye. Not `display: none` and not
+ * `visibility: hidden` - both remove the element from the accessibility tree,
+ * which would silence the route announcer entirely.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Off-screen until focused, rather than hidden until focused: a link that is
+ * not in the tree cannot receive the focus that is supposed to reveal it.
+ */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  z-index: 1;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  transition: top 120ms ease-in;
+}
+
+.skip-link:focus { top: 0.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
+}
+
+/* Strengthened, never removed. The default ring is thin and often low contrast
+   against a coloured surface; this replaces it rather than deleting it. */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The one exception, and only because it is not a control. `main` is focusable
+   solely so the skip link can move focus into it (`tabIndex={-1}`, so it is
+   never reached by Tab), and outlining the whole content region on arrival is
+   noise rather than information. More specific than `:focus-visible` above, so
+   it wins whether or not the browser considers the focus keyboard-driven. */
+main:focus { outline: none; }
+
+.site-header {
+  display: flex;
+  gap: 1.5rem;
+  align-items: baseline;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 15%, transparent);
+}
+
+.wordmark {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}

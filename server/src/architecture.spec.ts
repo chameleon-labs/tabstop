@@ -264,6 +264,40 @@ describe('layer dependencies', () => {
       .toEqual([])
   })
 
+  it('names the published wire contract only where a response is shaped', async () => {
+    // `@tabstop/contract` is what web/ believes this API returns. A module that
+    // imports it has started treating a transport type as an internal model,
+    // and from then on the two cannot move independently - which is the only
+    // thing a contract package is for.
+    //
+    // domain/ and data/ cannot reach it whatever this says: both are held to
+    // relative specifiers by the rules above. So this covers presentation/,
+    // infra/ and main/, and it is EXPECTED TO GROW - one entry per endpoint
+    // that gains a published type, always a view helper. A controller, an
+    // adapter or a factory appearing in this list is the thing to question.
+    const importers: string[] = []
+
+    for (const directory of ['presentation', 'infra', 'main']) {
+      for (const path of await sourceFiles(directory)) {
+        const specifiers = await importsOf(path)
+        if (specifiers.some((specifier) => vendorRoot(specifier) === '@tabstop/contract')) {
+          importers.push(path)
+        }
+      }
+    }
+
+    expect(importers.sort()).toEqual([
+      'presentation/helpers/account-view.ts',
+      'presentation/helpers/audit-view.ts',
+      // Not a view of a resource, but a view of a response all the same: the
+      // shared error envelope every endpoint answers failures with, which the
+      // client reads on every status.
+      'presentation/helpers/http/http-helper.ts',
+      'presentation/helpers/page-conflict-view.ts',
+      'presentation/helpers/rate-limit-view.ts'
+    ])
+  })
+
   it('confines playwright, kysely, pg, bullmq, express and zod to their adapters', async () => {
     // Each of these should exist in exactly one place, so swapping it is a
     // file rather than an excavation. main/ is the composition root and is
