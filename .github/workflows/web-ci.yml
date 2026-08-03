@@ -1,0 +1,88 @@
+name: Web CI
+
+# The filter is wider than `web/**`, and every entry earns its place:
+#
+# - `contract/**` because `web/` compiles against it. A type renamed there
+#   breaks this build while touching nothing under `web/`, and a filter that
+#   misses it turns a compile error into a merged one.
+# - the root `package.json` because `packageManager` lives there, so
+#   `pnpm/action-setup` takes its pnpm version from it.
+# - the lockfile and workspace file because both live at the root now and both
+#   decide what gets installed.
+#
+# Note the lockfile makes this less separate than it looks: a change to
+# `web/package.json` rewrites `pnpm-lock.yaml`, which triggers Server CI too.
+# That is correct - a dependency bump can change what the whole workspace
+# resolves - but it means "only web changed" and "only Web CI runs" are the
+# same thing solely when no dependency moved.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'contract/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/web-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'contract/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/web-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      # `fetch-depth: 0` is NOT needed, but a git checkout is: `conventions.spec.ts`
+      # runs `git ls-files` to check that component folders are recorded in the
+      # index with the casing they have on disk. macOS is case-insensitive and
+      # git follows it, so a rename can pass locally while the index still holds
+      # the old name - and this Linux runner is precisely where that fails to
+      # resolve. The spec reads the index, so the default shallow checkout is
+      # enough; it just has to be a real repository.
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          # The ROOT manifest, not `web/package.json`. `packageManager` lives at
+          # the workspace root, and pointing this at `web/package.json` fails
+          # with "No pnpm version is specified" - which reads like a missing
+          # field rather than a wrong path.
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: 'web/.nvmrc'
+          cache: 'pnpm'
+          cache-dependency-path: 'pnpm-lock.yaml'
+      # Run from `web/`, but pnpm walks up to `pnpm-workspace.yaml` and installs
+      # every project, including `server/`. Deliberate, and not for the reason
+      # it looks like: pnpm gives each package a `node_modules` containing only
+      # its own declared dependencies, so `--filter` would produce an identical
+      # tree for `web/`. What the full install buys is that `--frozen-lockfile`
+      # verifies the lockfile is complete for the whole workspace, so a lockfile
+      # that is stale for `server/` cannot pass here and fail there.
+      - run: pnpm install --frozen-lockfile
+
+      # `contract/` has no workflow of its own, and does not need one - both
+      # workflows trigger on it, and both compile the modules they import. The
+      # hole that leaves is a contract module imported by NEITHER, which nothing
+      # would check at all. One line closes it, and this is the cheaper of the
+      # two jobs to put it in.
+      - run: pnpm --filter @tabstop/contract typecheck
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      # After the tests rather than before. `web/` has no equivalent of the
+      # server's vendored-axe assertion, so nothing here needs the build output;
+      # what this catches is the class of bug where `vite build` fails on
+      # something `tsc --noEmit` allows - an unresolvable runtime import behind a
+      # type-only one, say - and a failing test should be reported before that.
+      - run: pnpm build

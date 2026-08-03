@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FALLBACK_POLL_AFTER_MS, useAudit, useRequestAudit } from './audits'
 import { ApiError, rateLimitOf } from './client'
@@ -31,7 +31,7 @@ describe('useAudit', () => {
     renderHook(() => useAudit('abc', { pollAfterMs: 1000 }), { wrapper })
     await waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
 
-    await vi.advanceTimersByTimeAsync(2500)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
   })
@@ -44,7 +44,7 @@ describe('useAudit', () => {
     renderHook(() => useAudit('abc', { pollAfterMs: 1000 }), { wrapper })
     await waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -54,7 +54,7 @@ describe('useAudit', () => {
     renderHook(() => useAudit('abc', { pollAfterMs: 1000 }), { wrapper })
     await waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -65,7 +65,7 @@ describe('useAudit', () => {
     renderHook(() => useAudit('abc', { pollAfterMs: 5000 }), { wrapper })
     await waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
 
-    await vi.advanceTimersByTimeAsync(FALLBACK_POLL_AFTER_MS + 500)
+    await act(async () => { await vi.advanceTimersByTimeAsync(FALLBACK_POLL_AFTER_MS + 500) })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
