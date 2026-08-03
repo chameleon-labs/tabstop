@@ -35,13 +35,48 @@ describe('crossesFrames', () => {
 })
 
 describe('safeHelpUrl', () => {
-  it('passes an ordinary documentation link', () => {
+  it('passes an ordinary axe documentation link', () => {
     expect(safeHelpUrl('https://dequeuniversity.com/rules/axe/4.12/image-alt'))
       .toBe('https://dequeuniversity.com/rules/axe/4.12/image-alt')
   })
 
-  it('allows http, since not every rule doc is https yet', () => {
-    expect(safeHelpUrl('http://example.test/rule')).toBe('http://example.test/rule')
+  it('keeps the query string axe appends', () => {
+    expect(safeHelpUrl('https://dequeuniversity.com/rules/axe/4.12/label?application=axeAPI'))
+      .toBe('https://dequeuniversity.com/rules/axe/4.12/label?application=axeAPI')
+  })
+
+  describe('the origin is the check, not the scheme', () => {
+    it('refuses another https origin, which a scheme test waves through', () => {
+      // The whole risk, and what an earlier version of this function missed.
+      // `https://evil.example/phish` passes a protocol check perfectly. What it
+      // buys is a link reading "How to fix this", inside an accessibility
+      // report, on a share page (#23) anybody can send to a colleague. Script
+      // execution was never the dangerous part - the origin was.
+      expect(safeHelpUrl('https://evil.example/phish')).toBeNull()
+    })
+
+    it('refuses a lookalike host', () => {
+      expect(safeHelpUrl('https://dequeuniversity.com.evil.example/rules')).toBeNull()
+      expect(safeHelpUrl('https://notdequeuniversity.com/rules')).toBeNull()
+    })
+
+    it('refuses a subdomain, since the engine never uses one', () => {
+      // A wildcard would admit anything Deque ever delegates, and the vendored
+      // engine builds every link on the bare host.
+      expect(safeHelpUrl('https://evil.dequeuniversity.com/rules')).toBeNull()
+    })
+
+    it('refuses plain http even on the right host', () => {
+      // `helpUrlBase` is https. An http link is either downgraded or forged,
+      // and neither is worth rendering.
+      expect(safeHelpUrl('http://dequeuniversity.com/rules/axe/4.12/label')).toBeNull()
+    })
+
+    it('refuses credentials smuggled into the authority', () => {
+      // `https://dequeuniversity.com@evil.example/` has hostname
+      // `evil.example`, and reads to a person as the trusted host.
+      expect(safeHelpUrl('https://dequeuniversity.com@evil.example/')).toBeNull()
+    })
   })
 
   it.each([
@@ -51,12 +86,6 @@ describe('safeHelpUrl', () => {
     ['file:///etc/passwd', 'the local filesystem'],
     ['not a url at all', 'unparseable']
   ])('refuses %p - %s', (helpUrl) => {
-    // `helpUrl` LOOKS like our data and is not: it comes from `window.axe`
-    // inside the audited page, and the audited page can replace that object
-    // before the engine runs. React blocks `javascript:` on its own, but not
-    // `data:` and not an arbitrary remote origin - a link reading "How to fix
-    // this", inside an accessibility report, pointing wherever an audited site
-    // chose. The share page (#23) makes that one anybody can send to a colleague.
     expect(safeHelpUrl(helpUrl)).toBeNull()
   })
 

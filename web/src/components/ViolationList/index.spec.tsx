@@ -67,6 +67,22 @@ describe('ViolationList', () => {
       expect(document.getElementById(id)).not.toBeVisible()
     })
 
+    it('does not build the panel contents while collapsed', async () => {
+      // `hidden` removes a subtree from presentation, not from the document:
+      // React still builds every node row and HTML snippet inside it. A long
+      // report starts collapsed precisely because it is long, and axe can
+      // return dozens of nodes per rule - so the collapsed case was the one
+      // paying to construct thousands of elements nobody asked to see.
+      render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />)
+
+      expect(screen.queryByText('<div id="x">hi</div>')).not.toBeInTheDocument()
+      expect(screen.queryByText('html > body > div')).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getAllByRole('button')[0] as HTMLElement)
+
+      expect(screen.getByText('html > body > div')).toBeVisible()
+    })
+
     it('is reachable and operable from the keyboard alone', async () => {
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />)
 

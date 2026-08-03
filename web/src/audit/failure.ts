@@ -88,7 +88,7 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
  *
  * Without this the screen had no way to report a failed poll at all: the audit
  * query would exhaust its retries, `request.error` stayed null, and the
- * progress indicator span forever on an audit nobody was still asking about.
+ * progress indicator spun forever on an audit nobody was still asking about.
  */
 export const describePollFailure = (error: unknown): DescribedFailure => {
   if (!isApiError(error)) {

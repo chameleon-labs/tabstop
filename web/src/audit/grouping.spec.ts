@@ -69,9 +69,18 @@ describe('groupByImpact', () => {
     expect(new Set(grouped.map((v) => v.ruleId)).size).toBe(violations.length)
   })
 
-  it('covers every impact the contract can produce', () => {
-    // If a fifth impact is ever added, this fails rather than silently
-    // dropping every violation carrying it.
+  it('orders exactly the impacts the contract defines, plus unrated', () => {
+    // Written as a LITERAL rather than derived from `IMPACT_ORDER`. The version
+    // this replaces built its fixture by mapping that same array, so both sides
+    // of the assertion moved together: a fifth contract impact would have left
+    // them equal while every finding carrying it was dropped.
+    //
+    // The exhaustiveness half is `AllImpactsOrdered` in `grouping.ts`, which is
+    // a compile error rather than a test, because that is what the question is.
+    expect([...IMPACT_ORDER]).toEqual(['critical', 'serious', 'moderate', 'minor', null])
+  })
+
+  it('groups one of each without losing any', () => {
     const oneOfEach = IMPACT_ORDER.map((impact) => violation(impact))
 
     expect(groupByImpact(oneOfEach)).toHaveLength(IMPACT_ORDER.length)

@@ -37,37 +37,48 @@ const TICK_MS = 1_000
  * must wait its turn rather than cutting off whatever is being read.
  */
 export const AuditProgress = ({ status, startedAt }: AuditProgressProps): React.JSX.Element | null => {
+  const [now, setNow] = useState(() => Date.now())
+
   /**
-   * The phase clock starts when the WORK starts, not when the request was sent.
+   * The phase clock starts when the WORK starts, not when the request was sent,
+   * and it is moved DURING RENDER rather than in an effect.
    *
    * `startedAt` includes however long the job sat in the queue, and the phases
-   * describe what a worker is doing. A job that waited twenty seconds for a
-   * free worker would otherwise reach its first `running` render already
-   * claiming to be "Scoring", while the worker had only just begun fetching -
-   * the progress indicator's first honest moment spent on its least honest
-   * statement.
+   * describe what a worker is doing - so a job that waited twenty seconds for a
+   * free worker would reach its first `running` render already claiming to be
+   * "Scoring".
+   *
+   * Fixing that in an effect fixed it too late. The `running` render commits
+   * first, with the queued-time elapsed still in hand, so the live region says
+   * "Scoring"; the effect then resets the epoch and a second render says
+   * "Fetching the page". Two announcements, in reverse order, on the one
+   * transition this component exists to narrate. React's own
+   * adjust-state-during-render pattern re-renders before anything is committed,
+   * so the intermediate value never reaches the DOM at all.
    *
    * Null until the transition is observed. A reload mid-audit loses it and
-   * falls back to `startedAt`, which is the same approximation as before and
-   * the best available: the response carries no worker-start timestamp.
+   * falls back to `startedAt` - the same approximation as before, and the best
+   * available, since the response carries no worker-start timestamp.
    */
   const [runningSince, setRunningSince] = useState<number | null>(null)
-  const [elapsed, setElapsed] = useState(0)
+  const [seenStatus, setSeenStatus] = useState(status)
 
-  useEffect(() => {
-    if (status !== 'running') return
-    setRunningSince((known) => known ?? Date.now())
-  }, [status])
+  if (status !== seenStatus) {
+    setSeenStatus(status)
+    if (status === 'running' && runningSince === null) setRunningSince(Date.now())
+  }
 
   const since = runningSince ?? startedAt
 
   useEffect(() => {
-    setElapsed(Date.now() - since)
-    const timer = setInterval(() => { setElapsed(Date.now() - since) }, TICK_MS)
+    const timer = setInterval(() => { setNow(Date.now()) }, TICK_MS)
     return () => { clearInterval(timer) }
-  }, [since])
+  }, [])
 
-  const phase = phaseFor(status, elapsed)
+  // Computed during render, so it can never be a tick behind the epoch. A
+  // freshly moved epoch with a stale `now` reads as slightly negative, which
+  // `phaseFor` treats as the first phase - correct, and the only sane answer.
+  const phase = phaseFor(status, now - since)
   if (phase === null) return null
 
   return (

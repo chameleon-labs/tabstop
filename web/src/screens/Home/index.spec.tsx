@@ -177,7 +177,7 @@ describe('the home screen', () => {
     it('reports a failed POLL instead of spinning forever', async () => {
       // The audit query exhausts its retries, the POST error stays null, and
       // nothing was left to notice: `waiting` held, so the progress indicator
-      // span indefinitely on an audit nobody was still asking about.
+      // spun indefinitely on an audit nobody was still asking about.
       server({ get: () => jsonResponse(500, { error: 'Internal server error' }) })
       renderAt('/')
 
@@ -211,6 +211,49 @@ describe('the home screen', () => {
         (call) => (call[1] as RequestInit | undefined)?.method === 'POST'
       ).length
       expect(postsAfter).toBe(postsBefore)
+    })
+
+    it('shows progress again WHILE a poll retry is in flight', async () => {
+      // React Query RETAINS the last error until the new request settles, so
+      // the failure and its own button stayed on screen for the whole retry -
+      // the exact "button did nothing" behaviour `request.reset()` prevents on
+      // the mutation side.
+      //
+      // This pins a REACT QUERY behaviour rather than one of ours: it clears a
+      // query's error when a refetch begins, where it keeps a mutation's until
+      // the next settles. A guard was written here first and removed once no
+      // mutation of it changed anything observable. If a future version starts
+      // retaining query errors, this fails rather than quietly stranding a
+      // "Try again" button on screen for the whole retry.
+      //
+      // The retry is HELD OPEN deliberately. A mocked refetch that resolves
+      // immediately never leaves the intermediate state observable, and a first
+      // version of this test passed for exactly that reason.
+      let release = (): void => {}
+      let failing = true
+      const held = async (): Promise<Response> => {
+        await new Promise<void>((resolve) => { release = resolve })
+        return jsonResponse(200, auditBody({ status: 'running' }))
+      }
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+        }
+        if (failing) return jsonResponse(500, { error: 'Internal server error' })
+        return await held()
+      }))
+
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByRole('button', { name: 'Try again' })
+
+      failing = false
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      // Still in flight: the error must already be gone.
+      expect(await screen.findByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
+      release()
     })
 
     it('never shows a result alongside a failure', async () => {

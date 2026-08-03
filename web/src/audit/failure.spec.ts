@@ -168,7 +168,7 @@ describe('describeFailure', () => {
 
   it('reports a failed POLL, which had no way to be reported at all', () => {
     // Without this the audit query exhausted its retries, `request.error`
-    // stayed null, and the progress indicator span forever on an audit nobody
+    // stayed null, and the progress indicator spun forever on an audit nobody
     // was still asking about.
     const failure = describeFailure({
       requestError: null,

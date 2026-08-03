@@ -135,6 +135,62 @@ describe('AuditProgress', () => {
       ])
     })
 
+    /**
+     * Every value the region HELD, not merely the value it ended on.
+     *
+     * `MutationObserver` delivers its records in a microtask, so reading
+     * `textContent` inside the callback returns the CURRENT text - by then
+     * already the final one. Two commits inside a single `act` therefore looked
+     * identical to one, and a first attempt at the test below passed against
+     * the bug it was written for. `characterDataOldValue` carries the value
+     * each mutation replaced, which is the only way to see what was on screen
+     * in between.
+     */
+    const recordHistory = (): { history: string[], stop: () => string[] } => {
+      const history: string[] = []
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.oldValue !== null && record.oldValue !== undefined) {
+            history.push(record.oldValue)
+          }
+          for (const removed of record.removedNodes) history.push(removed.textContent ?? '')
+        }
+      })
+      observer.observe(region(), {
+        childList: true, characterData: true, characterDataOldValue: true, subtree: true
+      })
+      return {
+        history,
+        stop: () => {
+          observer.takeRecords()
+          observer.disconnect()
+          return [...history, region().textContent ?? '']
+        }
+      }
+    }
+
+    it('never announces a later phase before an earlier one', async () => {
+      // The transient this component exists to narrate, and the one my earlier
+      // test structurally could not see: `rerender` flushes effects before the
+      // assertion, so by the time anything was checked the DOM had already been
+      // corrected. Watching MUTATIONS across the transition sees every value
+      // that was committed, not only the last.
+      //
+      // With the epoch moved in an effect, the `running` render committed first
+      // using queued-time elapsed - announcing "Scoring" - and a second render
+      // then said "Fetching the page". Two announcements, in reverse order.
+      const { rerender } = render(<AuditProgress status="queued" startedAt={START} />)
+      await advance(25_000)
+      const recorder = recordHistory()
+
+      rerender(<AuditProgress status="running" startedAt={START} />)
+      await advance(0)
+      const everyValue = recorder.stop()
+
+      expect(everyValue.some((text) => text.includes('Scoring'))).toBe(false)
+      expect(everyValue.at(-1)).toContain('Fetching the page')
+    })
+
     it('IS the visible text, so a reader never meets the sentence twice', () => {
       // A separate hidden region duplicates the sentence: navigating to the
       // paragraph reads it once, the announcement reads it again. One element

@@ -82,6 +82,19 @@ describe('runAxeInPage', () => {
       expect(await withHelpUrl(helpUrl)).toBe('')
     })
 
+    it.each([
+      ['https://evil.example/phish', 'another https origin, which a scheme test allows'],
+      ['https://dequeuniversity.com.evil.example/rules', 'a lookalike host'],
+      ['https://evil.dequeuniversity.com/rules', 'a subdomain the engine never uses'],
+      ['https://dequeuniversity.com@evil.example/', 'credentials smuggled into the authority'],
+      ['http://dequeuniversity.com/rules/axe/4.12/label', 'plain http on the right host']
+    ])('drops %p - %s', async (helpUrl) => {
+      // The origin is the check. `helpUrlBase` in the vendored engine is
+      // `https://dequeuniversity.com/rules/`, so anything else was chosen by
+      // the audited page, and a scheme test alone waves most of these through.
+      expect(await withHelpUrl(helpUrl)).toBe('')
+    })
+
     it('drops a value that is not a string at all', async () => {
       // `run()` returns whatever the page decided to return. Nothing guarantees
       // the field is even a string.

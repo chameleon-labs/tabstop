@@ -32,6 +32,14 @@ export const Home = (): React.JSX.Element => {
 
   const failure = describeFailure({
     requestError: request.error,
+    // No `isFetching` guard here, unlike `request.reset()` on the mutation
+    // above, and the asymmetry is real rather than an oversight: React Query
+    // CLEARS a query's error when a refetch begins, while it keeps a mutation's
+    // until the next one settles. Measured, not assumed - a guard was written
+    // here first and no mutation of it changed any observable behaviour.
+    // `Home/index.spec.tsx` holds a refetch open and asserts the failure is
+    // already gone, so a future version that starts retaining query errors
+    // fails that spec instead of quietly stranding a "Try again" button.
     pollError: audit.error,
     audit: audit.data
   })

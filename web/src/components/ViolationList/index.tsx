@@ -69,11 +69,20 @@ const ViolationItem = ({
       </button>
 
       {/*
-        Rendered but hidden rather than unmounted, so `aria-controls` always
-        points at an element that exists. A control referencing a missing id is
-        a broken relationship, not a collapsed one.
+        The PANEL is always rendered, so `aria-controls` always points at an
+        element that exists - a control referencing a missing id is a broken
+        relationship, not a collapsed one.
+
+        Its CONTENTS are not. `hidden` removes a subtree from presentation, not
+        from the document: React still builds every node row and every HTML
+        snippet inside it. A long report starts collapsed precisely because it
+        is long, and axe can return dozens of nodes per rule - so the collapsed
+        case was the one paying for thousands of elements nobody had asked to
+        see. Mounting on open costs a render that a person just requested.
       */}
       <div id={panelId} hidden={!open}>
+        {!open ? null : (
+          <>
         {help === null
           ? <p>Rule <code>{violation.ruleId}</code></p>
           : (
@@ -113,7 +122,9 @@ const ViolationItem = ({
                 </li>
               ))}
             </ul>
-            )}
+              )}
+          </>
+        )}
       </div>
     </>
   )

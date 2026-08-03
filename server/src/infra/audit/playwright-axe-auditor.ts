@@ -121,32 +121,41 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
   }
 
   /**
-   * A rule's documentation link, or '' if the page handed back something that
-   * is not one.
+   * A rule's documentation link, or '' if the page did not hand back one.
    *
    * DECLARED INSIDE this function, not beside it. `runAxeInPage` is serialised
-   * into the browser by `page.evaluate` and closes over nothing - a module-level
-   * helper is simply not defined there, and the unit spec below cannot notice
-   * because it calls this in Node where the helper does exist. Only the real
-   * Chromium spec catches it, which it did.
+   * into the browser by `page.evaluate` and closes over nothing - a
+   * module-level helper is simply not defined there, and the unit spec cannot
+   * notice because it calls this in Node where the helper does exist. Only the
+   * real Chromium spec catches it, which it did.
    *
    * EVERYTHING IN THE AXE RESULT IS ATTACKER-CONTROLLED. `window.axe` is
    * injected into a page nobody vetted, and that page can replace the object
    * before this asks it to run - so `helpUrl` is a string the audited site
-   * chose. It was written to the database and served verbatim, where it becomes
-   * the `href` of a link reading "How to fix this" inside an accessibility
-   * report; the share page makes that one anybody can send to a colleague.
+   * chose. It was stored and served verbatim, where it becomes the `href` of a
+   * link reading "How to fix this" inside an accessibility report; the share
+   * page makes that one anybody can send to a colleague.
    *
-   * Dropped rather than nulled because the column and the wire field are both
-   * non-nullable, and this is a sanitiser rather than a migration. Clients
-   * treat '' as "no link" and validate again themselves: this is the boundary,
-   * not the only guard.
+   * THE ORIGIN IS THE CHECK, not the scheme. `https://evil.example/phish`
+   * passes a scheme test perfectly, and phishing from inside our own report is
+   * the whole of the risk - script execution is separately prevented by the
+   * client. The vendored engine carries `helpUrlBase:
+   * "https://dequeuniversity.com/rules/"`, so pinning that host is a fact about
+   * this bundle rather than a guess. If a future axe moves its documentation,
+   * links degrade to absent and the version bump is when that is noticed.
+   *
+   * Dropped to '' rather than nulled because the column and the wire field are
+   * both non-nullable, and this is a sanitiser rather than a migration. The
+   * clients treat '' as "no link" and apply the same rule again: this is the
+   * boundary, not the only guard.
    */
+  const HELP_HOST = 'dequeuniversity.com'
   const safeHelpUrl = (helpUrl: unknown): string => {
     if (typeof helpUrl !== 'string') return ''
     try {
       const parsed = new URL(helpUrl)
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : ''
+      if (parsed.protocol !== 'https:') return ''
+      return parsed.hostname === HELP_HOST ? parsed.href : ''
     } catch {
       return ''
     }

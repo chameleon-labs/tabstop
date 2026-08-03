@@ -9,11 +9,27 @@ import type { Impact, Violation } from '@tabstop/contract'
  * would hide findings that are genuinely findings. They are last because
  * unknown severity is not high severity, and named rather than blank.
  */
-export const IMPACT_ORDER: ReadonlyArray<Impact | null> = [
-  'critical', 'serious', 'moderate', 'minor', null
-]
+export const IMPACT_ORDER = ['critical', 'serious', 'moderate', 'minor', null] as const
 
-export const IMPACT_LABELS: Readonly<Record<string, string>> = {
+/**
+ * Fails to compile if the contract gains an `Impact` that is not ordered above.
+ *
+ * A runtime test cannot do this job, and the one that tried was vacuous: it
+ * built its fixture BY MAPPING `IMPACT_ORDER`, so both sides of the assertion
+ * came from the same array and a fifth impact left them equal while every
+ * finding carrying it was silently dropped. Exhaustiveness over a union is a
+ * type-level question, so it is asked at the type level.
+ */
+type MustBeNever<T extends never> = T
+type UnorderedImpact = Exclude<Impact, (typeof IMPACT_ORDER)[number]>
+export type AllImpactsOrdered = MustBeNever<UnorderedImpact>
+
+/**
+ * `Record<Impact | 'unrated', …>` rather than `Record<string, …>`, so a new
+ * impact is a compile error here too - a label is not optional, and an
+ * unlabelled group reads like a bug.
+ */
+export const IMPACT_LABELS: Readonly<Record<Impact | 'unrated', string>> = {
   critical: 'Critical',
   serious: 'Serious',
   moderate: 'Moderate',
@@ -24,11 +40,11 @@ export const IMPACT_LABELS: Readonly<Record<string, string>> = {
 /** The key an unrated group is addressed by, since `null` is not a usable key. */
 export const UNRATED = 'unrated'
 
-export const impactKey = (impact: Impact | null): string => impact ?? UNRATED
+export const impactKey = (impact: Impact | null): Impact | typeof UNRATED => impact ?? UNRATED
 
 export type ViolationGroup = {
   impact: Impact | null
-  key: string
+  key: Impact | typeof UNRATED
   label: string
   violations: Violation[]
 }
@@ -47,7 +63,7 @@ export const groupByImpact = (violations: readonly Violation[]): ViolationGroup[
       return {
         impact,
         key,
-        label: IMPACT_LABELS[key] ?? key,
+        label: IMPACT_LABELS[key],
         violations: violations.filter((violation) => violation.impact === impact)
       }
     })
