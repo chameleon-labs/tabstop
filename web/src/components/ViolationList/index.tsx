@@ -1,0 +1,108 @@
+import type { Violation } from '@tabstop/contract'
+import { useId, useState } from 'react'
+import { groupByImpact, startsExpanded } from '../../audit/grouping'
+
+export type ViolationListProps = {
+  violations: readonly Violation[]
+}
+
+export type ViolationItemProps = {
+  violation: Violation
+  defaultExpanded: boolean
+}
+
+/**
+ * The findings, grouped by severity, each expandable to the elements it
+ * affects.
+ *
+ * A REAL `<button>` with `aria-expanded`, not a clickable div. That is house
+ * style everywhere; here it is also the product's own claim. A disclosure built
+ * from a div is one of the failures axe reports, and shipping one inside an
+ * accessibility report would be the most quotable bug this project could have.
+ */
+export const ViolationList = ({ violations }: ViolationListProps): React.JSX.Element => {
+  const groups = groupByImpact(violations)
+  const expanded = startsExpanded(violations.length)
+
+  if (groups.length === 0) {
+    return <p>No accessibility violations were found on this page.</p>
+  }
+
+  return (
+    <>
+      {groups.map((group) => (
+        <section key={group.key} aria-labelledby={`impact-${group.key}`}>
+          <h3 id={`impact-${group.key}`}>
+            {group.label} ({group.violations.length})
+          </h3>
+          <ul>
+            {group.violations.map((violation) => (
+              <li key={violation.ruleId}>
+                <ViolationItem violation={violation} defaultExpanded={expanded} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  )
+}
+
+const ViolationItem = ({
+  violation, defaultExpanded
+}: ViolationItemProps): React.JSX.Element => {
+  const [open, setOpen] = useState(defaultExpanded)
+  const panelId = useId()
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => { setOpen((was) => !was) }}
+      >
+        {violation.description}
+      </button>
+
+      {/*
+        Rendered but hidden rather than unmounted, so `aria-controls` always
+        points at an element that exists. A control referencing a missing id is
+        a broken relationship, not a collapsed one.
+      */}
+      <div id={panelId} hidden={!open}>
+        <p>
+          <a href={violation.helpUrl} target="_blank" rel="noreferrer noopener">
+            How to fix this
+            {/* The link text alone would read as "How to fix this" out of
+                context, in a list of identical links. The rule names it. */}
+            <span className="visually-hidden"> — {violation.ruleId}</span>
+          </a>
+        </p>
+
+        {violation.nodes.length === 0
+          ? <p>No specific elements were reported for this rule.</p>
+          : (
+            <ul>
+              {violation.nodes.map((node, index) => (
+                <li key={`${violation.ruleId}-${index}`}>
+                  <p><code>{node.target.join(' ')}</code></p>
+                  {/*
+                    `node.html` IS ATTACKER-CONTROLLED. It is a markup snippet
+                    captured from an arbitrary third-party page, and this
+                    product's whole job is to visit pages nobody vetted.
+                    Rendered as TEXT - React escapes by default, so the entire
+                    rule is that `dangerouslySetInnerHTML` never touches this
+                    value. The instinct to "show the HTML properly" is exactly
+                    the instinct that would introduce stored XSS here, which is
+                    why the comment sits at the render site rather than in a doc.
+                  */}
+                  <pre><code>{node.html}</code></pre>
+                </li>
+              ))}
+            </ul>
+            )}
+      </div>
+    </>
+  )
+}
