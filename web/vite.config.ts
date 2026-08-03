@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react'
+import { createLogger } from 'vite'
 // `vitest/config` rather than `vite`: as of Vitest 4 the `test` key is not
 // merged into Vite's own config type, so importing from `vite` typechecks the
 // build config and silently rejects the test config beside it.
@@ -14,15 +15,77 @@ import { defineConfig } from 'vitest/config'
  */
 const API_TARGET = process.env.VITE_DEV_API_TARGET ?? 'http://localhost:3000'
 
+/**
+ * One line per outage instead of one stack trace per request.
+ *
+ * `pnpm dev` at the repository root runs this and the server into a single
+ * stream, and a server that failed to boot is the common case for it - a
+ * missing env var, a database that is not up. Vite then logs an ECONNREFUSED
+ * stack for every poll and every reload: measured at 48 in fifteen seconds,
+ * which buried the server's own error - the one line saying what to fix - under
+ * two hundred lines of noise. In two terminals this problem does not exist;
+ * merging the streams is what creates it, so the repair belongs with it.
+ *
+ * TWO PIECES, because neither works alone. This handler cannot suppress Vite's
+ * logging - its own `error` listener stays attached and is also what ends the
+ * request, so removing it would hang every call instead of failing it - and
+ * `quietProxyErrors` below cannot say anything useful, because by the time a
+ * log line exists the cause is already a stack trace.
+ *
+ * Latched rather than throttled, and cleared by the first response that gets
+ * through, so a SECOND outage is reported as loudly as the first. A timer would
+ * have to guess an interval; a response arriving is the actual signal that the
+ * condition ended.
+ */
+const reportProxyOutage = (proxy: {
+  on: (event: string, listener: (...args: unknown[]) => void) => void
+}): void => {
+  let reported = false
+
+  proxy.on('error', () => {
+    if (reported) return
+    reported = true
+    console.error(
+      `\n  [api] cannot reach ${API_TARGET} - is the server running, and did it boot?` +
+      '\n        Check the `server` lines above for why.\n'
+    )
+  })
+
+  proxy.on('proxyRes', () => { reported = false })
+}
+
+/**
+ * Drops Vite's own proxy-error stacks, which `reportProxyOutage` has already
+ * replaced with something that names the likely cause.
+ *
+ * Only that one message, and only its text - every other line Vite logs passes
+ * through untouched. The cost of being wrong is bounded and visible: if a
+ * genuinely different proxy failure ever hides here, the line above still
+ * prints once, so the signal that something is wrong survives even when this
+ * swallows the detail.
+ */
+const quietProxyErrors = (): ReturnType<typeof createLogger> => {
+  const logger = createLogger()
+  const error = logger.error.bind(logger)
+
+  logger.error = (message, options) => {
+    if (message.includes('http proxy error')) return
+    error(message, options)
+  }
+
+  return logger
+}
+
 export default defineConfig({
   plugins: [react()],
+  customLogger: quietProxyErrors(),
   server: {
     proxy: {
       // `changeOrigin: false` so the Host header stays `localhost:5173`. The
       // server sets the session cookie without an explicit domain, which binds
       // it to the host it saw; rewriting that would bind it to the API's host
       // and the browser would then refuse to send it back.
-      '/api': { target: API_TARGET, changeOrigin: false }
+      '/api': { target: API_TARGET, changeOrigin: false, configure: reportProxyOutage }
     }
   },
   test: {

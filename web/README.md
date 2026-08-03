@@ -67,15 +67,18 @@ Install from the repository root (`pnpm install`), not from here — this is one
 
 ## Development against a real server
 
-```
-# terminal 1
-cd ../server && pnpm dev
+`pnpm dev` **from the repository root** starts the API and this together, each line prefixed with the project it came from. Two terminals still work if you prefer them separate:
 
-# terminal 2
-pnpm dev
 ```
+cd ../server && pnpm dev      # terminal 1
+pnpm dev                      # terminal 2
+```
+
+Neither form starts the audit **worker** — no audit will ever leave `queued` without `pnpm dev:worker` in `../server`.
 
 `vite.config.ts` proxies `/api` to `http://localhost:3000` with `changeOrigin: false`, so the Host header stays `localhost:5173`. The server sets the session cookie without an explicit domain, which binds it to the host it saw — rewriting the Host would bind the cookie to the API's host and the browser would then refuse to send it back.
+
+**When the API is unreachable you get one line, not a stack per request.** A server that fails to boot is the usual reason, and in a merged stream Vite's default logging buries the server's own error under it — 48 ECONNREFUSED stacks in fifteen seconds, measured. `reportProxyOutage` prints once and names the likely cause; `quietProxyErrors` drops the repeats. The latch clears on the first successful response, so a second outage is reported as loudly as the first.
 
 What the server needs before anything here works:
 
