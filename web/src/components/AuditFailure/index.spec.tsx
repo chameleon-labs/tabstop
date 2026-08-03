@@ -20,6 +20,30 @@ describe('AuditFailure', () => {
     expect(screen.getByText('Could not resolve that domain')).toBeVisible()
   })
 
+  describe('the heading names what actually failed', () => {
+    it('does not say an audit did not finish when none was started', () => {
+      // A refused request means there is nothing that could have finished.
+      show({ message: "That address can't be audited", action: 'check-url', source: 'request' })
+
+      expect(screen.getByRole('heading', { level: 2 }))
+        .toHaveTextContent('That audit could not be started')
+    })
+
+    it('does not claim a running audit failed when only the poll did', () => {
+      // The audit may well be finishing right now; only the question about it
+      // failed. Telling someone it did not finish is worse than vague.
+      show({ message: 'Internal server error', action: 'retry', source: 'poll' })
+
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Lost track of that audit')
+    })
+
+    it('says an audit did not finish only when one actually did not', () => {
+      show({ message: 'The page took too long to load', action: 'retry', source: 'audit' })
+
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('That audit did not finish')
+    })
+  })
+
   it('interrupts, because it replaces something being waited on', () => {
     // The one place in this flow where interrupting is right: a question was
     // asked thirty seconds ago and the answer is that it failed.

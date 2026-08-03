@@ -74,7 +74,13 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
       <p id={errorId} role="alert">{problem}</p>
 
       <p id={previewId}>
-        {preview === null ? null : <>Auditing <strong>{preview}</strong></>}
+        {/*
+          Prospective wording. "Auditing …" claimed the work had already begun
+          while someone was still typing, and collided with the progress
+          heading that uses the same word after submission - two different
+          states saying the same thing.
+        */}
+        {preview === null ? null : <>Will audit <strong>{preview}</strong></>}
       </p>
     </form>
   )

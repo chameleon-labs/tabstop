@@ -1,10 +1,30 @@
 import { Link } from 'react-router'
-import type { DescribedFailure } from '../../audit/failure'
+import type { DescribedFailure, FailureSource } from '../../audit/failure'
 
 export type AuditFailureProps = {
   failure: DescribedFailure
   onRetry: () => void
 }
+
+/**
+ * One heading per source, because "That audit did not finish" is false for two
+ * of the three.
+ *
+ * A refused REQUEST means no audit was ever started - there is nothing that
+ * could have finished. A failed POLL means the audit may well still be running
+ * and only the question about it failed; telling someone their audit did not
+ * finish, when it might be finishing right now, is worse than vague.
+ *
+ * Only `audit` describes a run that reached a terminal failed state.
+ */
+const HEADINGS: Readonly<Record<FailureSource, string>> = {
+  request: 'That audit could not be started',
+  poll: 'Lost track of that audit',
+  audit: 'That audit did not finish'
+}
+
+/** The rate limit is not a failure, so it does not take a failure's heading. */
+const SIGNUP_HEADING = 'You have used your free audits'
 
 /**
  * A failure, and the one thing worth doing about it.
@@ -20,7 +40,7 @@ export type AuditFailureProps = {
 export const AuditFailure = ({ failure, onRetry }: AuditFailureProps): React.JSX.Element => (
   <section role="alert" aria-labelledby="audit-failure-heading">
     <h2 id="audit-failure-heading">
-      {failure.action === 'signup' ? 'You have used your free audits' : 'That audit did not finish'}
+      {failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}
     </h2>
 
     <p>{failure.message}</p>

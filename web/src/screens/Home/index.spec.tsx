@@ -271,6 +271,61 @@ describe('the home screen', () => {
       release()
     })
 
+    it('reports a poll that fails AFTER an earlier one succeeded', async () => {
+      // A different path through React Query than the initial-failure case, and
+      // for a while the only one covered was the initial one. With data already
+      // in the cache the library tolerates the first failure silently - the
+      // query stays `success` with the previous body - and only demotes to
+      // `error` after another. Both were measured; what matters is that the
+      // screen ends up saying something rather than spinning.
+      let gets = 0
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+        }
+        gets += 1
+        return gets === 1
+          ? jsonResponse(200, auditBody({ status: 'running' }))
+          : jsonResponse(500, { error: 'Internal server error' })
+      }))
+
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByRole('heading', { level: 2, name: 'Auditing' })
+
+      expect(await screen.findByText('Internal server error')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible()
+      expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
+    })
+
+    it('restores progress when retrying from a post-success poll failure', async () => {
+      // The other half of the same path: the retry must not leave the failure
+      // and its own button on screen for the whole flight, which is the
+      // "button did nothing" shape.
+      let gets = 0
+      let recovered = false
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+        }
+        gets += 1
+        if (gets === 1) return jsonResponse(200, auditBody({ status: 'running' }))
+        return recovered
+          ? jsonResponse(200, auditBody({ status: 'running' }))
+          : jsonResponse(500, { error: 'Internal server error' })
+      }))
+
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByText('Internal server error')
+
+      recovered = true
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
+    })
+
     it('never shows a result alongside a failure', async () => {
       server({ get: () => jsonResponse(200, auditBody({ status: 'failed', error: 'boom' })) })
       renderAt('/')

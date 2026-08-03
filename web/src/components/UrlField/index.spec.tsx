@@ -40,12 +40,23 @@ describe('UrlField', () => {
     expect(screen.getByText('https://example.com/')).toBeVisible()
   })
 
+  it('describes the preview prospectively, since nothing has started', async () => {
+    // "Auditing …" claimed work had begun while someone was still typing, and
+    // used the same word as the progress heading after submission.
+    setup()
+
+    await userEvent.type(field(), 'example.com')
+
+    expect(screen.getByText(/Will audit/)).toBeVisible()
+    expect(screen.queryByText(/^Auditing/)).not.toBeInTheDocument()
+  })
+
   it('does not echo the URL back when it would say nothing new', async () => {
     setup()
 
     await userEvent.type(field(), 'https://example.com/')
 
-    expect(screen.queryByText(/Auditing/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Will audit/)).not.toBeInTheDocument()
   })
 
   describe('when validation happens', () => {
