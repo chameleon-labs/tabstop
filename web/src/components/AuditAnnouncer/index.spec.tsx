@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuditAnnouncer } from '.'
+import { ANNOUNCE_DELAY_MS } from '../../a11y/announce'
 
 const region = (): HTMLElement => screen.getByRole('status')
 
@@ -12,11 +13,13 @@ describe('AuditAnnouncer', () => {
     // announced by nothing - so the progress indicator, which appeared already
     // knowing its first phase, never spoke that phase at all.
     //
-    // Asserted on the FIRST RENDER's output rather than on the mounted DOM.
-    // `render` wraps in `act`, which flushes the effect, so by the time it
-    // returns the text is already in - the empty moment is real but exists
-    // only between commit and effect. A server render performs no effects, so
-    // it is exactly the markup the browser commits first.
+    // Asserted on the FIRST RENDER's output rather than on the mounted DOM,
+    // because `render` wraps in `act` and flushes the effect.
+    //
+    // This proves only that REACT commits an empty region. It does not prove
+    // that assistive technology observed one, which is a separate question
+    // answered by the deferral below - a passive effect can run before the
+    // browser has painted or exposed the node.
     const initial = renderToStaticMarkup(<AuditAnnouncer message="Requesting the audit" />)
 
     expect(initial).toContain('role="status"')
@@ -24,6 +27,26 @@ describe('AuditAnnouncer', () => {
 
     render(<AuditAnnouncer message="Requesting the audit" />)
     await waitFor(() => { expect(region()).toHaveTextContent('Requesting the audit') })
+  })
+
+  describe('the write is deferred, not merely effect-scheduled', () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    it('leaves the region empty until a later task', () => {
+      // Rendering empty is necessary and NOT sufficient. A passive effect can
+      // run before the browser has painted or exposed the new node, so writing
+      // from `useEffect` directly would still deliver the first message as
+      // initial content - announced by nothing, and the first message is the
+      // one this component exists for.
+      vi.useFakeTimers()
+
+      render(<AuditAnnouncer message="Requesting the audit" />)
+
+      expect(region()).toBeEmptyDOMElement()
+
+      act(() => { vi.advanceTimersByTime(ANNOUNCE_DELAY_MS) })
+      expect(region()).toHaveTextContent('Requesting the audit')
+    })
   })
 
   it('is polite, because none of this should interrupt', () => {

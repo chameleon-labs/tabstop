@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ANNOUNCE_DELAY_MS } from '../../a11y/announce'
 
 export type AuditAnnouncerProps = {
   /** Null while there is nothing new to say. */
@@ -45,7 +46,14 @@ export const AuditAnnouncer = ({ message }: AuditAnnouncerProps): React.JSX.Elem
     // rather than once per render - the progress indicator re-renders every
     // second, and thirty announcements for one audit is unusable.
     if (message === null || message === announced) return
-    setAnnounced(message)
+
+    // DEFERRED, not merely effect-scheduled. Rendering the region empty is
+    // necessary and not sufficient: a passive effect can run before the browser
+    // has painted or exposed the new node, so writing here would still deliver
+    // the first message as initial content - announced by nothing. The first
+    // message is the one this exists for.
+    const timer = setTimeout(() => { setAnnounced(message) }, ANNOUNCE_DELAY_MS)
+    return () => { clearTimeout(timer) }
   }, [message, announced])
 
   return (

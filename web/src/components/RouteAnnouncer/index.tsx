@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
-
-/**
- * How long to wait before reading `document.title`.
- *
- * Not a tuned number: it is short enough to be imperceptible and long enough
- * for the destination screen's own title effect to have run. Exported so a spec
- * can wait on the same value rather than guess a longer one.
- */
-export const ANNOUNCE_DELAY_MS = 100
+import { ANNOUNCE_DELAY_MS } from '../../a11y/announce'
 
 /**
  * Says the new page's name after a client-side navigation.
