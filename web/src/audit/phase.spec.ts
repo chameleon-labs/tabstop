@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EXPECTED_DURATION, PHASES, announcementFor, phaseFor } from './phase'
+import {
+  EXPECTED_DURATION, PHASES, announcementFor, completionAnnouncement, phaseFor
+} from './phase'
 
 describe('phaseFor', () => {
   it('does not claim a queue place before the request is accepted', () => {
@@ -94,5 +96,28 @@ describe('announcementFor', () => {
       `Running the accessibility engine… ${EXPECTED_DURATION}`,
       `Scoring… ${EXPECTED_DURATION}`
     ])
+  })
+})
+
+describe('completionAnnouncement', () => {
+  it('says the wait is over, and roughly what was found', () => {
+    // The result appears without the route changing, so nothing else says
+    // anything: the progress region used to unmount at that exact moment, and
+    // the route announcer only speaks on navigation.
+    expect(completionAnnouncement(72, 3)).toBe('Audit complete. Score 72. 3 issues found.')
+  })
+
+  it('counts one issue as one', () => {
+    expect(completionAnnouncement(90, 1)).toBe('Audit complete. Score 90. 1 issue found.')
+  })
+
+  it('says nothing about a score there is not', () => {
+    expect(completionAnnouncement(null, 0)).toBe('Audit complete. 0 issues found.')
+  })
+
+  it('does not recite the findings', () => {
+    // The result is on screen to be read. Reading it into a live region talks
+    // over someone who has already started.
+    expect(completionAnnouncement(72, 40).length).toBeLessThan(60)
   })
 })

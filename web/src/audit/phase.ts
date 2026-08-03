@@ -85,3 +85,25 @@ export const phaseFor = (status: ProgressStatus, elapsedMs: number): string | nu
  */
 export const announcementFor = (phase: string | null, announced: string | null): string | null =>
   phase === null || phase === announced ? null : `${phase}… ${EXPECTED_DURATION}`
+
+/**
+ * What to announce when the audit lands.
+ *
+ * The result appears without the route changing, so nothing else says anything:
+ * the progress region used to unmount at exactly this moment, and the route
+ * announcer only speaks on navigation. Someone who waited thirty seconds for an
+ * answer was given no indication it had arrived.
+ *
+ * Deliberately short, and deliberately NOT a summary of the findings. It says
+ * the wait is over and roughly what was found; the result itself is on screen
+ * to be read, and reciting it into a live region would talk over someone who
+ * has already started reading.
+ */
+export const completionAnnouncement = (
+  score: number | null, violationCount: number
+): string => {
+  const found = violationCount === 1 ? '1 issue found' : `${violationCount} issues found`
+  return score === null
+    ? `Audit complete. ${found}.`
+    : `Audit complete. Score ${score}. ${found}.`
+}

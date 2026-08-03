@@ -45,6 +45,15 @@ export const useAudit = (
     // A running audit is stale the moment it arrives; that is what polling means.
     staleTime: 0,
     refetchInterval: (query) => {
+      // A query that has ERRORED stops polling, and this is not the same
+      // condition as having no data. TanStack Query keeps the last successful
+      // body when a later fetch fails, so `data.status` stays `running` and the
+      // interval kept firing indefinitely - the screen said "Lost track of that
+      // audit" and offered a Try again button while silently retrying behind
+      // it, several times a second, for as long as the tab stayed open. A
+      // button that claims to be the way to retry must be the way to retry.
+      if (query.state.status === 'error') return false
+
       const status = query.state.data?.status
       if (status === undefined) return false
       return isSettled(status) ? false : pollAfterMs

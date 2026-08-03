@@ -85,11 +85,11 @@ describe('the home screen', () => {
     await submit('example.com')
     const heading = await screen.findByRole('heading', { level: 2, name: 'Auditing' })
 
-    // Scoped to the progress section: the shell carries its own polite region
-    // for route announcements, and two independent live regions on a page is
-    // correct rather than a conflict - they never speak about the same thing.
+    // The visible sentence, scoped to the progress section. The live region is
+    // a sibling that outlives this section, and it is asserted separately -
+    // this component deliberately owns no region of its own.
     const section = heading.closest('section') as HTMLElement
-    expect(within(section).getByRole('status')).toHaveTextContent(/about 30 seconds/)
+    expect(within(section).getByText(/about 30 seconds/)).toBeVisible()
 
     status = 'done'
 
@@ -114,7 +114,10 @@ describe('the home screen', () => {
 
     await submit('example.com')
 
-    expect(await screen.findByText(/Requesting the audit/)).toBeVisible()
+    // Two matches by design: the visible sentence and the live region that
+    // announces it. Both should say the same thing, and neither should claim a
+    // queue place.
+    await waitFor(() => { expect(screen.getAllByText(/Requesting the audit/).length).toBe(2) })
     expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument()
     release()
   })
@@ -326,6 +329,33 @@ describe('the home screen', () => {
       expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
     })
 
+    it('stops polling once it has given up, rather than retrying behind the message', async () => {
+      // The screen said "Lost track of that audit" and offered a Try again
+      // button while silently re-requesting several times a second, for as
+      // long as the tab stayed open: `refetchInterval` read only the RETAINED
+      // `data.status`, which stays `running` when a later fetch fails. A button
+      // that claims to be the way to retry must be the way to retry.
+      let gets = 0
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+        }
+        gets += 1
+        return gets === 1
+          ? jsonResponse(200, auditBody({ status: 'running' }))
+          : jsonResponse(500, { error: 'Internal server error' })
+      }))
+
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByText('Internal server error')
+
+      const settled = gets
+      await new Promise((resolve) => setTimeout(resolve, 300))
+
+      expect(gets).toBe(settled)
+    })
+
     it('never shows a result alongside a failure', async () => {
       server({ get: () => jsonResponse(200, auditBody({ status: 'failed', error: 'boom' })) })
       renderAt('/')
@@ -334,6 +364,37 @@ describe('the home screen', () => {
 
       await screen.findByText('boom')
       expect(screen.queryByRole('heading', { name: /Result for/ })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('what a screen reader is told', () => {
+    const announcer = (): HTMLElement => {
+      // The shell has its own polite region for route changes; this is the
+      // audit's, which is empty until there is something to say.
+      const regions = screen.getAllByRole('status')
+      return regions[regions.length - 1] as HTMLElement
+    }
+
+    it('announces the wait, starting from a region that was already there', async () => {
+      server({ get: () => jsonResponse(200, auditBody({ status: 'running' })) })
+      renderAt('/')
+
+      await submit('example.com')
+
+      await waitFor(() => { expect(announcer()).toHaveTextContent(/Fetching the page/) })
+    })
+
+    it('announces completion, which nothing else would say', async () => {
+      // The result appears without the route changing, so the route announcer
+      // is silent, and the progress region used to unmount at exactly this
+      // moment. Someone who waited thirty seconds got no indication at all.
+      renderAt('/')
+
+      await submit('example.com')
+
+      await screen.findByRole('heading', { level: 2, name: /Result for/ })
+      await waitFor(() => { expect(announcer()).toHaveTextContent(/Audit complete/) })
+      expect(announcer()).toHaveTextContent(/Score 72/)
     })
   })
 

@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useAudit, useRequestAudit } from '../../api/audits'
 import { describeFailure } from '../../audit/failure'
+import { EXPECTED_DURATION, completionAnnouncement } from '../../audit/phase'
+import { AuditAnnouncer } from '../../components/AuditAnnouncer'
 import { AuditFailure } from '../../components/AuditFailure'
 import { AuditProgress } from '../../components/AuditProgress'
 import { AuditResult } from '../../components/AuditResult'
 import { UrlField } from '../../components/UrlField'
+import { useAuditPhase } from '../../hooks/use-audit-phase'
 import { useDocumentTitle } from '../../hooks/use-document-title'
 
 /**
@@ -45,6 +48,21 @@ export const Home = (): React.JSX.Element => {
   })
   const done = audit.data?.status === 'done'
   const waiting = failure === null && startedAt !== null && !done
+
+  /**
+   * One sentence for the live region, covering the whole wait AND its end.
+   *
+   * Computed here rather than inside the progress indicator because the region
+   * has to outlive that component: it unmounts the instant the audit finishes,
+   * which is precisely when there is something to say.
+   */
+  const progressStatus = request.data === undefined
+    ? 'submitting'
+    : audit.data?.status ?? request.data.status
+  const phase = useAuditPhase(progressStatus, startedAt)
+  const announcement = done && audit.data !== undefined
+    ? completionAnnouncement(audit.data.score, audit.data.violations.length)
+    : waiting && phase !== null ? `${phase}… ${EXPECTED_DURATION}` : null
 
   const submit = (url: string): void => {
     setStartedAt(Date.now())
@@ -88,18 +106,17 @@ export const Home = (): React.JSX.Element => {
 
       {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
 
+      {/*
+        Mounted for the whole audit, and EMPTY at first. A region whose content
+        is present when it appears is initial content, which is announced by
+        nothing - so it cannot live inside the progress indicator, which appears
+        already knowing its first phase and disappears exactly when the result
+        arrives.
+      */}
+      {startedAt !== null && <AuditAnnouncer message={announcement} />}
+
       {waiting && startedAt !== null && (
-        <AuditProgress
-          // `submitting` until the server has accepted anything. Falling back
-          // to 'queued' claimed a place in a queue the request had not reached
-          // and might never reach - a slow or refused POST announced a phase
-          // that was never true. After acceptance the server's own answer is
-          // used until the first poll returns, rather than a guess.
-          status={
-            request.data === undefined ? 'submitting' : audit.data?.status ?? request.data.status
-          }
-          startedAt={startedAt}
-        />
+        <AuditProgress phase={phase} />
       )}
 
       {failure === null && done && audit.data !== undefined && (
