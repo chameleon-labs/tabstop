@@ -1,0 +1,100 @@
+# tabstop web
+
+React + Vite + TypeScript frontend. Talks to `../server` over HTTP and shares its response types through `../contract`.
+
+## Current state
+
+**A scaffold.** The four v1 routes resolve to placeholder screens; the shell, routing, error handling, API client and data-fetching setup underneath them are real.
+
+| Route | Screen | Implemented by |
+|---|---|---|
+| `/` | Home — paste a URL, watch the audit | #19 |
+| `/dashboard` | Monitored pages | #20 |
+| `/pages/:id` | Score trend + violation detail | #21 |
+| `/r/:uuid` | Public share page — **unauthenticated** | #23 |
+
+There is deliberately **no component library and no design system** here. Build four screens, then extract if it ever earns its keep.
+
+## Stack
+
+React 19 · Vite 8 · TypeScript 7 · React Router 8 (data router) · TanStack Query 5 · Vitest + Testing Library + jsdom · plain CSS.
+
+No CSS framework and no headless-component library yet. When one is needed, it must not fight semantic markup or focus management — this is an accessibility product and the UI is the demo, so nothing that renders a `div` where a `button` belongs.
+
+## Layout
+
+```
+src/
+  main.tsx              browser entry — the only place a QueryClient is constructed for real
+  app.tsx               providers; takes the QueryClient as a prop so specs get their own
+  routes.tsx            the route table, exported as data so a spec can mount the real thing
+  api/
+    client.ts           the only place that calls fetch
+    query-client.ts     retry policy
+    audits.ts           audit query + mutation hooks
+    session.ts          who is signed in
+  components/           shell, error boundary, 404, auth gate, route announcer
+  screens/{home,dashboard,page-detail,share}/
+  test/render.tsx       mounts the real route table at a chosen path
+```
+
+## Commands
+
+Identical names to `../server`, so one CI workflow shape covers both.
+
+| | |
+|---|---|
+| `pnpm dev` | Vite dev server on :5173, proxying `/api` to :3000 |
+| `pnpm build` | `tsc --noEmit` then `vite build` — a type error fails the build |
+| `pnpm test` | Vitest, jsdom |
+| `pnpm test:watch` | the same, watching |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm preview` | serve the built bundle |
+
+Install from the repository root (`pnpm install`), not from here — this is one project in a pnpm workspace.
+
+## Talking to the server
+
+**Every request carries `credentials: 'include'`, and it is not per-call opt-in.** The session is an httpOnly cookie; `fetch` does not send cookies cross-origin without it, and `app.tabstop.dev` → `api.tabstop.dev` is same-*site* (which is what makes `SameSite=Lax` work) but still cross-*origin*. Omit it once and a valid session returns 401 while looking exactly like a backend bug.
+
+**The frontend cannot read the session.** `httpOnly` means JavaScript never sees the cookie, so there is no local check for "am I signed in" — `GET /api/me` is the only answer, and `useSession` is the only caller. A 401 from it is mapped to `null`, because "nobody is signed in" is an answer; a 500 stays an error, so a broken backend does not read as a logged-out user and bounce everybody.
+
+**Error bodies are validated at runtime; success bodies are not.** A success body is described by `@tabstop/contract`, and the server's typecheck fails if its mappers stop matching it, so re-validating in the browser would ship a duplicate of a guarantee that already exists. An error body has no such guarantee — a 502 from a proxy is an HTML page nobody wrote — and we *branch* on those: a 429's `resetAt` becomes a countdown, a 409's `code` picks a screen. `rateLimitOf` and `conflictOf` in `api/client.ts` check every field they promise.
+
+**`nodes[].html` is a markup snippet captured from an arbitrary third-party page.** It is displayed as text, never as markup. React escapes by default, so the whole rule is that `dangerouslySetInnerHTML` never touches it. This is the exposure that motivated an httpOnly cookie over a JS-readable token.
+
+**Polling comes from the server.** `POST /api/audits` returns `pollAfterMs`; pass it to `useAudit` rather than choosing a number, so the interval can be widened without a frontend deploy. `useAudit` returns `false` from `refetchInterval` once the audit is `done` or `failed`, which is the entire stop condition — no component owns a timer.
+
+## Development against a real server
+
+```
+# terminal 1
+cd ../server && pnpm dev
+
+# terminal 2
+pnpm dev
+```
+
+`vite.config.ts` proxies `/api` to `http://localhost:3000` with `changeOrigin: false`, so the Host header stays `localhost:5173`. The server sets the session cookie without an explicit domain, which binds it to the host it saw — rewriting the Host would bind the cookie to the API's host and the browser would then refuse to send it back.
+
+What the server needs before anything here works:
+
+- **`FRONTEND_ORIGIN=http://localhost:5173`** in `server/.env`. It is required at startup — the server refuses to boot without it — and it is what `same-origin.ts` compares the `Origin` header against, so a POST from a Vite dev server on any other port is rejected as cross-origin. `server/.env.example` already has the right value; a `.env` predating `web/` will not.
+- A database and Redis: `docker compose up -d` in `../server`, then `pnpm migrate`.
+
+`VITE_API_URL` is unset in development on purpose, which makes every request same-origin and sends it through the proxy. A deployed build sets it to the real API origin. Override the proxy target with `VITE_DEV_API_TARGET` if the server is somewhere else.
+
+## Accessibility in the shell
+
+The parts that are easy to omit and hard to retrofit, so they are here from the first commit:
+
+- **Skip link**, first in the DOM, visible on focus. `<main>` carries `tabIndex={-1}` — without it the browser moves the scroll position but not focus, and the next Tab starts from the top again.
+- **Route announcer.** A client-side navigation announces nothing at all; a screen reader user follows a link and hears silence. `RouteAnnouncer` reads `document.title` into a polite live region after each route change — deferred, both because the destination screen has not set its title yet and because a live region has to be present and empty before content lands in it. It stays quiet on first load, which the browser already announced.
+- **`useDocumentTitle` on every screen**, so the tab, the history entry and the announcement can never disagree.
+- **Error boundary inside the shell.** `errorElement` lives on a pathless route one level below the layout, not on the layout itself — an `errorElement` renders *in place of* the route that declares it, so putting one on the layout replaces the header, the skip link and every way out. A spec asserts the skip link survives a failed screen.
+
+## Testing
+
+Specs mount the app's **real route table** (`test/render.tsx`) rather than a copy written in the test — the point is to assert that our configuration resolves the way we think, not that React Router works.
+
+Queries are by role and accessible name. That is not only house style here: a test that can only find an element by `data-testid` is a test that would pass if the element stopped being reachable by anyone using a screen reader.

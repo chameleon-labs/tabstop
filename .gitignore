@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+.DS_Store
+
+# Local tooling state, not project configuration.
+.idea/
+.claude/
+.playwright-mcp/
+.superpowers/
+docs/

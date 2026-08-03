@@ -1,0 +1,16 @@
+packages:
+  - contract
+  - server
+  - web
+
+# Moved up from server/pnpm-workspace.yaml when web/ arrived: pnpm reads these
+# from the workspace root only, so leaving them in server/ would have silently
+# stopped applying to the package they were written for.
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  cpu-features: true
+  esbuild: true
+  msgpackr-extract: false
+  protobufjs: true
+  ssh2: true

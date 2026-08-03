@@ -6,6 +6,24 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-02 — the frontend shares a type-only contract package, not the server's internals
+
+`web/` exists, and with it the question the backlog had been deferring: three surfaces consume the audit response — live progress, audit detail and the share page — and none of them may keep their own copy of its shape.
+
+**A pnpm workspace at the repository root, with `contract/` as a third project.** `@tabstop/contract` publishes an `exports` map containing a `types` condition and *nothing else*, so there is no runtime entry to import. Both failure modes were checked by doing them rather than assumed: add a value export there and import it, and `vite build` cannot resolve the specifier while Node refuses it with `ERR_PACKAGE_PATH_NOT_EXPORTED`. Importing one of the types as a value is a different mistake caught earlier — `verbatimModuleSyntax` is on in every project, so it is TS1484 before it is anything else. Nothing from this package can reach a browser bundle by accident.
+
+**Rejected: importing types straight out of `server/src` behind a path alias.** It needs no infrastructure and works today, which is genuinely appealing. But `import type` erasure only protects the *bundle*; it does nothing about the coupling. `web/`'s typecheck would compile files under `server/src`, so the frontend would break on server refactors that changed nothing about the wire, and there would be no boundary saying which server types are published and which are internal. **Rejected: OpenAPI codegen.** The most robust option and the right one eventually; it is a great deal of machinery for four endpoints, and it can be adopted later without unpicking anything below.
+
+**The contract redeclares its types rather than re-exporting the domain's, and that is forced rather than sloppy.** `domain/` may import nothing but relative paths — `architecture.spec.ts` asserts it — so a domain model cannot live in a package, and `contract/` sits below the server so it cannot import one either. The redeclaration is only safe if drift is impossible, so `presentation/helpers/contract-proof.ts` asserts mutual assignability for each shared union and struct, and the server's typecheck fails when either side moves without the other.
+
+**A return-type annotation is not that proof, which is the part worth remembering.** It checks one direction, and one direction misses both ways this response widens by accident: `countsByImpact` is a `Record`, and a record over a *wider* key union is assignable to one over a narrower union — excess property checking would object, but it only applies to fresh object literals and this value is not one; and `nodes` is passed through by reference, so a field added to the domain's `ViolationNode` reaches the wire with no literal to check it against. Both compile cleanly under an annotation. Adding a fifth `Impact`, and adding a field to `ViolationNode`, were each run against the real typechecker to confirm the assertion fires and names the type that moved.
+
+**`toAuditResultResponse` stays in the server.** Only transport types moved. That mapper is a security boundary — `AuditModel` carries `pageId`, which links to a site and therefore to an account — and it has a spec asserting the forbidden keys are absent. `architecture.spec.ts` now also pins the exact list of files allowed to name `@tabstop/contract`; the list is expected to grow by one view helper per published endpoint, and a controller or adapter appearing in it is the signal that a wire type has started being used as an internal model.
+
+**The workspace has costs, and they were paid rather than deferred.** `pnpm-workspace.yaml` and the lockfile moved to the root, `server/`'s `packageManager` field was dropped so there is one declaration of it, and Server CI's install now covers `web/`'s dependencies too. That last one is deliberate: `--filter` would install a different tree from the one a developer has, and that difference is precisely the sort of thing that only ever surfaces as a CI-only failure. The path filter gained `contract/**`, because a change there can break the server's build while touching nothing under `server/`.
+
+**`web/` has no CI yet** — #18 — so nothing runs its 29 specs on a pull request. They pass locally and each was mutation-checked; that is the honest state until #18 lands.
+
 ## 2026-08-02 — provider backoff is a monotonic queue-wide deadline
 
 BullMQ's manual `Queue.rateLimit` writes its limiter key with `SET ... PX`, so

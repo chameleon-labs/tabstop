@@ -28,7 +28,7 @@ Seven slices exist:
 - **Regression detection** — each tracked-page completion compares with its previous completed audit, records a score drop or newly severe rule, and dedupes alerts to one per page per UTC day. See *Regression detection* below.
 - **Regression email** — a durable outbox dispatches those events through Resend (or the safe local console adapter), with provider retries and page-scoped one-click unsubscribe. See *Alert email* below.
 
-Not built yet: every frontend screen. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
+Not built yet: every frontend screen — `../web` is a routed scaffold with placeholders. See `../DECISIONS.md` for stack decisions, `docs/superpowers/specs/` for designs and `docs/superpowers/plans/` for the plans they turned into.
 
 ## Stack
 
@@ -40,6 +40,7 @@ Deliberately excluded to keep this minimal, same reasoning as the template: no `
 
 - **`type: module` + `NodeNext` resolution**: relative imports need an explicit `.js` extension even though the source file is `.ts` (e.g. `import { x } from './x.js'` from `x.ts`).
 - One usecase = one file per layer + one factory + one route, named identically across layers. Grep the usecase name to find every file that makes it up.
+- **Published response types live in `../contract`, not here.** `@tabstop/contract` is type-only and is what `../web` compiles against. Only view helpers in `presentation/helpers/` may import it — `architecture.spec.ts` pins the list — and the mappers stay in this package, because `toAuditResultResponse` is a security boundary rather than a shape. The contract redeclares its unions instead of re-exporting the domain's, and `presentation/helpers/contract-proof.ts` is what stops the two drifting: widen one side without the other and `pnpm typecheck` fails here, naming the type that moved.
 
 ## Commands
 
