@@ -91,6 +91,17 @@ describe('RouteError', () => {
       expect(await screen.findByText('Service Unavailable')).toBeVisible()
     })
 
+    it('does not render an empty paragraph when there is no status text', async () => {
+      // `new Response(null, { status: 503 })` has none, and HTTP/2 carries no
+      // reason phrase at all - so this is the ordinary case, not a corner. An
+      // empty string is not null, so it slipped past the fallback and rendered
+      // a blank explanation under the heading.
+      renderLoaderThrowing(new Response(null, { status: 503 }))
+
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+      expect(screen.getByText(/do not have a useful explanation/)).toBeVisible()
+    })
+
     it('says nothing specific about an error written for a developer', async () => {
       // A bare `Error` here is a bug in our own code, and its message is
       // written for whoever is reading a stack trace. "Cannot read properties

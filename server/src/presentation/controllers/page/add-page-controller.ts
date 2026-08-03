@@ -2,6 +2,7 @@ import type { AddPage } from '../../../domain/usecases/add-page.js'
 import { PageAlreadyTrackedError } from '../../errors/page-already-tracked-error.js'
 import { PageLimitReachedError } from '../../errors/page-limit-reached-error.js'
 import { badRequest, codedConflict, created, serverError } from '../../helpers/http/http-helper.js'
+import { PAGE_CONFLICT, pageLimitDetails } from '../../helpers/page-conflict-view.js'
 import { toPageView } from '../../helpers/page-view.js'
 import { REJECTION_MESSAGES } from '../../helpers/url-rejection-message.js'
 import type { Controller } from '../../protocols/controller.js'
@@ -46,12 +47,14 @@ export class AddPageController implements Controller<AddPageRequest> {
       // each carries a code rather than only a sentence.
       if (result.outcome === 'limit-reached') {
         return codedConflict(
-          'page_limit_reached', new PageLimitReachedError(result.limit), { limit: result.limit }
+          PAGE_CONFLICT.limitReached,
+          new PageLimitReachedError(result.limit),
+          pageLimitDetails(result.limit)
         )
       }
 
       if (result.outcome === 'duplicate') {
-        return codedConflict('page_already_tracked', new PageAlreadyTrackedError())
+        return codedConflict(PAGE_CONFLICT.alreadyTracked, new PageAlreadyTrackedError())
       }
 
       return created({

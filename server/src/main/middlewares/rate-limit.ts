@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import ipaddr from 'ipaddr.js'
 import type { NextFunction, Request, Response } from 'express'
+import { toRateLimitedBody } from '../../presentation/helpers/rate-limit-view.js'
 import type {
   BucketConfig, RateLimitAllowance, RateLimiter
 } from '../../data/protocols/rate-limit/rate-limiter.js'
@@ -71,13 +72,9 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
       // which would invite an immediate retry.
       const retryAfter = Math.max(1, Math.ceil(decision.retryAfterMs / 1000))
       res.set('retry-after', String(retryAfter))
-      res.status(429).json({
-        error: 'Too many requests',
-        retryAfter,
-        // Absolute, because a countdown is what a UI can render without
-        // tracking when the response arrived.
-        resetAt: new Date(Date.now() + retryAfter * 1000).toISOString()
-      })
+      // Built by a view helper, so the body carries the type the frontend
+      // compiles against instead of being an inline object that resembles it.
+      res.status(429).json(toRateLimitedBody(retryAfter, new Date()))
       return
     }
 

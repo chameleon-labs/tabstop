@@ -2,9 +2,10 @@ import type {
   AuditResultResponse,
   AuditStatus as WireStatus,
   Impact as WireImpact,
+  RequestAuditResponse,
   ViolationNode as WireViolationNode
 } from '@tabstop/contract'
-import type { AuditStatus } from '../../domain/models/audit.js'
+import type { AuditModel, AuditStatus } from '../../domain/models/audit.js'
 import type { Impact } from '../../domain/models/impact.js'
 import type { ViolationNode } from '../../domain/models/violation.js'
 import type { AuditResult } from '../../domain/usecases/load-audit-result.js'
@@ -60,4 +61,26 @@ export const toAuditResultResponse = (result: AuditResult): AuditResultResponse 
     helpUrl: violation.helpUrl,
     nodes: violation.nodes
   }))
+})
+
+/**
+ * The 202 from `POST /api/audits`.
+ *
+ * Named and annotated rather than built inline in the controller, because it is
+ * as much a published shape as the GET response is - the frontend types its
+ * mutation against `RequestAuditResponse`, and `pollAfterMs` is the value it
+ * then feeds back into polling. Built inline, renaming any of these three
+ * fields would typecheck on both sides and surface as a client that polls
+ * forever with an undefined interval.
+ *
+ * `status` is the domain's, which `StatusMatches` above already pins to the
+ * wire union, so widening `AuditStatus` fails here too.
+ */
+export const toRequestAuditResponse = (
+  audit: AuditModel, pollAfterMs: number
+): RequestAuditResponse => ({
+  // The public uuid only. The internal id is never exposed.
+  auditId: audit.publicUuid,
+  status: audit.status,
+  pollAfterMs
 })

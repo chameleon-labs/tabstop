@@ -1,4 +1,4 @@
-import type { CodedConflictBody, RateLimitedBody } from '@tabstop/contract'
+import type { CodedConflictBody, PageConflictBody, RateLimitedBody } from '@tabstop/contract'
 
 /**
  * Empty by default, which makes every request same-origin and sends it through
@@ -61,6 +61,28 @@ const readBody = async (response: Response): Promise<unknown> => {
 }
 
 /**
+ * Our defaults, then the caller's, with the caller winning.
+ *
+ * Built through `Headers` rather than object spread because `RequestInit.headers`
+ * has three legal forms - a record, a `Headers` instance, and an array of
+ * pairs - and spreading the last two produces `{}`. The caller's headers would
+ * be dropped in silence, which is the worst way to lose an authorization or an
+ * idempotency key.
+ *
+ * `content-type` is set only when there is a body to describe. Announcing JSON
+ * on a bodyless GET is the kind of header that quietly turns a simple request
+ * into a preflighted one.
+ */
+const headersFor = (init: RequestInit): Headers => {
+  const headers = new Headers({ accept: 'application/json' })
+  if (init.body !== undefined) headers.set('content-type', 'application/json')
+
+  new Headers(init.headers).forEach((value, name) => { headers.set(name, value) })
+
+  return headers
+}
+
+/**
  * The only place the app calls `fetch`.
  *
  * `credentials: 'include'` is on every request and is not optional. The session
@@ -75,9 +97,7 @@ export const request = async <T>(path: string, init: RequestInit = {}): Promise<
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
-    headers: init.body === undefined
-      ? { accept: 'application/json', ...init.headers }
-      : { accept: 'application/json', 'content-type': 'application/json', ...init.headers }
+    headers: headersFor(init)
   })
 
   const body = await readBody(response)
@@ -92,17 +112,27 @@ export const post = async <T>(path: string, payload: unknown): Promise<T> =>
 export const isApiError = (error: unknown): error is ApiError => error instanceof ApiError
 
 /**
- * The 429 details, or null if this was not a rate limit.
+ * The 429 details, or null if this was not a usable rate-limit response.
  *
- * Every field is checked because the branch depends on them: a `resetAt` that
- * is actually undefined renders `Invalid Date` in a countdown, and a
- * `retryAfter` that is a string silently disables any arithmetic on it.
+ * Validated against what the server actually promises, not merely against
+ * JavaScript's type tags. The middleware sends `Math.max(1, Math.ceil(ms/1000))`
+ * and an ISO timestamp, so anything else came from a proxy or a limiter that
+ * fell over - and a caller renders these, so being permissive here shows a
+ * person `Invalid Date`, or a countdown that starts negative and never ends.
+ *
+ * Null is always safe: the caller falls back to displaying `error.message`.
  */
+const isPositiveInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0
+
+const isTimestamp = (value: unknown): value is string =>
+  typeof value === 'string' && !Number.isNaN(Date.parse(value))
+
 export const rateLimitOf = (error: unknown): RateLimitedBody | null => {
   if (!isApiError(error) || error.status !== 429) return null
   const body = error.body
   if (!isRecord(body)) return null
-  if (typeof body['retryAfter'] !== 'number' || typeof body['resetAt'] !== 'string') return null
+  if (!isPositiveInteger(body['retryAfter']) || !isTimestamp(body['resetAt'])) return null
   return { error: error.message, retryAfter: body['retryAfter'], resetAt: body['resetAt'] }
 }
 
@@ -116,4 +146,36 @@ export const conflictOf = (error: unknown): CodedConflictBody | null => {
   const body = error.body
   if (!isRecord(body) || typeof body['code'] !== 'string') return null
   return { code: body['code'], error: error.message }
+}
+
+/**
+ * A `POST /api/pages` conflict, narrowed to the variant it actually is.
+ *
+ * `conflictOf` above answers the generic question - is this a coded conflict,
+ * and what is the code - which is what a shared handler wants. It cannot answer
+ * this one: `limit` only exists on one variant, and a shape wide enough to
+ * cover both drops it, leaving a screen unable to say "10 of 10" without
+ * hardcoding the cap the server owns.
+ *
+ * Null for a code this build does not know, which is deliberate rather than a
+ * gap. A server that adds a third code should degrade to displaying the
+ * sentence it sent, not to a screen branching on a variant it cannot fill in.
+ */
+export const pageConflictOf = (error: unknown): PageConflictBody | null => {
+  const conflict = conflictOf(error)
+  if (conflict === null || !isApiError(error) || !isRecord(error.body)) return null
+
+  if (conflict.code === 'page_already_tracked') {
+    return { code: 'page_already_tracked', error: conflict.error }
+  }
+
+  if (conflict.code === 'page_limit_reached') {
+    const limit = error.body['limit']
+    // A limit that is not a positive integer cannot be rendered as a count, and
+    // guessing one would put a wrong number in front of a person.
+    if (!isPositiveInteger(limit)) return null
+    return { code: 'page_limit_reached', error: conflict.error, limit }
+  }
+
+  return null
 }

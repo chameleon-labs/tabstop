@@ -288,7 +288,13 @@ describe('layer dependencies', () => {
 
     expect(importers.sort()).toEqual([
       'presentation/helpers/account-view.ts',
-      'presentation/helpers/audit-view.ts'
+      'presentation/helpers/audit-view.ts',
+      // Not a view of a resource, but a view of a response all the same: the
+      // shared error envelope every endpoint answers failures with, which the
+      // client reads on every status.
+      'presentation/helpers/http/http-helper.ts',
+      'presentation/helpers/page-conflict-view.ts',
+      'presentation/helpers/rate-limit-view.ts'
     ])
   })
 

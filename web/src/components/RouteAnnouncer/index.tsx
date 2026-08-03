@@ -41,6 +41,17 @@ export const RouteAnnouncer = (): React.JSX.Element => {
     announcedFor.current = pathname
 
     /**
+     * Emptied first, and this is not tidying.
+     *
+     * Two paths can share a title - `/pages/1` and `/pages/2` are both
+     * "Page · tabstop" today. Setting the state to the string it already holds
+     * is a no-op to React, so the DOM never changes, so a live region has
+     * nothing new to read and the second navigation is announced by silence.
+     * Clearing makes the next write a real mutation whatever the title says.
+     */
+    setAnnouncement('')
+
+    /**
      * Deferred for two reasons, both required.
      *
      * The screen's `useDocumentTitle` has not run yet - this component is a

@@ -30,6 +30,13 @@ export type {
 export type { AccountResponse } from './account.js'
 
 export type {
+  PageAlreadyTrackedBody,
+  PageConflictBody,
+  PageConflictCode,
+  PageLimitReachedBody
+} from './pages.js'
+
+export type {
   ApiErrorBody,
   CodedConflictBody,
   RateLimitedBody

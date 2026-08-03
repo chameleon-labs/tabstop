@@ -1,7 +1,21 @@
 import { render, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { createBrowserRouter, createMemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './app'
 import { makeQueryClient } from './api/query-client'
+import { routes } from './routes'
+
+/**
+ * The module is spied on rather than replaced: `RouterProvider` and everything
+ * the screens import must stay real, or this stops being a test of the app.
+ */
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>()
+  return { ...actual, createBrowserRouter: vi.fn(actual.createBrowserRouter) }
+})
+
+const createBrowserRouterSpy = vi.mocked(createBrowserRouter)
 
 /**
  * The composition root, tested through what it composes.
@@ -29,10 +43,14 @@ describe('App', () => {
     window.history.pushState({}, '', '/')
   })
 
+  const renderApp = (): void => {
+    render(<App queryClient={makeQueryClient()} router={createBrowserRouter(routes)} />)
+  }
+
   it('renders the app at the browser\'s current location', async () => {
     // Through the real `createBrowserRouter`, not the memory router every other
     // spec uses - so this is the one place the production router is exercised.
-    render(<App queryClient={makeQueryClient()} />)
+    renderApp()
 
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Paste a URL')
   })
@@ -44,10 +62,31 @@ describe('App', () => {
     // through `RequireAuth` into `useSession`, where a missing provider throws.
     window.history.pushState({}, '', '/dashboard')
 
-    render(<App queryClient={makeQueryClient()} />)
+    renderApp()
 
     // The 401 sends the gate home, which is reachable only by having asked.
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Paste a URL')
     expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('builds no router of its own, so StrictMode cannot orphan one', async () => {
+    // The bug this shape exists to prevent, asserted on the construction itself.
+    //
+    // StrictMode double-invokes component bodies AND `useState` initialisers -
+    // measured, not assumed - and `createBrowserRouter` calls `initialize()`,
+    // which subscribes to browser history. Constructing one anywhere inside this
+    // subtree therefore leaves a second router listening to `popstate` with no
+    // owner and no way to dispose it. A lazy initialiser does not save you.
+    const router = createMemoryRouter(routes, { initialEntries: ['/'] })
+    createBrowserRouterSpy.mockClear()
+
+    render(
+      <StrictMode>
+        <App queryClient={makeQueryClient()} router={router} />
+      </StrictMode>
+    )
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(createBrowserRouterSpy).not.toHaveBeenCalled()
   })
 })

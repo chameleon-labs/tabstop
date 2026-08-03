@@ -81,11 +81,19 @@ export default defineConfig({
   customLogger: quietProxyErrors(),
   server: {
     proxy: {
-      // `changeOrigin: false` so the Host header stays `localhost:5173`. The
-      // server sets the session cookie without an explicit domain, which binds
-      // it to the host it saw; rewriting that would bind it to the API's host
-      // and the browser would then refuse to send it back.
-      '/api': { target: API_TARGET, changeOrigin: false, configure: reportProxyOutage }
+      // The proxy is what makes the session cookie work in development, and the
+      // mechanism is the REQUEST URL rather than any header. `Set-Cookie` here
+      // carries no `Domain`, so the browser scopes the cookie to the host it
+      // asked - `localhost:5173` - and sends it back on every same-origin call.
+      // Point the app straight at `localhost:3000` instead and the cookie is
+      // scoped to a different origin, which is where cross-site rules start
+      // deciding whether it travels.
+      //
+      // `changeOrigin` is deliberately not set. It rewrites the Host header
+      // sent UPSTREAM, which has no bearing on cookie scope - the browser never
+      // sees it - and nothing on the server reads Host either: `same-origin.ts`
+      // checks `Origin`, and `PUBLIC_API_ORIGIN` is configuration.
+      '/api': { target: API_TARGET, configure: reportProxyOutage }
     }
   },
   test: {

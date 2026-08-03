@@ -3,14 +3,18 @@ name: Server CI
 # `contract/**` is in the filter because the server typechecks against it: a
 # change there can break this build while touching nothing under `server/`, and
 # a path filter that misses that turns a compile error into a merged one.
-# The lockfile and workspace file are here for the same reason - both now live
-# at the root and both change what gets installed.
+#
+# The root `package.json`, lockfile and workspace file are here for the same
+# reason. The root manifest is where `packageManager` now lives, so
+# `pnpm/action-setup` reads its pnpm version from it - a bump there changes what
+# this job runs with while touching nothing under `server/`.
 on:
   push:
     branches: [main]
     paths:
       - 'server/**'
       - 'contract/**'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/server-ci.yml'
@@ -19,6 +23,7 @@ on:
     paths:
       - 'server/**'
       - 'contract/**'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/server-ci.yml'

@@ -90,7 +90,7 @@ pnpm dev                      # terminal 2
 
 Neither form starts the audit **worker** — no audit will ever leave `queued` without `pnpm dev:worker` in `../server`.
 
-`vite.config.ts` proxies `/api` to `http://localhost:3000` with `changeOrigin: false`, so the Host header stays `localhost:5173`. The server sets the session cookie without an explicit domain, which binds it to the host it saw — rewriting the Host would bind the cookie to the API's host and the browser would then refuse to send it back.
+`vite.config.ts` proxies `/api` to `http://localhost:3000`, and that proxy is what makes the session cookie work locally. The mechanism is the **request URL**, not a header: `Set-Cookie` carries no `Domain`, so the browser scopes the cookie to the host it asked — `localhost:5173` — and returns it on every same-origin call. Point the app straight at `localhost:3000` instead and the cookie belongs to a different origin, where cross-site rules start deciding whether it travels.
 
 **When the API is unreachable you get one line, not a stack per request.** A server that fails to boot is the usual reason, and in a merged stream Vite's default logging buries the server's own error under it — 48 ECONNREFUSED stacks in fifteen seconds, measured. `reportProxyOutage` prints once and names the likely cause; `quietProxyErrors` drops the repeats. The latch clears on the first successful response, so a second outage is reported as loudly as the first.
 

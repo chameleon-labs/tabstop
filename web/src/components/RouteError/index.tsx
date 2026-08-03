@@ -42,7 +42,11 @@ export const RouteError = (): React.JSX.Element => {
  */
 const messageOf = (error: unknown): string | null => {
   if (error instanceof ApiError) return error.message
-  if (isRouteErrorResponse(error)) return error.statusText
+  // Empty is not a message. `new Response(null, { status: 503 })` has no status
+  // text at all, and HTTP/2 carries no reason phrase, so this is the common
+  // case rather than a corner of it - returning `''` here passes the null check
+  // below and renders an empty paragraph where the explanation should be.
+  if (isRouteErrorResponse(error)) return error.statusText === '' ? null : error.statusText
   return null
 }
 
