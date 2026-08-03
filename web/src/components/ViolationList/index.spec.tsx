@@ -132,6 +132,33 @@ describe('ViolationList', () => {
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     })
 
+    it('does not turn a frame chain into a descendant selector', () => {
+      // `['iframe#embed', '#inside']` means "in that frame, this element".
+      // Joined with a space it reads as `iframe#embed #inside` - a valid
+      // selector for a different element that almost certainly does not exist.
+      render(<ViolationList violations={[violation('critical', 'a', {
+        nodes: [{ target: ['iframe#embed', '#inside'], html: '<b/>' }]
+      })]} />)
+
+      expect(screen.queryByText('iframe#embed #inside')).not.toBeInTheDocument()
+      expect(screen.getByText(/iframe#embed/)).toBeVisible()
+    })
+
+    it('renders no link at all when helpUrl is not a web address', () => {
+      // `helpUrl` comes from `window.axe` inside the audited page, and the
+      // audited page can replace that object before the engine runs. React
+      // blocks `javascript:` itself, but not `data:` and not an arbitrary
+      // remote origin - a link reading "How to fix this" inside an
+      // accessibility report, pointing wherever an audited site chose.
+      render(<ViolationList violations={[violation('critical', 'a', {
+        helpUrl: 'data:text/html,<script>alert(1)</script>'
+      })]} />)
+
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+      // The rule is still named, so the finding is not less useful.
+      expect(screen.getByText('a')).toBeVisible()
+    })
+
     it('says so when a rule reported no specific elements', () => {
       render(<ViolationList violations={[violation('critical', 'a', { nodes: [] })]} />)
 

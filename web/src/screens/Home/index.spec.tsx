@@ -131,7 +131,14 @@ describe('the home screen', () => {
 
       expect(await screen.findByRole('heading', { name: 'You have used your free audits' }))
         .toBeVisible()
-      expect(screen.getByRole('link', { name: 'Create an account' })).toBeVisible()
+
+      // The link has to GO somewhere. It pointed at `/signup`, which was not a
+      // route, so the most motivated visitor this product will ever see landed
+      // on the 404 screen.
+      await userEvent.click(screen.getByRole('link', { name: 'Create an account' }))
+      expect(await screen.findByRole('heading', { level: 1, name: 'Create an account' }))
+        .toBeVisible()
+      expect(screen.queryByText('Page not found')).not.toBeInTheDocument()
     })
 
     it('offers a retry when the audit itself failed', async () => {
@@ -165,6 +172,45 @@ describe('the home screen', () => {
         expect(posts.length).toBeGreaterThan(1)
         expect((posts.at(-1)?.[1] as RequestInit).body).toBe('{"url":"https://example.com/"}')
       })
+    })
+
+    it('reports a failed POLL instead of spinning forever', async () => {
+      // The audit query exhausts its retries, the POST error stays null, and
+      // nothing was left to notice: `waiting` held, so the progress indicator
+      // span indefinitely on an audit nobody was still asking about.
+      server({ get: () => jsonResponse(500, { error: 'Internal server error' }) })
+      renderAt('/')
+
+      await submit('example.com')
+
+      expect(await screen.findByText('Internal server error')).toBeVisible()
+      expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
+    })
+
+    it('retries a failed poll by ASKING AGAIN, not by auditing again', async () => {
+      // Re-submitting would spend another thirty seconds of Chromium, and
+      // another of the caller's rate limit, to answer a question already being
+      // answered.
+      const fetchMock = server({ get: () => jsonResponse(500, { error: 'Internal server error' }) })
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByRole('button', { name: 'Try again' })
+      const postsBefore = fetchMock.mock.calls.filter(
+        (call) => (call[1] as RequestInit | undefined)?.method === 'POST'
+      ).length
+
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      await waitFor(() => {
+        const gets = fetchMock.mock.calls.filter(
+          (call) => (call[1] as RequestInit | undefined)?.method !== 'POST'
+        )
+        expect(gets.length).toBeGreaterThan(1)
+      })
+      const postsAfter = fetchMock.mock.calls.filter(
+        (call) => (call[1] as RequestInit | undefined)?.method === 'POST'
+      ).length
+      expect(postsAfter).toBe(postsBefore)
     })
 
     it('never shows a result alongside a failure', async () => {

@@ -35,8 +35,16 @@ describe('normaliseUrl', () => {
       expect(urlOf('http://example.com')).toBe('http://example.com/')
     })
 
-    it('keeps a port', () => {
+    it('keeps a port on a dotted host', () => {
       expect(urlOf('example.com:8080/health')).toBe('https://example.com:8080/health')
+    })
+
+    it('keeps a port on localhost, the one dotless host anyone types with one', () => {
+      expect(urlOf('localhost:3000')).toBe('https://localhost:3000/')
+    })
+
+    it('keeps a port on a bare IPv4 address', () => {
+      expect(urlOf('192.168.0.1:8080')).toBe('https://192.168.0.1:8080/')
     })
 
     it('returns the canonical form, which is also what gets displayed', () => {
@@ -54,6 +62,11 @@ describe('normaliseUrl', () => {
     it.each([
       ['javascript:alert(1)', 'a scheme that names no page'],
       ['mailto:someone@example.com', 'an address rather than a page'],
+      // A digit after the colon is not enough to mean "port". Read that way,
+      // `mailto:123` became `https://mailto:123/` - a real address, entirely
+      // unrelated to what was typed, submitted without a word.
+      ['mailto:123', 'an opaque scheme whose payload is numeric'],
+      ['javascript:1', 'the same trap with an executable scheme'],
       ['https://', 'a scheme and nothing else']
     ])('refuses %p - %s', (raw) => {
       expect(normaliseUrl(raw)).toEqual({ ok: false, problem: 'unparseable' })
@@ -79,7 +92,6 @@ describe('normaliseUrl', () => {
 
     it('passes a private address through rather than deciding policy', () => {
       expect(urlOf('192.168.0.1')).toBe('https://192.168.0.1/')
-      expect(urlOf('localhost:3000')).toBe('https://localhost:3000/')
     })
 
     it('passes embedded credentials through', () => {

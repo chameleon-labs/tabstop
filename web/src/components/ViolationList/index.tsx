@@ -1,6 +1,7 @@
 import type { Violation } from '@tabstop/contract'
 import { useId, useState } from 'react'
 import { groupByImpact, startsExpanded } from '../../audit/grouping'
+import { crossesFrames, describeTarget, safeHelpUrl } from '../../audit/violation'
 
 export type ViolationListProps = {
   violations: readonly Violation[]
@@ -53,6 +54,8 @@ const ViolationItem = ({
 }: ViolationItemProps): React.JSX.Element => {
   const [open, setOpen] = useState(defaultExpanded)
   const panelId = useId()
+  // Null when the audited page supplied something that is not a web address.
+  const help = safeHelpUrl(violation.helpUrl)
 
   return (
     <>
@@ -71,14 +74,18 @@ const ViolationItem = ({
         a broken relationship, not a collapsed one.
       */}
       <div id={panelId} hidden={!open}>
-        <p>
-          <a href={violation.helpUrl} target="_blank" rel="noreferrer noopener">
-            How to fix this
-            {/* The link text alone would read as "How to fix this" out of
-                context, in a list of identical links. The rule names it. */}
-            <span className="visually-hidden"> — {violation.ruleId}</span>
-          </a>
-        </p>
+        {help === null
+          ? <p>Rule <code>{violation.ruleId}</code></p>
+          : (
+            <p>
+              <a href={help} target="_blank" rel="noreferrer noopener">
+                How to fix this
+                {/* The link text alone would read as "How to fix this" out of
+                    context, in a list of identical links. The rule names it. */}
+                <span className="visually-hidden"> — {violation.ruleId}</span>
+              </a>
+            </p>
+            )}
 
         {violation.nodes.length === 0
           ? <p>No specific elements were reported for this rule.</p>
@@ -86,7 +93,12 @@ const ViolationItem = ({
             <ul>
               {violation.nodes.map((node, index) => (
                 <li key={`${violation.ruleId}-${index}`}>
-                  <p><code>{node.target.join(' ')}</code></p>
+                  <p>
+                    <code>{describeTarget(node.target)}</code>
+                    {crossesFrames(node.target) && (
+                      <span className="visually-hidden"> (inside a frame)</span>
+                    )}
+                  </p>
                   {/*
                     `node.html` IS ATTACKER-CONTROLLED. It is a markup snippet
                     captured from an arbitrary third-party page, and this

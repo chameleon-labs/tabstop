@@ -120,6 +120,38 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
     throw new Error('axe returned an unrecognised result shape')
   }
 
+  /**
+   * A rule's documentation link, or '' if the page handed back something that
+   * is not one.
+   *
+   * DECLARED INSIDE this function, not beside it. `runAxeInPage` is serialised
+   * into the browser by `page.evaluate` and closes over nothing - a module-level
+   * helper is simply not defined there, and the unit spec below cannot notice
+   * because it calls this in Node where the helper does exist. Only the real
+   * Chromium spec catches it, which it did.
+   *
+   * EVERYTHING IN THE AXE RESULT IS ATTACKER-CONTROLLED. `window.axe` is
+   * injected into a page nobody vetted, and that page can replace the object
+   * before this asks it to run - so `helpUrl` is a string the audited site
+   * chose. It was written to the database and served verbatim, where it becomes
+   * the `href` of a link reading "How to fix this" inside an accessibility
+   * report; the share page makes that one anybody can send to a colleague.
+   *
+   * Dropped rather than nulled because the column and the wire field are both
+   * non-nullable, and this is a sanitiser rather than a migration. Clients
+   * treat '' as "no link" and validate again themselves: this is the boundary,
+   * not the only guard.
+   */
+  const safeHelpUrl = (helpUrl: unknown): string => {
+    if (typeof helpUrl !== 'string') return ''
+    try {
+      const parsed = new URL(helpUrl)
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : ''
+    } catch {
+      return ''
+    }
+  }
+
   return {
     axeVersion: run.testEngine.version,
     violations: (run.violations as Array<{
@@ -132,7 +164,7 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
       ruleId: violation.id,
       impact: violation.impact,
       description: violation.description,
-      helpUrl: violation.helpUrl,
+      helpUrl: safeHelpUrl(violation.helpUrl),
       nodes: violation.nodes.map((node) => ({
         // axe does not always hand back a flat list of selectors: a node
         // inside shadow DOM arrives as a NESTED array, verified as

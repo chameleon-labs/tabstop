@@ -37,12 +37,35 @@ const TICK_MS = 1_000
  * must wait its turn rather than cutting off whatever is being read.
  */
 export const AuditProgress = ({ status, startedAt }: AuditProgressProps): React.JSX.Element | null => {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt)
+  /**
+   * The phase clock starts when the WORK starts, not when the request was sent.
+   *
+   * `startedAt` includes however long the job sat in the queue, and the phases
+   * describe what a worker is doing. A job that waited twenty seconds for a
+   * free worker would otherwise reach its first `running` render already
+   * claiming to be "Scoring", while the worker had only just begun fetching -
+   * the progress indicator's first honest moment spent on its least honest
+   * statement.
+   *
+   * Null until the transition is observed. A reload mid-audit loses it and
+   * falls back to `startedAt`, which is the same approximation as before and
+   * the best available: the response carries no worker-start timestamp.
+   */
+  const [runningSince, setRunningSince] = useState<number | null>(null)
+  const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
-    const timer = setInterval(() => { setElapsed(Date.now() - startedAt) }, TICK_MS)
+    if (status !== 'running') return
+    setRunningSince((known) => known ?? Date.now())
+  }, [status])
+
+  const since = runningSince ?? startedAt
+
+  useEffect(() => {
+    setElapsed(Date.now() - since)
+    const timer = setInterval(() => { setElapsed(Date.now() - since) }, TICK_MS)
     return () => { clearInterval(timer) }
-  }, [startedAt])
+  }, [since])
 
   const phase = phaseFor(status, elapsed)
   if (phase === null) return null

@@ -15,7 +15,7 @@ describe('AuditFailure', () => {
   it('shows the sentence the server wrote, rather than one of its own', () => {
     // Eight of these exist server-side, written for a person. A ninth table
     // here would drift the first time either side is reworded.
-    show({ message: 'Could not resolve that domain', action: 'retry' })
+    show({ message: 'Could not resolve that domain', action: 'retry', source: 'audit' })
 
     expect(screen.getByText('Could not resolve that domain')).toBeVisible()
   })
@@ -23,14 +23,14 @@ describe('AuditFailure', () => {
   it('interrupts, because it replaces something being waited on', () => {
     // The one place in this flow where interrupting is right: a question was
     // asked thirty seconds ago and the answer is that it failed.
-    show({ message: 'boom', action: 'retry' })
+    show({ message: 'boom', action: 'retry', source: 'audit' })
 
     expect(screen.getByRole('alert')).toHaveTextContent('boom')
   })
 
   describe('retry', () => {
     it('offers a button that re-runs the same URL', async () => {
-      const { onRetry } = show({ message: 'The page took too long to load', action: 'retry' })
+      const { onRetry } = show({ message: 'The page took too long to load', action: 'retry', source: 'audit' })
 
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
@@ -42,7 +42,7 @@ describe('AuditFailure', () => {
     it('does not offer a retry that is guaranteed to fail identically', async () => {
       // A 400 is a property of the URL. A button that cannot work is worse than
       // no button.
-      show({ message: "That address can't be audited", action: 'check-url' })
+      show({ message: "That address can't be audited", action: 'check-url', source: 'request' })
 
       expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
       expect(screen.getByText(/Check the address/)).toBeVisible()
@@ -53,6 +53,7 @@ describe('AuditFailure', () => {
     const limited: DescribedFailure = {
       message: 'Too many requests',
       action: 'signup',
+      source: 'request',
       rateLimit: { error: 'Too many requests', retryAfter: 45, resetAt: '2026-08-03T10:00:00Z' }
     }
 
@@ -77,7 +78,7 @@ describe('AuditFailure', () => {
     })
 
     it('omits the wait when the server did not give a usable one', async () => {
-      show({ message: 'Too many requests', action: 'signup' })
+      show({ message: 'Too many requests', action: 'signup', source: 'request' })
 
       expect(screen.queryByText(/wait/)).not.toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Create an account' })).toBeVisible()
@@ -86,7 +87,7 @@ describe('AuditFailure', () => {
 
   describe('none', () => {
     it('offers nothing rather than inventing an affordance', () => {
-      show({ message: 'Forbidden', action: 'none' })
+      show({ message: 'Forbidden', action: 'none', source: 'request' })
 
       expect(screen.queryByRole('button')).not.toBeInTheDocument()
       expect(screen.queryByRole('link')).not.toBeInTheDocument()

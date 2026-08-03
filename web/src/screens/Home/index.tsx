@@ -30,7 +30,11 @@ export const Home = (): React.JSX.Element => {
     request.data === undefined ? {} : { pollAfterMs: request.data.pollAfterMs }
   )
 
-  const failure = describeFailure(request.error, audit.data)
+  const failure = describeFailure({
+    requestError: request.error,
+    pollError: audit.error,
+    audit: audit.data
+  })
   const done = audit.data?.status === 'done'
   const waiting = failure === null && startedAt !== null && !done
 
@@ -40,13 +44,23 @@ export const Home = (): React.JSX.Element => {
   }
 
   /**
-   * Re-submits the URL that failed, rather than asking for it again.
+   * Retries the request that actually failed.
    *
-   * `request.reset()` first because React Query keeps the last error until the
-   * next mutation settles; without it the failure stays on screen through the
-   * whole of the retry, which looks exactly like a button that does nothing.
+   * A failed POLL asks again about the audit that already exists; anything else
+   * asks for a new audit. Re-submitting after a failed poll would spend another
+   * thirty seconds of Chromium, and another of the caller's rate limit, to
+   * answer a question already being answered.
+   *
+   * `request.reset()` first, because React Query keeps the last error until the
+   * next mutation settles - without it the failure stays on screen for the
+   * whole retry, which looks exactly like a button that does nothing.
    */
   const retry = (): void => {
+    if (failure?.source === 'poll') {
+      void audit.refetch()
+      return
+    }
+
     const url = request.variables
     if (url === undefined) return
     request.reset()

@@ -46,6 +46,32 @@ describe('AuditProgress', () => {
     expect(screen.getByText(/Scoring/)).toBeVisible()
   })
 
+  it('does not count queued time against the phases', async () => {
+    // The bug: `startedAt` is when the POST was sent, and the phases describe
+    // what a WORKER is doing. A job that waited twenty seconds for a free
+    // worker reached its first `running` render already claiming to be
+    // "Scoring", while the worker had only just begun fetching - the progress
+    // indicator's first honest moment spent on its least honest statement.
+    const { rerender } = render(<AuditProgress status="queued" startedAt={START} />)
+    expect(screen.getByText(/Waiting for a free worker/)).toBeVisible()
+
+    await advance(25_000)
+    rerender(<AuditProgress status="running" startedAt={START} />)
+
+    expect(screen.getByText(/Fetching the page/)).toBeVisible()
+    expect(screen.queryByText(/Scoring/)).not.toBeInTheDocument()
+  })
+
+  it('runs the phases from when the work started, not from the request', async () => {
+    const { rerender } = render(<AuditProgress status="queued" startedAt={START} />)
+    await advance(25_000)
+    rerender(<AuditProgress status="running" startedAt={START} />)
+
+    await advance(9_000)
+
+    expect(screen.getByText(/Running the accessibility engine/)).toBeVisible()
+  })
+
   it('renders nothing once the audit is over', () => {
     const { container } = render(<AuditProgress status="done" startedAt={START} />)
 

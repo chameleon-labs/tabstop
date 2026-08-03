@@ -49,6 +49,47 @@ describe('runAxeInPage', () => {
     })
   })
 
+  describe('helpUrl, which the audited page chooses', () => {
+    // EVERYTHING in the axe result is attacker-controlled. `window.axe` is
+    // injected into a page nobody vetted, and that page can replace the object
+    // before it is asked to run - so `helpUrl` is a string the audited site
+    // picked. It was stored and served verbatim, becoming the `href` of a link
+    // reading "How to fix this" inside an accessibility report, on a share page
+    // anybody can send to a colleague.
+    const withHelpUrl = async (helpUrl: unknown): Promise<string | undefined> => {
+      install(axeReturning({
+        testEngine: { version: '4.12.1' },
+        violations: [{
+          id: 'r', impact: 'critical', description: 'd', helpUrl,
+          nodes: [{ target: ['img'], html: '<img>' }]
+        }]
+      }))
+      const result = await runAxeInPage()
+      return result.violations[0]?.helpUrl
+    }
+
+    it('keeps an ordinary documentation link', async () => {
+      expect(await withHelpUrl('https://dequeuniversity.com/rules/axe/4.12/image-alt'))
+        .toBe('https://dequeuniversity.com/rules/axe/4.12/image-alt')
+    })
+
+    it.each([
+      'javascript:alert(document.cookie)',
+      'data:text/html,<script>alert(1)</script>',
+      'file:///etc/passwd',
+      'not a url'
+    ])('drops %p rather than storing it', async (helpUrl) => {
+      expect(await withHelpUrl(helpUrl)).toBe('')
+    })
+
+    it('drops a value that is not a string at all', async () => {
+      // `run()` returns whatever the page decided to return. Nothing guarantees
+      // the field is even a string.
+      expect(await withHelpUrl(42)).toBe('')
+      expect(await withHelpUrl(null)).toBe('')
+    })
+  })
+
   it('flattens a nested shadow-DOM selector', async () => {
     install(axeReturning({
       testEngine: { version: '4.12.1' },

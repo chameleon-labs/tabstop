@@ -42,12 +42,21 @@ export const URL_PROBLEMS: Readonly<Record<UrlProblem, string>> = {
  * What separates them is the character AFTER the colon:
  *
  * - `://` is hierarchical and unambiguous - `https://`, `ftp://`.
- * - a digit means a port, so the thing before the colon was a host.
- * - anything else is an opaque scheme - `mailto:`, `javascript:` - which is
- *   left alone precisely so the host check below rejects it.
+ * - a digit after the colon SUGGESTS a port, but only suggests it: `mailto:123`
+ *   has one too, and reading that as a host called `mailto` on port 123
+ *   rewrote it to `https://mailto:123/` - a real address, entirely unrelated to
+ *   what was typed, submitted without a word. So the part before the colon must
+ *   also look like a host: dotted, or `localhost`, which is the one dotless
+ *   name anyone actually types with a port.
+ * - anything else is an opaque scheme - `mailto:`, `javascript:` - left alone
+ *   precisely so the host check below rejects it.
+ *
+ * `foo:123` remains genuinely ambiguous and is read as a scheme. That direction
+ * is the safe one: it ends in "that does not look like a URL" rather than in
+ * auditing a different site than the one asked for.
  */
 const HIERARCHICAL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
-const HOST_AND_PORT = /^[a-z0-9][a-z0-9.-]*:\d/i
+const HOST_AND_PORT = /^(?:localhost|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+):\d/i
 const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:/i
 
 const hasScheme = (input: string): boolean => {

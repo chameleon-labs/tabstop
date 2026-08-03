@@ -21,9 +21,21 @@ export type FailureAction =
   /** Nothing honest to offer. */
   | 'none'
 
+/**
+ * Which request failed, so a retry re-runs the right one.
+ *
+ * `request` is the POST being refused - retrying means asking for a NEW audit.
+ * `poll` is the GET failing while an accepted audit is already running -
+ * retrying means asking again about the audit that exists. Creating a second
+ * audit there would spend another thirty seconds of Chromium, and another of
+ * the caller's rate limit, to answer a question already being answered.
+ */
+export type FailureSource = 'request' | 'poll' | 'audit'
+
 export type DescribedFailure = {
   message: string
   action: FailureAction
+  source: FailureSource
   /** Present only for `signup`, so a countdown can be rendered. */
   rateLimit?: RateLimitedBody
 }
@@ -44,27 +56,50 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
     // Deliberately not framed as an error. Someone who has audited enough pages
     // to hit the anonymous limit has demonstrated the value of the product more
     // convincingly than any landing page could.
-    return { message: limit.error, action: 'signup', rateLimit: limit }
+    return { message: limit.error, action: 'signup', source: 'request', rateLimit: limit }
   }
 
   if (!isApiError(error)) {
     // Never reached the server at all - offline, DNS, connection refused. The
     // request is worth repeating because nothing considered it.
-    return { message: GENERIC, action: 'retry' }
+    return { message: GENERIC, action: 'retry', source: 'request' }
   }
 
   // 400 is #7 refusing the address: blocked scheme, port, private address,
   // embedded credentials. Every one of them is a property of the URL, so
   // retrying it is guaranteed to fail identically.
-  if (error.status === 400) return { message: error.message, action: 'check-url' }
+  if (error.status === 400) return { message: error.message, action: 'check-url', source: 'request' }
 
   // 503 is the queue at its depth cap - explicitly "please try again", and the
   // audit row was removed, so there is nothing half-created to reason about.
-  if (error.status === 503) return { message: error.message, action: 'retry' }
+  if (error.status >= 500) return { message: error.message, action: 'retry', source: 'request' }
 
-  if (error.status >= 500) return { message: error.message, action: 'retry' }
+  return { message: error.message, action: 'none', source: 'request' }
+}
 
-  return { message: error.message, action: 'none' }
+/**
+ * A failure of `GET /api/audits/:uuid` while waiting.
+ *
+ * Its own function rather than a reuse of the one above, because the same
+ * status means something different here. A 429 on the POST is the anonymous
+ * audit limit and the moment to offer an account; a 429 on the READ is polling
+ * too fast for a bucket that refills in seconds, and offering a signup for it
+ * would be both confusing and slightly dishonest.
+ *
+ * Without this the screen had no way to report a failed poll at all: the audit
+ * query would exhaust its retries, `request.error` stayed null, and the
+ * progress indicator span forever on an audit nobody was still asking about.
+ */
+export const describePollFailure = (error: unknown): DescribedFailure => {
+  if (!isApiError(error)) {
+    return { message: GENERIC, action: 'retry', source: 'poll' }
+  }
+
+  // The uuid names nothing. Retrying cannot conjure it, and it is the one poll
+  // failure that is permanent.
+  if (error.status === 404) return { message: error.message, action: 'none', source: 'poll' }
+
+  return { message: error.message, action: 'retry', source: 'poll' }
 }
 
 /**
@@ -89,7 +124,10 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
  */
 export const describeAuditFailure = (audit: AuditResultResponse): DescribedFailure => ({
   message: audit.error ?? GENERIC,
-  action: 'retry'
+  action: 'retry',
+  // A fresh audit, not another poll: this one reached a terminal state and
+  // asking about it again would return the same failure forever.
+  source: 'audit'
 })
 
 /**
@@ -100,12 +138,32 @@ export const describeAuditFailure = (audit: AuditResultResponse): DescribedFailu
  * at different times through different hooks and read identically to the person
  * waiting.
  */
+export type FailureSources = {
+  /** From `POST /api/audits`. */
+  requestError: unknown
+  /** From `GET /api/audits/:uuid`, after its retries are exhausted. */
+  pollError: unknown
+  audit: AuditResultResponse | undefined
+}
+
+/**
+ * Whichever applies, or null while nothing has gone wrong.
+ *
+ * A screen has THREE failure sources and must not have three failure
+ * renderers: the request can be refused, the poll can fail, and an accepted
+ * audit can end in `failed`. They arrive at different times through different
+ * hooks and read identically to the person waiting.
+ *
+ * Ordered newest-event-first. A request failure means a fresh submission was
+ * just refused, so anything below it is the previous attempt.
+ */
 export const describeFailure = (
-  requestError: unknown, audit: AuditResultResponse | undefined
+  { requestError, pollError, audit }: FailureSources
 ): DescribedFailure | null => {
   if (requestError !== null && requestError !== undefined) {
     return describeRequestFailure(requestError)
   }
+  if (pollError !== null && pollError !== undefined) return describePollFailure(pollError)
   if (audit?.status === 'failed') return describeAuditFailure(audit)
   return null
 }
