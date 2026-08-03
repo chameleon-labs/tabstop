@@ -1,4 +1,4 @@
-import { useDocumentTitle } from '../../components/route-announcer'
+import { useDocumentTitle } from '../../hooks/use-document-title'
 
 /** Placeholder. The monitored-pages list is #20. */
 export const Dashboard = (): React.JSX.Element => {

@@ -1,14 +1,19 @@
 import { Link, isRouteErrorResponse, useRouteError } from 'react-router'
-import { ApiError } from '../api/client'
-import { NotFound } from './not-found'
-import { useDocumentTitle } from './route-announcer'
+import { ApiError } from '../../api/client'
+import { useDocumentTitle } from '../../hooks/use-document-title'
+import { NotFound } from '../NotFound'
+
+export type ErrorPageProps = {
+  error: unknown
+}
 
 /**
  * What a route renders when it throws.
  *
- * Wired as `errorElement` on the root route, so a crash in one screen replaces
- * that screen rather than blanking the app - the header and skip link survive,
- * and there is still a way out.
+ * Wired as `errorElement` on a PATHLESS route below the layout, not on the
+ * layout itself - an `errorElement` renders in place of the route that declares
+ * it, so declaring it on the layout would take the header, the skip link and
+ * every way out down with the screen. See `routes.tsx`.
  *
  * A 404 is not a crash and does not render as one: a share link that has
  * expired or been mistyped gets the same page as an unknown URL, because to the
@@ -17,19 +22,31 @@ import { useDocumentTitle } from './route-announcer'
 export const RouteError = (): React.JSX.Element => {
   const error = useRouteError()
 
+  // Two shapes, because a 404 arrives by two routes: `ApiError` when a query
+  // threw one, and a router `ErrorResponse` when a loader or the router itself
+  // produced it. Checking only the first would render "something went wrong"
+  // for half of the cases this exists to handle.
   if (error instanceof ApiError && error.status === 404) return <NotFound />
   if (isRouteErrorResponse(error) && error.status === 404) return <NotFound />
 
   return <ErrorPage error={error} />
 }
 
+/**
+ * Null when there is nothing worth showing a person.
+ *
+ * Deliberately narrow. A bare `Error` reaching here is a bug in our own code,
+ * and its message is written for whoever is reading a stack trace - "Cannot
+ * read properties of undefined" tells a visitor nothing and looks like a leak.
+ * Only errors that carry a message meant for a person are shown.
+ */
 const messageOf = (error: unknown): string | null => {
   if (error instanceof ApiError) return error.message
   if (isRouteErrorResponse(error)) return error.statusText
   return null
 }
 
-const ErrorPage = ({ error }: { error: unknown }): React.JSX.Element => {
+const ErrorPage = ({ error }: ErrorPageProps): React.JSX.Element => {
   useDocumentTitle('Something went wrong')
   const detail = messageOf(error)
 

@@ -1,4 +1,4 @@
-import type { ApiErrorBody, CodedConflictBody, RateLimitedBody } from '@tabstop/contract'
+import type { CodedConflictBody, RateLimitedBody } from '@tabstop/contract'
 
 /**
  * Empty by default, which makes every request same-origin and sends it through
@@ -117,8 +117,3 @@ export const conflictOf = (error: unknown): CodedConflictBody | null => {
   if (!isRecord(body) || typeof body['code'] !== 'string') return null
   return { code: body['code'], error: error.message }
 }
-
-/** The shape every error response shares, for the display-only case. */
-export const errorBodyOf = (error: unknown): ApiErrorBody => ({
-  error: isApiError(error) ? error.message : 'Something went wrong'
-})

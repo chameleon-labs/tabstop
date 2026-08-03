@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { renderAt } from '../test/render'
+import { renderAt } from '../../test/render'
 
 /**
  * The gap this closes: a full page load announces the new document, a

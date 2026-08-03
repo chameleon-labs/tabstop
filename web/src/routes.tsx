@@ -1,12 +1,12 @@
 import type { RouteObject } from 'react-router'
-import { Layout } from './components/layout'
-import { NotFound } from './components/not-found'
-import { RequireAuth } from './components/require-auth'
-import { RouteError } from './components/route-error'
-import { Dashboard } from './screens/dashboard'
-import { Home } from './screens/home'
-import { PageDetail } from './screens/page-detail'
-import { Share } from './screens/share'
+import { Layout } from './components/Layout'
+import { NotFound } from './components/NotFound'
+import { RequireAuth } from './components/RequireAuth'
+import { RouteError } from './components/RouteError'
+import { Dashboard } from './screens/Dashboard'
+import { Home } from './screens/Home'
+import { PageDetail } from './screens/PageDetail'
+import { Share } from './screens/Share'
 
 /**
  * Exported as data rather than JSX so a spec can mount it with

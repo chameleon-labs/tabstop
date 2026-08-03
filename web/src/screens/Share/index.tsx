@@ -1,5 +1,5 @@
 import { useParams } from 'react-router'
-import { useDocumentTitle } from '../../components/route-announcer'
+import { useDocumentTitle } from '../../hooks/use-document-title'
 
 /**
  * Placeholder. The public result page is #23.

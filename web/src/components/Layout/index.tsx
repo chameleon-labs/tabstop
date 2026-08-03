@@ -1,5 +1,5 @@
 import { Link, Outlet } from 'react-router'
-import { RouteAnnouncer } from './route-announcer'
+import { RouteAnnouncer } from '../RouteAnnouncer'
 
 /**
  * The shell every route renders into.

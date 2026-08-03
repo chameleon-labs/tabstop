@@ -1,5 +1,5 @@
 import { useParams } from 'react-router'
-import { useDocumentTitle } from '../../components/route-announcer'
+import { useDocumentTitle } from '../../hooks/use-document-title'
 
 /** Placeholder. The trend chart and violation detail are #21. */
 export const PageDetail = (): React.JSX.Element => {

@@ -25,18 +25,32 @@ No CSS framework and no headless-component library yet. When one is needed, it m
 
 ```
 src/
-  main.tsx              browser entry — the only place a QueryClient is constructed for real
-  app.tsx               providers; takes the QueryClient as a prop so specs get their own
-  routes.tsx            the route table, exported as data so a spec can mount the real thing
+  main.tsx                    browser entry — the only place a QueryClient is built for real
+  app.tsx                     providers; takes the QueryClient as a prop so specs get their own
+  routes.tsx                  the route table, as data so a spec can mount the real thing
   api/
-    client.ts           the only place that calls fetch
-    query-client.ts     retry policy
-    audits.ts           audit query + mutation hooks
-    session.ts          who is signed in
-  components/           shell, error boundary, 404, auth gate, route announcer
-  screens/{home,dashboard,page-detail,share}/
-  test/render.tsx       mounts the real route table at a chosen path
+    client.ts                 the only place that calls fetch
+    query-client.ts           retry policy
+    audits.ts                 audit query + mutation hooks
+    session.ts                who is signed in
+  hooks/
+    use-document-title.ts
+  components/
+    Layout/                   shell: skip link, header, route announcer, <Outlet />
+    NotFound/
+    RequireAuth/              the session gate
+    RouteAnnouncer/
+    RouteError/               the error boundary element
+  screens/
+    Home/  Dashboard/  PageDetail/  Share/
+  test/
+    http.ts                   response builders, free of React
+    render.tsx                mounts the real route table, or a component in providers
 ```
+
+**Every component is a folder holding `index.tsx` and `index.spec.tsx`,** named in PascalCase after the component. A component and its test move together, and the import is the folder (`from '../NotFound'`). Hooks are not components and live in `hooks/`, named for the file rather than a folder — `useDocumentTitle` is imported by every screen while only the shell renders the announcer it feeds, so bundling it into a component folder would have made five screens import a component directory to get a hook.
+
+**Props are always a named, exported type** — `RequireAuthProps`, `AppProps`, `ErrorPageProps` — never inlined into the signature. It gives consumers something to reference, and keeps the signature readable once a component has more than one prop.
 
 ## Commands
 
@@ -98,6 +112,8 @@ The parts that are easy to omit and hard to retrofit, so they are here from the 
 
 ## Testing
 
-Specs mount the app's **real route table** (`test/render.tsx`) rather than a copy written in the test — the point is to assert that our configuration resolves the way we think, not that React Router works.
+Specs mount the app's **real route table** (`test/render.tsx`) rather than a copy written in the test — the point is to assert that our configuration resolves the way we think, not that React Router works. For a single component, `Providers` from the same file supplies the router and query client it needs to render at all.
 
 Queries are by role and accessible name. That is not only house style here: a test that can only find an element by `data-testid` is a test that would pass if the element stopped being reachable by anyone using a screen reader.
+
+**Every assertion is mutation-checked** — break the line it covers, watch it go red, put it back. Three of these tests passed against a broken implementation when first written and had to be rewritten: one drove `window.history`, which a memory router does not listen to, so removing `replace` changed nothing; one threw a `Response` from a route element, where React Router does not convert it, so the branch it claimed to cover was never reached; one mounted the app at `/`, where nothing calls `useQuery`, so deleting the `QueryClientProvider` left it green. A test nobody has watched fail is a guess.

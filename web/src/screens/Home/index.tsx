@@ -1,4 +1,4 @@
-import { useDocumentTitle } from '../../components/route-announcer'
+import { useDocumentTitle } from '../../hooks/use-document-title'
 
 /** Placeholder. The URL form and live audit progress are #19. */
 export const Home = (): React.JSX.Element => {

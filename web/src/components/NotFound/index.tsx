@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { useDocumentTitle } from './route-announcer'
+import { useDocumentTitle } from '../../hooks/use-document-title'
 
 export const NotFound = (): React.JSX.Element => {
   useDocumentTitle('Page not found')

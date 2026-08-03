@@ -82,6 +82,27 @@ describe('the API client', () => {
     await expect(request('/api/pages/1')).resolves.toBeNull()
   })
 
+  it('falls back to the status text when the body carries an empty message', async () => {
+    // An empty string is not a sentence to show anyone, and using it would put
+    // a blank error on screen - which reads as the app being broken in a way
+    // nobody can describe.
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: '' }), {
+      status: 400, statusText: 'Bad Request', headers: { 'content-type': 'application/json' }
+    }))
+
+    await expect(request('/api/audits')).rejects.toThrow('Bad Request')
+  })
+
+  it('names the status when there is no status text either', async () => {
+    // HTTP/2 carries no reason phrase, so `statusText` is empty on every
+    // response from a modern server behind a modern proxy. Falling through to
+    // an empty message there would silently affect the common case, not a
+    // corner one.
+    fetchMock.mockResolvedValue(new Response(null, { status: 502, statusText: '' }))
+
+    await expect(request('/api/me')).rejects.toThrow('Request failed (502)')
+  })
+
   describe('rate limiting', () => {
     it('reports the wait a 429 came with', async () => {
       const resetAt = '2026-08-02T10:00:00.000Z'
@@ -112,6 +133,13 @@ describe('the API client', () => {
       expect((error as ApiError).message).toBe('Too many requests')
     })
 
+    it('is null for something that is not an ApiError at all', () => {
+      // A `fetch` rejection - offline, DNS, connection refused - reaches a
+      // caller through the same channel and must not be read as a rate limit.
+      expect(rateLimitOf(new TypeError('Failed to fetch'))).toBeNull()
+      expect(rateLimitOf(undefined)).toBeNull()
+    })
+
     it('is not confused by another status that happens to carry the fields', async () => {
       fetchMock.mockResolvedValue(jsonResponse(400, {
         error: 'Nope', retryAfter: 30, resetAt: '2026-08-02T10:00:00.000Z'
@@ -134,6 +162,11 @@ describe('the API client', () => {
       expect(conflictOf(error)).toEqual({
         code: 'page_limit_reached', error: 'You are tracking ten pages'
       })
+    })
+
+    it('is null for something that is not an ApiError at all', () => {
+      expect(conflictOf(new TypeError('Failed to fetch'))).toBeNull()
+      expect(conflictOf(null)).toBeNull()
     })
 
     it('returns null for a plain 409, which is only ever displayed', async () => {

@@ -4,6 +4,43 @@ import { RouterProvider, createMemoryRouter } from 'react-router'
 import { routes } from '../routes'
 
 /**
+ * No retries: a spec asserting an error path should not wait out a backoff
+ * schedule to see it. The real policy is `makeQueryClient`, tested directly in
+ * `api/query-client.spec.ts` rather than incidentally through every render.
+ */
+const testQueryClient = (): QueryClient => new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+    mutations: { retry: false }
+  }
+})
+
+export type ProvidersProps = {
+  children: React.ReactNode
+}
+
+/**
+ * Everything a component needs to render outside the app: a router, because
+ * `useLocation`, `Navigate` and `Link` all require one, and a query client with
+ * its own cache.
+ *
+ * The route is `*`, so whatever is under test renders whatever the path is -
+ * a component spec should not have to know which URL it happens to live at.
+ */
+export const Providers = ({ children }: ProvidersProps): React.JSX.Element => {
+  const router = createMemoryRouter([{ path: '*', element: <>{children}</> }])
+
+  return (
+    <QueryClientProvider client={testQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+}
+
+/** For `renderHook`, which takes a wrapper rather than an element. */
+export const wrapper = Providers
+
+/**
  * The app's real route table, mounted at a chosen path.
  *
  * `routes` is imported rather than rebuilt here on purpose: a test that
@@ -15,18 +52,10 @@ import { routes } from '../routes'
  * whichever test happened to run second.
  */
 export const renderAt = (path: string): RenderResult => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      // No retries: a test asserting an error path should not wait out a
-      // backoff schedule to see it.
-      queries: { retry: false },
-      mutations: { retry: false }
-    }
-  })
   const router = createMemoryRouter(routes, { initialEntries: [path] })
 
   return render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={testQueryClient()}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   )

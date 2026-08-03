@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 /**
+ * How long to wait before reading `document.title`.
+ *
+ * Not a tuned number: it is short enough to be imperceptible and long enough
+ * for the destination screen's own title effect to have run. Exported so a spec
+ * can wait on the same value rather than guess a longer one.
+ */
+export const ANNOUNCE_DELAY_MS = 100
+
+/**
  * Says the new page's name after a client-side navigation.
  *
  * A full page load announces the new document; a client-side route change
@@ -42,7 +51,7 @@ export const RouteAnnouncer = (): React.JSX.Element => {
      * in it; content present at the same moment the region appears is treated
      * as initial content, and assistive technology stays quiet.
      */
-    const timer = setTimeout(() => { setAnnouncement(document.title) }, 100)
+    const timer = setTimeout(() => { setAnnouncement(document.title) }, ANNOUNCE_DELAY_MS)
     return () => { clearTimeout(timer) }
   }, [pathname])
 
@@ -54,14 +63,4 @@ export const RouteAnnouncer = (): React.JSX.Element => {
       {announcement}
     </div>
   )
-}
-
-/**
- * Names the document for the tab, the history entry and - through
- * `RouteAnnouncer` - the screen reader. One call per screen.
- */
-export const useDocumentTitle = (title: string): void => {
-  useEffect(() => {
-    document.title = title === '' ? 'tabstop' : `${title} · tabstop`
-  }, [title])
 }
