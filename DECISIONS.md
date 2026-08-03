@@ -22,7 +22,7 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 **The workspace has costs, and they were paid rather than deferred.** `pnpm-workspace.yaml` and the lockfile moved to the root, `server/`'s `packageManager` field was dropped so there is one declaration of it, and Server CI's install now covers `web/`'s dependencies too. That last one is deliberate: `--filter` would install a different tree from the one a developer has, and that difference is precisely the sort of thing that only ever surfaces as a CI-only failure. The path filter gained `contract/**`, because a change there can break the server's build while touching nothing under `server/`.
 
-**`web/` has no CI yet** — #18 — so nothing runs its specs on a pull request. They pass locally and each assertion was mutation-checked; that is the honest state until #18 lands. (A count of them stood here and was stale within a day. A decision log should not carry a number that changes every commit.)
+**`web/` had no CI when this landed** — #18 added it the same week, so its specs now run on a pull request like the server's. (A count of them stood here and was stale within a day. A decision log should not carry a number that changes every commit.)
 
 ## 2026-08-02 — provider backoff is a monotonic queue-wide deadline
 

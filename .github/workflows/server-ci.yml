@@ -45,10 +45,13 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: 'pnpm-lock.yaml'
       # Run from `server/`, but pnpm walks up to `pnpm-workspace.yaml` and
-      # installs every project - including `web/`, whose dependencies this job
-      # never uses. Deliberate: `--filter` would install a different tree from
-      # the one a developer has, and the difference is exactly the kind of thing
-      # that only shows up as a CI-only failure. The extra time is seconds.
+      # installs every project, including `web/`. Deliberate, and not for the
+      # reason first written here: pnpm gives each package a `node_modules`
+      # holding only its own declared dependencies, so `--filter` produces a
+      # byte-identical tree for `server/` - that was checked rather than
+      # assumed. What the full install actually buys is that `--frozen-lockfile`
+      # verifies the lockfile against every project, so a lockfile left stale
+      # for `web/` fails here instead of only in the other workflow.
       - run: pnpm install --frozen-lockfile
 
       # The audit worker drives real Chromium, so CI needs the browser. Cached

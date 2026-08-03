@@ -54,7 +54,7 @@ src/
 
 ## Commands
 
-Identical names to `../server`, so one CI workflow shape covers both.
+Identical names to `../server`, which is what lets `.github/workflows/web-ci.yml` be the server workflow's shape with the paths changed.
 
 | | |
 |---|---|
@@ -66,6 +66,8 @@ Identical names to `../server`, so one CI workflow shape covers both.
 | `pnpm preview` | serve the built bundle |
 
 Install from the repository root (`pnpm install`), not from here — this is one project in a pnpm workspace.
+
+**CI** is `.github/workflows/web-ci.yml`: typecheck, test, then build, on Node from `web/.nvmrc`. It runs on changes to `web/**` *and* `contract/**`, because this package compiles against that one — a type renamed there breaks this build while touching nothing here. It also runs `contract`'s own typecheck, which is the only thing that checks a contract module neither application imports.
 
 ## Talking to the server
 
