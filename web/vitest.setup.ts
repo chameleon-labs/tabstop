@@ -62,11 +62,26 @@ beforeEach(() => {
   }
 })
 
-// Registered before the assertion below so it runs after it - vitest unwinds
-// `afterEach` hooks in reverse. Unmounting can log, and this has to see it.
-afterEach(() => { cleanup() })
-
+/**
+ * ONE hook, with `cleanup()` inside it, and the order here is the whole point.
+ *
+ * Two hooks did not work, and the comment that used to sit here got the reason
+ * backwards. Vitest unwinds `afterEach` in REVERSE registration order, so the
+ * assertion - registered second - ran first, snapshotting and restoring the
+ * console before anything had unmounted. A component logging from an effect's
+ * teardown escaped the gate completely, which was demonstrated with a probe
+ * component before this was changed and again after.
+ *
+ * Unmount teardown is not a corner case to cover for completeness: an effect
+ * that fails to clean up a timer or a subscription warns exactly here, and that
+ * is the bug class most worth catching automatically.
+ *
+ * Doing both in one hook makes the order a fact of this function rather than a
+ * property of the test runner's unwinding.
+ */
 afterEach(() => {
+  cleanup()
+
   const seen = unexpected
   unexpected = []
   for (const level of GATED) vi.mocked(console[level]).mockRestore()
