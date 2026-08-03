@@ -38,6 +38,11 @@ const renderLoaderThrowing = (response: Response): void => {
     path: '/',
     loader: () => { throw response },
     element: <h1>Never rendered</h1>,
+    // A data router with a loader runs it during the initial render and warns
+    // if there is nothing to show meanwhile. The app has no loaders, so this
+    // exists only to keep the spec's own router well-formed rather than to
+    // describe anything the app does.
+    HydrateFallback: () => <p>Loading</p>,
     errorElement: <RouteError />
   }], { initialEntries: ['/'] })
 

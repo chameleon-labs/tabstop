@@ -118,4 +118,8 @@ Specs mount the app's **real route table** (`test/render.tsx`) rather than a cop
 
 Queries are by role and accessible name. That is not only house style here: a test that can only find an element by `data-testid` is a test that would pass if the element stopped being reachable by anyone using a screen reader.
 
+**The test run keeps a clean console, and that is enforced.** `vitest.setup.ts` drops the one thing that is expected — the three-call storm React and React Router emit for every error a boundary *catches*, which several specs cause on purpose — and **fails any test that writes anything else to `console.error` or `console.warn`.**
+
+The filtering alone would be a way to hide problems; the failing is what makes it safe. Both halves were needed here: locally vitest hides console output entirely, so this was only visible once CI existed, and 350 lines of expected stack traces had been concealing an `act()` warning and a missing `HydrateFallback` for as long as the tests had existed. A new warning is now a red test naming the spec that caused it.
+
 **Every assertion is mutation-checked** — break the line it covers, watch it go red, put it back. Three of these tests passed against a broken implementation when first written and had to be rewritten: one drove `window.history`, which a memory router does not listen to, so removing `replace` changed nothing; one threw a `Response` from a route element, where React Router does not convert it, so the branch it claimed to cover was never reached; one mounted the app at `/`, where nothing calls `useQuery`, so deleting the `QueryClientProvider` left it green. A test nobody has watched fail is a guess.
