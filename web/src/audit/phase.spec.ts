@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { EXPECTED_DURATION, PHASES, announcementFor, phaseFor } from './phase'
 
 describe('phaseFor', () => {
+  it('does not claim a queue place before the request is accepted', () => {
+    // Between submitting and the server accepting, no audit and no queue entry
+    // exists. "Waiting for a free worker" is not a rounding error there - it
+    // describes a queue the request has not reached and may never reach.
+    expect(phaseFor('submitting', 0)).toBe('Requesting the audit')
+    expect(phaseFor('submitting', 30_000)).toBe('Requesting the audit')
+  })
+
   it('says a queued audit is queued, rather than claiming to be fetching', () => {
     // True and different: nothing is being fetched while the job sits in a
     // queue. The small lie is what makes a progress indicator untrustworthy.

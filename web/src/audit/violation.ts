@@ -25,10 +25,15 @@ export const crossesFrames = (target: readonly string[]): boolean => target.leng
  *
  * The vendored engine carries `helpUrlBase: "https://dequeuniversity.com/rules/"`
  * and every rule's `helpUrl` is built from it, so this is a fact about the
- * bundle rather than a guess. Pinned to the exact host: a subdomain wildcard
- * would admit anything Deque ever delegates, and there is no reason to.
+ * bundle rather than a guess.
+ *
+ * Compared as an ORIGIN, not a hostname. `https://dequeuniversity.com:8443/`
+ * shares the host and is a different origin, and an earlier version checking
+ * protocol plus hostname accepted it while the comment beside it claimed the
+ * exact origin was allowlisted. A subdomain wildcard is likewise refused:
+ * it would admit anything Deque ever delegates, and there is no reason to.
  */
-export const HELP_HOST = 'dequeuniversity.com'
+export const HELP_ORIGIN = 'https://dequeuniversity.com'
 
 /**
  * The help link, if it can be trusted enough to render as one.
@@ -62,6 +67,5 @@ export const safeHelpUrl = (helpUrl: string): string | null => {
     return null
   }
 
-  if (parsed.protocol !== 'https:') return null
-  return parsed.hostname === HELP_HOST ? parsed.href : null
+  return parsed.origin === HELP_ORIGIN ? parsed.href : null
 }

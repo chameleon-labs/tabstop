@@ -49,58 +49,25 @@ describe('runAxeInPage', () => {
     })
   })
 
-  describe('helpUrl, which the audited page chooses', () => {
-    // EVERYTHING in the axe result is attacker-controlled. `window.axe` is
-    // injected into a page nobody vetted, and that page can replace the object
-    // before it is asked to run - so `helpUrl` is a string the audited site
-    // picked. It was stored and served verbatim, becoming the `href` of a link
-    // reading "How to fix this" inside an accessibility report, on a share page
-    // anybody can send to a colleague.
-    const withHelpUrl = async (helpUrl: unknown): Promise<string | undefined> => {
-      install(axeReturning({
-        testEngine: { version: '4.12.1' },
-        violations: [{
-          id: 'r', impact: 'critical', description: 'd', helpUrl,
-          nodes: [{ target: ['img'], html: '<img>' }]
-        }]
-      }))
-      const result = await runAxeInPage()
-      return result.violations[0]?.helpUrl
-    }
+  it('hands helpUrl back RAW, because this runs in the audited page', async () => {
+    // Sanitising here was wrong in a way worth recording: this function is
+    // serialised into the page by `page.evaluate` and runs in the page's realm.
+    // A page hostile enough to replace `window.axe` can replace `window.URL`
+    // just as easily, with a parser reporting whatever origin makes its link
+    // pass. Validation performed with the attacker's own globals is not
+    // validation - it belongs in Node, and lives in `help-url.ts`.
+    install(axeReturning({
+      testEngine: { version: '4.12.1' },
+      violations: [{
+        id: 'r', impact: 'critical', description: 'd',
+        helpUrl: 'https://evil.example/phish',
+        nodes: [{ target: ['img'], html: '<img>' }]
+      }]
+    }))
 
-    it('keeps an ordinary documentation link', async () => {
-      expect(await withHelpUrl('https://dequeuniversity.com/rules/axe/4.12/image-alt'))
-        .toBe('https://dequeuniversity.com/rules/axe/4.12/image-alt')
-    })
+    const result = await runAxeInPage()
 
-    it.each([
-      'javascript:alert(document.cookie)',
-      'data:text/html,<script>alert(1)</script>',
-      'file:///etc/passwd',
-      'not a url'
-    ])('drops %p rather than storing it', async (helpUrl) => {
-      expect(await withHelpUrl(helpUrl)).toBe('')
-    })
-
-    it.each([
-      ['https://evil.example/phish', 'another https origin, which a scheme test allows'],
-      ['https://dequeuniversity.com.evil.example/rules', 'a lookalike host'],
-      ['https://evil.dequeuniversity.com/rules', 'a subdomain the engine never uses'],
-      ['https://dequeuniversity.com@evil.example/', 'credentials smuggled into the authority'],
-      ['http://dequeuniversity.com/rules/axe/4.12/label', 'plain http on the right host']
-    ])('drops %p - %s', async (helpUrl) => {
-      // The origin is the check. `helpUrlBase` in the vendored engine is
-      // `https://dequeuniversity.com/rules/`, so anything else was chosen by
-      // the audited page, and a scheme test alone waves most of these through.
-      expect(await withHelpUrl(helpUrl)).toBe('')
-    })
-
-    it('drops a value that is not a string at all', async () => {
-      // `run()` returns whatever the page decided to return. Nothing guarantees
-      // the field is even a string.
-      expect(await withHelpUrl(42)).toBe('')
-      expect(await withHelpUrl(null)).toBe('')
-    })
+    expect(result.violations[0]?.helpUrl).toBe('https://evil.example/phish')
   })
 
   it('flattens a nested shadow-DOM selector', async () => {

@@ -99,6 +99,26 @@ describe('the home screen', () => {
     expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
   })
 
+  it('does not claim a queue place while the request is still in flight', async () => {
+    // A slow POST announced "Waiting for a free worker" before anything had
+    // been accepted - a queue the request had not reached, and might never.
+    let release = (): void => {}
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        await new Promise<void>((resolve) => { release = resolve })
+        return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+      }
+      return jsonResponse(200, auditBody({ status: 'running' }))
+    }))
+    renderAt('/')
+
+    await submit('example.com')
+
+    expect(await screen.findByText(/Requesting the audit/)).toBeVisible()
+    expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument()
+    release()
+  })
+
   it('will not accept a second URL while one is running', async () => {
     server({ get: () => jsonResponse(200, auditBody({ status: 'running' })) })
     renderAt('/')
@@ -214,11 +234,6 @@ describe('the home screen', () => {
     })
 
     it('shows progress again WHILE a poll retry is in flight', async () => {
-      // React Query RETAINS the last error until the new request settles, so
-      // the failure and its own button stayed on screen for the whole retry -
-      // the exact "button did nothing" behaviour `request.reset()` prevents on
-      // the mutation side.
-      //
       // This pins a REACT QUERY behaviour rather than one of ours: it clears a
       // query's error when a refetch begins, where it keeps a mutation's until
       // the next settles. A guard was written here first and removed once no

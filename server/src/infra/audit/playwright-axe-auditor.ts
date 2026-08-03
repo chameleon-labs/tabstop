@@ -9,6 +9,7 @@ import {
   bareHostname, parseAuditUrl, type UrlPolicy
 } from '../../domain/services/url-safety.js'
 import { DEFAULT_URL_POLICY } from '../net/ip-address-policy.js'
+import { safeHelpUrl } from './help-url.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -119,48 +120,6 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
   if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
     throw new Error('axe returned an unrecognised result shape')
   }
-
-  /**
-   * A rule's documentation link, or '' if the page did not hand back one.
-   *
-   * DECLARED INSIDE this function, not beside it. `runAxeInPage` is serialised
-   * into the browser by `page.evaluate` and closes over nothing - a
-   * module-level helper is simply not defined there, and the unit spec cannot
-   * notice because it calls this in Node where the helper does exist. Only the
-   * real Chromium spec catches it, which it did.
-   *
-   * EVERYTHING IN THE AXE RESULT IS ATTACKER-CONTROLLED. `window.axe` is
-   * injected into a page nobody vetted, and that page can replace the object
-   * before this asks it to run - so `helpUrl` is a string the audited site
-   * chose. It was stored and served verbatim, where it becomes the `href` of a
-   * link reading "How to fix this" inside an accessibility report; the share
-   * page makes that one anybody can send to a colleague.
-   *
-   * THE ORIGIN IS THE CHECK, not the scheme. `https://evil.example/phish`
-   * passes a scheme test perfectly, and phishing from inside our own report is
-   * the whole of the risk - script execution is separately prevented by the
-   * client. The vendored engine carries `helpUrlBase:
-   * "https://dequeuniversity.com/rules/"`, so pinning that host is a fact about
-   * this bundle rather than a guess. If a future axe moves its documentation,
-   * links degrade to absent and the version bump is when that is noticed.
-   *
-   * Dropped to '' rather than nulled because the column and the wire field are
-   * both non-nullable, and this is a sanitiser rather than a migration. The
-   * clients treat '' as "no link" and apply the same rule again: this is the
-   * boundary, not the only guard.
-   */
-  const HELP_HOST = 'dequeuniversity.com'
-  const safeHelpUrl = (helpUrl: unknown): string => {
-    if (typeof helpUrl !== 'string') return ''
-    try {
-      const parsed = new URL(helpUrl)
-      if (parsed.protocol !== 'https:') return ''
-      return parsed.hostname === HELP_HOST ? parsed.href : ''
-    } catch {
-      return ''
-    }
-  }
-
   return {
     axeVersion: run.testEngine.version,
     violations: (run.violations as Array<{
@@ -173,7 +132,10 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
       ruleId: violation.id,
       impact: violation.impact,
       description: violation.description,
-      helpUrl: safeHelpUrl(violation.helpUrl),
+      // NOT sanitised here. This function runs inside the audited page, where
+      // `URL` is as replaceable as `axe` - see `help-url.ts`. The value crosses
+      // back to Node raw and is checked there.
+      helpUrl: violation.helpUrl,
       nodes: violation.nodes.map((node) => ({
         // axe does not always hand back a flat list of selectors: a node
         // inside shadow DOM arrives as a NESTED array, verified as
@@ -194,6 +156,29 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
  * context - at which point restating it buys nothing and can drift.
  */
 export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket' | 'addInitScript'>
+
+/**
+ * Everything that must happen to a violation AFTER it crosses back from the
+ * page, and the crossing is the whole reason this is a separate function.
+ *
+ * `runAxeInPage` executes in the audited page's realm, where `URL` is as
+ * replaceable as `axe` - so nothing it computes can be trusted, including a
+ * validation it performs itself. This runs in Node, on the far side of
+ * `page.evaluate`, with our own globals.
+ *
+ * Exported so the wiring is assertable. It was inline in `audit()` first, and
+ * deleting the sanitiser there changed no test: the unit spec covered the
+ * function and the integration spec drove a page whose real axe only ever
+ * produces trusted links, so neither could see it go.
+ */
+export const toStoredViolations = (
+  violations: EvaluatedResult['violations']
+): Array<Omit<EvaluatedResult['violations'][number], 'impact'> & { impact: Impact | null }> =>
+  violations.map((violation) => ({
+    ...violation,
+    impact: toImpact(violation.impact),
+    helpUrl: safeHelpUrl(violation.helpUrl)
+  }))
 
 /**
  * Both interceptors, registered together because leaving either off is a hole
@@ -394,10 +379,7 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       const evaluated = await page.evaluate(runAxeInPage)
 
       return {
-        violations: evaluated.violations.map((violation) => ({
-          ...violation,
-          impact: toImpact(violation.impact)
-        })),
+        violations: toStoredViolations(evaluated.violations),
         axeVersion: evaluated.axeVersion,
         durationMs: Date.now() - startedAt,
         settled

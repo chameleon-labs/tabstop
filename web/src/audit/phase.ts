@@ -36,6 +36,22 @@ export const PHASES: readonly Phase[] = [
 export const EXPECTED_DURATION = 'this usually takes about 30 seconds'
 
 const QUEUED_LABEL = 'Waiting for a free worker'
+const SUBMITTING_LABEL = 'Requesting the audit'
+
+/**
+ * The audit's status, plus the moment before it has one.
+ *
+ * Between submitting and the server accepting, no audit and no queue entry
+ * exists - so claiming "Waiting for a free worker" is not a rounding error, it
+ * describes a queue the request has not reached and may never reach. A slow or
+ * refused POST announced a phase that was never true.
+ *
+ * Carried as a status rather than as a separate component so the live region
+ * stays ONE element across the whole wait: swapping elements would replace the
+ * region, and a region's first content is initial content, which is announced
+ * by nothing.
+ */
+export type ProgressStatus = AuditStatus | 'submitting'
 
 /**
  * The phase label for an audit, or null once there is nothing to announce.
@@ -45,7 +61,8 @@ const QUEUED_LABEL = 'Waiting for a free worker'
  * job sits in a queue is the kind of small lie that makes a progress indicator
  * untrustworthy.
  */
-export const phaseFor = (status: AuditStatus, elapsedMs: number): string | null => {
+export const phaseFor = (status: ProgressStatus, elapsedMs: number): string | null => {
+  if (status === 'submitting') return SUBMITTING_LABEL
   if (status === 'queued') return QUEUED_LABEL
   if (status !== 'running') return null
 

@@ -1,9 +1,8 @@
-import type { AuditStatus } from '@tabstop/contract'
 import { useEffect, useState } from 'react'
-import { EXPECTED_DURATION, phaseFor } from '../../audit/phase'
+import { EXPECTED_DURATION, phaseFor, type ProgressStatus } from '../../audit/phase'
 
 export type AuditProgressProps = {
-  status: AuditStatus
+  status: ProgressStatus
   /** When the audit was requested, for deriving the phase. */
   startedAt: number
 }

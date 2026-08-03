@@ -89,7 +89,17 @@ export const Home = (): React.JSX.Element => {
       {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
 
       {waiting && startedAt !== null && (
-        <AuditProgress status={audit.data?.status ?? 'queued'} startedAt={startedAt} />
+        <AuditProgress
+          // `submitting` until the server has accepted anything. Falling back
+          // to 'queued' claimed a place in a queue the request had not reached
+          // and might never reach - a slow or refused POST announced a phase
+          // that was never true. After acceptance the server's own answer is
+          // used until the first poll returns, rather than a guess.
+          status={
+            request.data === undefined ? 'submitting' : audit.data?.status ?? request.data.status
+          }
+          startedAt={startedAt}
+        />
       )}
 
       {failure === null && done && audit.data !== undefined && (

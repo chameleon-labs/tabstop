@@ -66,6 +66,13 @@ describe('safeHelpUrl', () => {
       expect(safeHelpUrl('https://evil.dequeuniversity.com/rules')).toBeNull()
     })
 
+    it('refuses a non-default port on the right host', () => {
+      // `https://dequeuniversity.com:8443/` shares the hostname and is a
+      // different origin. A hostname check accepted it while the comment above
+      // claimed the exact origin was allowlisted.
+      expect(safeHelpUrl('https://dequeuniversity.com:8443/rules/axe/4.12/label')).toBeNull()
+    })
+
     it('refuses plain http even on the right host', () => {
       // `helpUrlBase` is https. An http link is either downgraded or forged,
       // and neither is worth rendering.
