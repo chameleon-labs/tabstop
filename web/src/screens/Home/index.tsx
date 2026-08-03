@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { useAudit, useRequestAudit } from '../../api/audits'
 import { describeFailure } from '../../audit/failure'
 import { EXPECTED_DURATION, completionAnnouncement } from '../../audit/phase'
@@ -59,7 +60,7 @@ export const Home = (): React.JSX.Element => {
   const progressStatus = request.data === undefined
     ? 'submitting'
     : audit.data?.status ?? request.data.status
-  const phase = useAuditPhase(progressStatus, startedAt)
+  const phase = useAuditPhase(progressStatus, startedAt, waiting)
   const announcement = done && audit.data !== undefined
     ? completionAnnouncement(audit.data.score, audit.data.violations.length)
     : waiting && phase !== null ? `${phase}… ${EXPECTED_DURATION}` : null
@@ -120,8 +121,33 @@ export const Home = (): React.JSX.Element => {
       )}
 
       {failure === null && done && audit.data !== undefined && (
-        <AuditResult audit={audit.data} />
+        <>
+          <AuditResult audit={audit.data} />
+          <TrackThisPage />
+        </>
       )}
     </>
   )
 }
+
+/**
+ * The signup CTA, and it lives HERE rather than inside `AuditResult`.
+ *
+ * That component is rendered by the share page (#23) and audit detail (#21) as
+ * well, where the ask is wrong: someone following a link a colleague sent has
+ * no page of their own in mind yet, and someone already signed in is being
+ * offered an account. The screen that knows the context owns the framing.
+ *
+ * Sells the monitoring rather than the signup - the audit they just ran is
+ * already free, so the reason to have an account is what happens tomorrow.
+ */
+const TrackThisPage = (): React.JSX.Element => (
+  <section aria-labelledby="track-heading">
+    <h2 id="track-heading">Keep an eye on this page</h2>
+    <p>
+      tabstop can re-audit it every day and email you when the score drops or a
+      new serious issue appears.
+    </p>
+    <p><Link to="/signup">Track this page</Link></p>
+  </section>
+)

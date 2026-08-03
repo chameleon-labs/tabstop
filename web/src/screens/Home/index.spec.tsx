@@ -367,6 +367,45 @@ describe('the home screen', () => {
     })
   })
 
+  describe('the CTA on a finished audit', () => {
+    it('offers to track the page, which is what an account is for', async () => {
+      // The audit they just ran was free. The reason to have an account is what
+      // happens tomorrow, so the offer sells the monitoring rather than signup.
+      renderAt('/')
+
+      await submit('example.com')
+      await screen.findByRole('heading', { level: 2, name: /Result for/ })
+
+      const cta = screen.getByRole('link', { name: 'Track this page' })
+      expect(cta).toBeVisible()
+      await userEvent.click(cta)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Create an account' }))
+        .toBeVisible()
+    })
+
+    it('does not offer it while the audit is still running', async () => {
+      server({ get: () => jsonResponse(200, auditBody({ status: 'running' })) })
+      renderAt('/')
+
+      await submit('example.com')
+      await screen.findByRole('heading', { level: 2, name: 'Auditing' })
+
+      expect(screen.queryByRole('link', { name: 'Track this page' })).not.toBeInTheDocument()
+    })
+
+    it('does not offer it when the audit failed', async () => {
+      server({
+        get: () => jsonResponse(200, auditBody({ status: 'failed', error: 'boom' }))
+      })
+      renderAt('/')
+
+      await submit('example.com')
+      await screen.findByText('boom')
+
+      expect(screen.queryByRole('link', { name: 'Track this page' })).not.toBeInTheDocument()
+    })
+  })
+
   describe('what a screen reader is told', () => {
     const announcer = (): HTMLElement => {
       // The shell has its own polite region for route changes; this is the

@@ -26,7 +26,7 @@ export const TICK_MS = 1_000
  * so the intermediate value never reaches the DOM at all.
  */
 export const useAuditPhase = (
-  status: ProgressStatus, startedAt: number | null
+  status: ProgressStatus, startedAt: number | null, active: boolean
 ): string | null => {
   const [now, setNow] = useState(() => Date.now())
   const [runningSince, setRunningSince] = useState<number | null>(null)
@@ -34,7 +34,12 @@ export const useAuditPhase = (
 
   if (status !== seenStatus) {
     setSeenStatus(status)
-    if (status === 'running' && runningSince === null) setRunningSince(Date.now())
+    // EVERY transition into `running`, not only the first. This hook lives on
+    // the home screen, which outlives any one audit: guarded on
+    // `runningSince === null`, a second audit inherited the first one's epoch
+    // and opened on "Scoring" - phases counted from a job that had already
+    // finished, possibly minutes earlier.
+    if (status === 'running') setRunningSince(Date.now())
   }
 
   // Falls back to `startedAt` when the transition was never observed - a reload
@@ -42,13 +47,24 @@ export const useAuditPhase = (
   // the response carries no worker-start timestamp.
   const since = runningSince ?? startedAt
 
+  /**
+   * The clock runs only while the screen is actually waiting.
+   *
+   * `since` stays populated after an audit ends - that is what makes it a
+   * record of when the work began - so gating the interval on it alone left a
+   * timer ticking for the lifetime of the tab. Every tick re-rendered the
+   * screen, and with it the finished result and its whole violation tree, once
+   * a second forever. `active` is the screen's own notion of waiting, and the
+   * only thing that knows a poll failure has replaced the progress indicator
+   * while the retained status still says `running`.
+   */
   useEffect(() => {
-    if (since === null) return
+    if (!active || since === null) return
     const timer = setInterval(() => { setNow(Date.now()) }, TICK_MS)
     return () => { clearInterval(timer) }
-  }, [since])
+  }, [active, since])
 
-  if (since === null) return null
+  if (!active || since === null) return null
 
   // Computed during render, so it can never be a tick behind the epoch. A
   // freshly moved epoch with a stale `now` reads as slightly negative, which

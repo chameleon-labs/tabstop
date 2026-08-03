@@ -24,12 +24,12 @@ describe('useAuditPhase', () => {
   }
 
   const at = (status: ProgressStatus) =>
-    renderHook(({ s }: { s: ProgressStatus }) => useAuditPhase(s, START), {
+    renderHook(({ s }: { s: ProgressStatus }) => useAuditPhase(s, START, true), {
       initialProps: { s: status }
     })
 
   it('has nothing to say before anything was submitted', () => {
-    const { result } = renderHook(() => useAuditPhase('submitting', null))
+    const { result } = renderHook(() => useAuditPhase('submitting', null, true))
 
     expect(result.current).toBeNull()
   })
@@ -56,6 +56,59 @@ describe('useAuditPhase', () => {
   it('has nothing to say once the audit is over', () => {
     expect(at('done').result.current).toBeNull()
     expect(at('failed').result.current).toBeNull()
+  })
+
+  describe('the clock', () => {
+    it('stops when the screen is no longer waiting', () => {
+      // `since` stays populated after an audit ends - that is what makes it a
+      // record of when the work began - so an interval gated on it alone ran
+      // for the lifetime of the tab, re-rendering the finished result and its
+      // whole violation tree once a second, forever.
+      const { rerender, unmount } = renderHook(
+        ({ a }: { a: boolean }) => useAuditPhase('running', START, a),
+        { initialProps: { a: true } }
+      )
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+
+      rerender({ a: false })
+
+      expect(vi.getTimerCount()).toBe(0)
+      unmount()
+    })
+
+    it('never starts while the screen is not waiting', () => {
+      renderHook(() => useAuditPhase('running', START, false))
+
+      expect(vi.getTimerCount()).toBe(0)
+    })
+  })
+
+  describe('a second audit on the same screen', () => {
+    it('does not inherit the first audit\'s epoch', async () => {
+      // This hook lives on the home screen, which outlives any one audit.
+      // Guarded on `runningSince === null`, a second audit kept the first one's
+      // start time and opened on "Scoring" - counting phases from a job that
+      // had already finished, possibly minutes earlier.
+      // Starts at `queued` and TRANSITIONS into running, which is what sets
+      // the epoch at all. A first audit that begins already in `running` never
+      // sets it, so a test written that way passes with the bug present - as
+      // the first version of this one did.
+      const { result, rerender } = renderHook(
+        ({ s }: { s: ProgressStatus }) => useAuditPhase(s, START, true),
+        { initialProps: { s: 'queued' as ProgressStatus } }
+      )
+      rerender({ s: 'running' })
+      await advance(25_000)
+      expect(result.current).toBe('Scoring')
+
+      // First audit ends, a second is submitted and reaches a worker.
+      rerender({ s: 'done' })
+      rerender({ s: 'submitting' })
+      rerender({ s: 'queued' })
+      rerender({ s: 'running' })
+
+      expect(result.current).toBe('Fetching the page')
+    })
   })
 
   describe('the queue does not count against the phases', () => {

@@ -6,7 +6,7 @@ import type { ProgressStatus } from '../audit/phase'
 const START = 1_700_000_000_000
 
 const Harness = ({ status }: { status: ProgressStatus }): React.JSX.Element => {
-  const phase = useAuditPhase(status, START)
+  const phase = useAuditPhase(status, START, true)
   return <p data-testid="phase">{phase}</p>
 }
 

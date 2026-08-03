@@ -24,6 +24,18 @@ export type AuditAnnouncerProps = {
  *
  * `polite`, because none of this should interrupt. Only a failure is urgent,
  * and `AuditFailure` is a `role="alert"` of its own.
+ *
+ * IT DOES SAY THE SAME THING AS THE VISIBLE SENTENCE, and that duplication is
+ * accepted rather than overlooked. An earlier version merged the two to avoid
+ * it, which is why the region ended up mounting with content in it and never
+ * announcing its first phase. The split is not a style choice: the announcement
+ * has to exist BEFORE the progress indicator appears and AFTER it goes, and no
+ * single node can both show progress and speak once progress is gone.
+ *
+ * `aria-hidden` on the visible sentence would remove the duplication, and is
+ * rejected: someone arriving after an announcement could no longer read what
+ * phase the audit is in. Hearing a sentence and being able to find it again is
+ * the better trade.
  */
 export const AuditAnnouncer = ({ message }: AuditAnnouncerProps): React.JSX.Element => {
   const [announced, setAnnounced] = useState('')
