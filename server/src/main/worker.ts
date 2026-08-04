@@ -134,16 +134,18 @@ const reauditWorker = makeWorker<ReauditPayload>(
     // a run wedged in a query that never returns checks no signals, and
     // something has to end the attempt.
     //
-    // It ends the ATTEMPT, not necessarily the work, and the difference is
-    // worth being precise about. `runWithTimeout` aborts a signal and gives
-    // up; the queries underneath receive no signal and the pool sets no
-    // statement timeout, so a lock-stalled statement keeps its connection and
-    // its loop can resume after BullMQ has already started the retry. What
-    // bounds the damage then is not this timer but the unique index and the
-    // eligibility query: the zombie and the retry cannot both schedule the
-    // same page, they can only divide the work between them. A real bound
-    // needs a statement timeout on the pool, which every job in this process
-    // wants and none of them has - #52.
+    // It ends the ATTEMPT, and the work underneath is now bounded too.
+    // `runWithTimeout` still only aborts a signal the queries never receive,
+    // but the pool sets a statement_timeout (#52), so a lock-stalled statement
+    // is cancelled by Postgres rather than holding its connection until the
+    // loop happens to resume - which it could previously do after BullMQ had
+    // already started the retry.
+    //
+    // The unique index and the eligibility query still matter: they are what
+    // keeps a zombie and its retry from scheduling the same page twice, and
+    // they cover the window between the attempt ending and the statement
+    // being cancelled. The difference is that the window is now bounded by
+    // DATABASE_STATEMENT_TIMEOUT_MS rather than open-ended.
     const softDeadline = AbortSignal.timeout(REAUDIT_RUN_TIMEOUT_MS)
 
     // The counters as of the last batch, kept for the path where the run

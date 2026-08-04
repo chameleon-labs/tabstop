@@ -58,4 +58,18 @@ describe('database composition root', () => {
   it('is safe to disconnect when never connected', async () => {
     await expect(disconnectDatabase()).resolves.toBeUndefined()
   })
+
+  it('bounds statements on the pool that serves requests and jobs', async () => {
+    // This is the composition root for both the API and the worker, so it is
+    // the one place that decides whether a query has any bound at all once it
+    // has started. Migrations deliberately get no timeout; everything routed
+    // through here must (#52).
+    connectDatabase(connectionString())
+
+    const result = await sql<{ statement_timeout: string }>`
+      show statement_timeout
+    `.execute(getDatabase())
+
+    expect(result.rows[0]?.statement_timeout).not.toBe('0')
+  })
 })

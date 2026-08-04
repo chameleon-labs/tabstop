@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sql, type Kysely } from 'kysely'
+import pg from 'pg'
 import { PostgresHealthAdapter } from './postgres-health-adapter.js'
 import { makeDatabase } from '../helpers/postgres-helper.js'
 import type { Database } from '../database.js'
@@ -59,6 +60,31 @@ describe('PostgresHealthAdapter', () => {
       // safety net for a failure before the intentional destroy() runs.
       await destroyed.destroy().catch(() => {})
     }
+  })
+
+  it('reports unhealthy rather than throwing when its probe is cancelled', async () => {
+    // With a statement_timeout on the production pool (#52) the probe becomes
+    // cancellable, so this adapter starts seeing 57014 where it previously
+    // only saw connection failures. A cancelled probe must degrade to a 503
+    // the caller can answer with, not escape as a crash.
+    //
+    // Driven through a stub rather than a real timeout on purpose: the probe
+    // is `select 1`, which no honest statement_timeout is short enough to
+    // cancel, so provoking this against real Postgres would mean a 1ms bound
+    // and a test that fails whenever CI is busy. The error is a genuine
+    // pg.DatabaseError carrying the real SQLSTATE, so what is faked is the
+    // timing, not the failure being handled.
+    const queryCanceled = Object.assign(
+      new pg.DatabaseError('canceling statement due to statement timeout', 0, 'error'),
+      { code: '57014' }
+    )
+    const cancelling = {
+      getExecutor: () => { throw queryCanceled }
+    } as unknown as Kysely<Database>
+    const sut = new PostgresHealthAdapter(cancelling)
+
+    await expect(sut.isReachable()).resolves.toBe(false)
+    expect(errorSpy).toHaveBeenCalledWith('Postgres health check failed:', queryCanceled)
   })
 
   it('returns false when the connection string points nowhere', async () => {

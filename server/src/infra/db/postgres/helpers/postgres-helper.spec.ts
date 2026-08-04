@@ -73,3 +73,57 @@ describe('makeDatabase', () => {
     }
   })
 })
+
+const QUERY_CANCELED = '57014'
+
+describe('makeDatabase statement timeout', () => {
+  let db: Kysely<Database> | null = null
+
+  afterEach(async () => {
+    await db?.destroy()
+    db = null
+  })
+
+  it('cancels a statement that runs past the timeout', async () => {
+    db = makeDatabase(connectionString(), { statementTimeoutMs: 250 })
+
+    // pg_sleep holds the backend without taking a lock, so what fires here is
+    // the timeout rather than contention with anything else in the suite.
+    await expect(sql`select pg_sleep(5)`.execute(db)).rejects.toMatchObject({
+      code: QUERY_CANCELED
+    })
+  })
+
+  it('leaves a statement that finishes inside the timeout alone', async () => {
+    db = makeDatabase(connectionString(), { statementTimeoutMs: 5000 })
+
+    const result = await sql<{ one: number }>`select 1 as one`.execute(db)
+
+    expect(result.rows[0]?.one).toBe(1)
+  })
+
+  it('bounds every connection in the pool, not only the first', async () => {
+    db = makeDatabase(connectionString(), { statementTimeoutMs: 250 })
+
+    // A pool hands out a separate backend per connection. A timeout applied
+    // once at construction, rather than to each connection as it opens, would
+    // bind only whichever backend happened to run first.
+    const results = await Promise.allSettled(
+      [0, 1, 2].map(async () => await sql`select pg_sleep(5)`.execute(db as Kysely<Database>))
+    )
+
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected', 'rejected'])
+  })
+
+  it('leaves statements unbounded when no timeout is configured', async () => {
+    // Migrations go through this factory and build indexes that legitimately
+    // outrun any sane statement timeout; being cancelled halfway is the one
+    // failure they must not have. This pins that exclusion rather than
+    // leaving it to a comment - see #52.
+    db = makeDatabase(connectionString())
+
+    const result = await sql<{ statement_timeout: string }>`show statement_timeout`.execute(db)
+
+    expect(result.rows[0]?.statement_timeout).toBe('0')
+  })
+})
