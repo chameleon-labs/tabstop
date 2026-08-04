@@ -35,6 +35,15 @@ const server = (
   return mock
 }
 
+/**
+ * The audit's status line. The shell carries its own polite region for route
+ * announcements and appears first in the document, so this is the later one.
+ */
+const statusLine = (): HTMLElement => {
+  const regions = screen.getAllByRole('status')
+  return regions[regions.length - 1] as HTMLElement
+}
+
 const submit = async (raw: string): Promise<void> => {
   await userEvent.type(screen.getByLabelText('Page to audit'), `${raw}{Enter}`)
 }
@@ -83,20 +92,12 @@ describe('the home screen', () => {
     renderAt('/')
 
     await submit('example.com')
-    const heading = await screen.findByRole('heading', { level: 2, name: 'Auditing' })
-
-    // The visible sentence, scoped to the progress section. The live region is
-    // a sibling that outlives this section, and it is asserted separately -
-    // this component deliberately owns no region of its own.
-    const section = heading.closest('section') as HTMLElement
-    expect(within(section).getByText(/about 30 seconds/)).toBeVisible()
+    await waitFor(() => { expect(statusLine()).toHaveTextContent(/about 30 seconds/) })
 
     status = 'done'
 
-    // Mutually exclusive: progress still showing beneath a result reads as
-    // though the result were stale.
     expect(await screen.findByRole('heading', { level: 2, name: /Result for/ })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
+    await waitFor(() => { expect(statusLine()).toHaveTextContent(/Audit complete/) })
   })
 
   it('does not claim a queue place while the request is still in flight', async () => {
@@ -117,7 +118,8 @@ describe('the home screen', () => {
     // Two matches by design: the visible sentence and the live region that
     // announces it. Both should say the same thing, and neither should claim a
     // queue place.
-    await waitFor(() => { expect(screen.getAllByText(/Requesting the audit/).length).toBe(2) })
+    await waitFor(() => { expect(statusLine()).toHaveTextContent(/Requesting the audit/) })
+      expect(screen.getAllByText(/Requesting the audit/)).toHaveLength(1)
     expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument()
     release()
   })
@@ -207,7 +209,7 @@ describe('the home screen', () => {
       await submit('example.com')
 
       expect(await screen.findByText('Internal server error')).toBeVisible()
-      expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
+      expect(statusLine()).not.toHaveTextContent(/Fetching the page|Requesting the audit/)
     })
 
     it('retries a failed poll by ASKING AGAIN, not by auditing again', async () => {
@@ -269,7 +271,7 @@ describe('the home screen', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
       // Still in flight: the error must already be gone.
-      expect(await screen.findByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/about 30 seconds/) })
       expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
       release()
     })
@@ -294,11 +296,9 @@ describe('the home screen', () => {
 
       renderAt('/')
       await submit('example.com')
-      await screen.findByRole('heading', { level: 2, name: 'Auditing' })
 
       expect(await screen.findByText('Internal server error')).toBeVisible()
       expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible()
-      expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
     })
 
     it('clears the failure WHILE a retry is in flight, with data already cached', async () => {
@@ -327,9 +327,11 @@ describe('the home screen', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-      // Still in flight: the failure must already be gone, and progress back.
+      // Still in flight: the failure must already be gone, and the status line
+      // back to describing the wait. Phase-independent, because which phase it
+      // is depends on how long the audit has been going.
       expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
-      expect(screen.getByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/about 30 seconds/) })
       release()
     })
 
@@ -357,7 +359,7 @@ describe('the home screen', () => {
       recovered = true
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-      expect(await screen.findByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/Fetching the page/) })
       expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
     })
 
@@ -420,7 +422,7 @@ describe('the home screen', () => {
       renderAt('/')
 
       await submit('example.com')
-      await screen.findByRole('heading', { level: 2, name: 'Auditing' })
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/Fetching the page/) })
 
       expect(screen.queryByRole('link', { name: 'Track this page' })).not.toBeInTheDocument()
     })
@@ -439,20 +441,13 @@ describe('the home screen', () => {
   })
 
   describe('what a screen reader is told', () => {
-    const announcer = (): HTMLElement => {
-      // The shell has its own polite region for route changes; this is the
-      // audit's, which is empty until there is something to say.
-      const regions = screen.getAllByRole('status')
-      return regions[regions.length - 1] as HTMLElement
-    }
-
     it('announces the wait, starting from a region that was already there', async () => {
       server({ get: () => jsonResponse(200, auditBody({ status: 'running' })) })
       renderAt('/')
 
       await submit('example.com')
 
-      await waitFor(() => { expect(announcer()).toHaveTextContent(/Fetching the page/) })
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/Fetching the page/) })
     })
 
     it('announces completion, which nothing else would say', async () => {
@@ -464,8 +459,8 @@ describe('the home screen', () => {
       await submit('example.com')
 
       await screen.findByRole('heading', { level: 2, name: /Result for/ })
-      await waitFor(() => { expect(announcer()).toHaveTextContent(/Audit complete/) })
-      expect(announcer()).toHaveTextContent(/Score 72/)
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/Audit complete/) })
+      expect(statusLine()).toHaveTextContent(/Score 72/)
     })
   })
 

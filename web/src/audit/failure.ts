@@ -43,6 +43,22 @@ export type DescribedFailure = {
 const GENERIC = 'Something went wrong'
 
 /**
+ * The two sentences this module writes, and the only ones.
+ *
+ * A rejected `fetch` never reached the server, so there is no server sentence
+ * to quote - which makes these ours by necessity rather than by choice, exactly
+ * like the two in `url.ts`. "Something went wrong" was strictly less than what
+ * is known: the request did not arrive, and that is a different problem from an
+ * audit that failed, with a different thing to check.
+ *
+ * They differ because the reader's situation differs. Failing to START an audit
+ * is a fresh action they can repeat; losing contact DURING one leaves an audit
+ * that is probably still running on the server.
+ */
+const UNREACHABLE_REQUEST = 'Could not reach tabstop. Check your connection and try again'
+const UNREACHABLE_POLL = 'Lost contact with tabstop. The audit may still be running'
+
+/**
  * A failure of `POST /api/audits`, branched on the STATUS CODE.
  *
  * Status rather than message text, and that is the point: a status is a
@@ -61,8 +77,10 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
 
   if (!isApiError(error)) {
     // Never reached the server at all - offline, DNS, connection refused. The
-    // request is worth repeating because nothing considered it.
-    return { message: GENERIC, action: 'retry', source: 'request' }
+    // request is worth repeating because nothing considered it, and #19 asks
+    // for a distinct message per failure: this one is known to be a connection
+    // problem, so saying only "something went wrong" throws that away.
+    return { message: UNREACHABLE_REQUEST, action: 'retry', source: 'request' }
   }
 
   // 400 is #7 refusing the address: blocked scheme, port, private address,
@@ -92,7 +110,10 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
  */
 export const describePollFailure = (error: unknown): DescribedFailure => {
   if (!isApiError(error)) {
-    return { message: GENERIC, action: 'retry', source: 'poll' }
+    // Same cause, different situation: an audit was accepted and is probably
+    // still running on the server, so this is lost contact rather than a failed
+    // start. Retrying asks again rather than starting over.
+    return { message: UNREACHABLE_POLL, action: 'retry', source: 'poll' }
   }
 
   // The uuid names nothing. Retrying cannot conjure it, and it is the one poll

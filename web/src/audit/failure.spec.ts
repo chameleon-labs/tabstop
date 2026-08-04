@@ -84,8 +84,13 @@ describe('describeRequestFailure', () => {
   it('offers a retry when the request never reached the server', () => {
     // Offline, DNS, connection refused. Nothing considered the request, so
     // there is nothing considered to respect.
-    expect(describeRequestFailure(new TypeError('Failed to fetch')))
-      .toEqual({ message: 'Something went wrong', action: 'retry', source: 'request' })
+    // Known to be a connection problem, so it says so. "Something went wrong"
+    // was strictly less than what the client already knew.
+    const failure = describeRequestFailure(new TypeError('Failed to fetch'))
+
+    expect(failure.action).toBe('retry')
+    expect(failure.message).toMatch(/Could not reach tabstop/)
+    expect(failure.message).not.toBe('Something went wrong')
   })
 
   it('offers nothing for a 4xx it has no answer for', () => {
@@ -210,7 +215,13 @@ describe('describePollFailure', () => {
   })
 
   it('offers a retry when the poll never reached the server', () => {
-    expect(describePollFailure(new TypeError('Failed to fetch')))
-      .toEqual({ message: 'Something went wrong', action: 'retry', source: 'poll' })
+    // A different situation from failing to start one: an audit was accepted
+    // and is probably still running, so this is lost contact rather than a
+    // failed start.
+    const failure = describePollFailure(new TypeError('Failed to fetch'))
+
+    expect(failure.action).toBe('retry')
+    expect(failure.message).toMatch(/Lost contact with tabstop/)
+    expect(failure.message).not.toBe(describeRequestFailure(new TypeError('x')).message)
   })
 })

@@ -3,9 +3,8 @@ import { Link } from 'react-router'
 import { useAudit, useRequestAudit } from '../../api/audits'
 import { describeFailure } from '../../audit/failure'
 import { EXPECTED_DURATION, completionAnnouncement } from '../../audit/phase'
-import { AuditAnnouncer } from '../../components/AuditAnnouncer'
 import { AuditFailure } from '../../components/AuditFailure'
-import { AuditProgress } from '../../components/AuditProgress'
+import { AuditStatus } from '../../components/AuditStatus'
 import { AuditResult } from '../../components/AuditResult'
 import { UrlField } from '../../components/UrlField'
 import { useAuditPhase } from '../../hooks/use-audit-phase'
@@ -111,17 +110,13 @@ export const Home = (): React.JSX.Element => {
       {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
 
       {/*
-        Mounted for the whole audit, and EMPTY at first. A region whose content
-        is present when it appears is initial content, which is announced by
-        nothing - so it cannot live inside the progress indicator, which appears
-        already knowing its first phase and disappears exactly when the result
-        arrives.
+        ALWAYS mounted, and empty until there is something to say. A region
+        whose content is present when it appears is initial content, announced
+        by nothing - and one that unmounts when the audit ends cannot announce
+        that it ended. Sitting here, above everything conditional, it satisfies
+        both without a second hidden copy of the same sentence.
       */}
-      {startedAt !== null && <AuditAnnouncer message={announcement} />}
-
-      {waiting && startedAt !== null && (
-        <AuditProgress phase={phase} />
-      )}
+      <AuditStatus message={announcement} />
 
       {failure === null && done && audit.data !== undefined && (
         <>
