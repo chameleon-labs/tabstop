@@ -30,6 +30,8 @@ export async function setup (): Promise<void> {
     // trusted proxy and anything to its left came from the client.
     process.env.TRUST_PROXY_HOPS ??= '1'
 
+    // Same exclusion as main/scripts/migrate.ts: migrations run unbounded, so
+    // an index build cannot be cancelled halfway (#52).
     const db = makeDatabase(connectionString)
     try {
       await runMigrations(db)

@@ -284,4 +284,28 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...validSource, AUDIT_QUEUE_MAX_DEPTH: 'lots' }))
       .toThrow('AUDIT_QUEUE_MAX_DEPTH')
   })
+
+  it('defaults the statement timeout, and reads an override', () => {
+    // Load-bearing for the same reason as the queue cap: no deployment sets
+    // this until someone has a reason to, so the default is the bound that
+    // actually ships (#52).
+    expect(parseEnv(validSource).databaseStatementTimeoutMs).toBe(30_000)
+    expect(
+      parseEnv({ ...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '60000' }).databaseStatementTimeoutMs
+    ).toBe(60_000)
+  })
+
+  it('rejects a statement timeout that would remove the bound', () => {
+    // A stray extra zero boots cleanly and restores exactly the unbounded
+    // behaviour this variable exists to remove, which is invisible until a
+    // statement is already wedged holding a pooled connection.
+    expect(() => parseEnv({ ...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '3000000' }))
+      .toThrow('DATABASE_STATEMENT_TIMEOUT_MS')
+    // Zero is Postgres's own spelling of "no timeout", so it has to be
+    // refused here rather than passed through as a valid-looking setting.
+    expect(() => parseEnv({ ...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '0' }))
+      .toThrow('DATABASE_STATEMENT_TIMEOUT_MS')
+    expect(() => parseEnv({ ...validSource, DATABASE_STATEMENT_TIMEOUT_MS: 'never' }))
+      .toThrow('DATABASE_STATEMENT_TIMEOUT_MS')
+  })
 })

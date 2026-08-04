@@ -27,6 +27,13 @@ export type Env = {
   auditRateCapacity: number
   auditRatePerHour: number
   auditQueueMaxDepth: number
+  /**
+   * Server-side bound on any single statement issued by the API or the worker.
+   * The per-job timeouts bound the attempt, not the query underneath it, so
+   * without this a statement stuck on a lock holds its pooled connection
+   * indefinitely - and the pool is small and shared (#52).
+   */
+  databaseStatementTimeoutMs: number
 }
 
 const DEFAULT_PORT = 3000
@@ -92,6 +99,21 @@ const MAX_AUDIT_TIMEOUT_MS = 600_000
  * cover: injecting the engine, running it, and writing the result.
  */
 const AUDIT_EXECUTION_HEADROOM_MS = 10_000
+
+/**
+ * Comfortably beyond every query this codebase issues - the slowest are the
+ * history reads in #48, which are index-served and measured in milliseconds.
+ * The point is not the number but having one at all: a statement blocked on a
+ * lock currently runs forever and keeps a pooled connection while it does.
+ */
+const DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS = 30_000
+/**
+ * A ceiling for the same reason every other numeric variable here has one: a
+ * stray extra zero would boot cleanly and quietly restore the unbounded
+ * behaviour this exists to remove. Five minutes is far longer than any request
+ * or job should ever hold a connection.
+ */
+const MAX_DATABASE_STATEMENT_TIMEOUT_MS = 300_000
 
 const required = (source: NodeJS.ProcessEnv, name: string): string => {
   const value = source[name]
@@ -308,6 +330,10 @@ export const parseEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     auditQueueMaxDepth: positiveIntegerOr(
       source.AUDIT_QUEUE_MAX_DEPTH, DEFAULT_AUDIT_QUEUE_MAX_DEPTH, 'AUDIT_QUEUE_MAX_DEPTH',
       MAX_AUDIT_QUEUE_MAX_DEPTH
+    ),
+    databaseStatementTimeoutMs: positiveIntegerOr(
+      source.DATABASE_STATEMENT_TIMEOUT_MS, DEFAULT_DATABASE_STATEMENT_TIMEOUT_MS,
+      'DATABASE_STATEMENT_TIMEOUT_MS', MAX_DATABASE_STATEMENT_TIMEOUT_MS
     )
   }
 }
