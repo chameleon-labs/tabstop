@@ -36,15 +36,18 @@ export const Home = (): React.JSX.Element => {
 
   const failure = describeFailure({
     requestError: request.error,
-    // No `isFetching` guard here, unlike `request.reset()` on the mutation
-    // above, and the asymmetry is real rather than an oversight: React Query
-    // CLEARS a query's error when a refetch begins, while it keeps a mutation's
-    // until the next one settles. Measured, not assumed - a guard was written
-    // here first and no mutation of it changed any observable behaviour.
-    // `Home/index.spec.tsx` holds a refetch open and asserts the failure is
-    // already gone, so a future version that starts retaining query errors
-    // fails that spec instead of quietly stranding a "Try again" button.
-    pollError: audit.error,
+    // Suppressed while a refetch is in flight, and this depends on whether the
+    // query has CACHED DATA - which is why it took three attempts to get right.
+    //
+    // With no data, React Query clears `error` when a refetch begins, so the
+    // guard changes nothing and a spec covering only that path shows no
+    // difference. With data retained from an earlier successful poll - the
+    // ordinary case, since polling succeeds before it fails - the error
+    // survives until the new request settles. Measured at this screen rather
+    // than in the library: the failure panel and its own "Try again" button
+    // stayed on screen for the whole flight, which is exactly the "button did
+    // nothing" shape `request.reset()` prevents on the mutation side.
+    pollError: audit.isFetching ? null : audit.error,
     audit: audit.data
   })
   const done = audit.data?.status === 'done'

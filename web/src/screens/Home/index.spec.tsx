@@ -301,6 +301,38 @@ describe('the home screen', () => {
       expect(screen.queryByRole('heading', { name: 'Auditing' })).not.toBeInTheDocument()
     })
 
+    it('clears the failure WHILE a retry is in flight, with data already cached', async () => {
+      // The path that made the `isFetching` guard necessary, and the one two
+      // earlier tests missed: both let the retry resolve immediately, so the
+      // in-flight window was never observable. React Query clears a query's
+      // error on refetch only when there is NO cached data; with a `running`
+      // body retained from an earlier poll it survives, and the failure panel
+      // and its own button sat there for the whole request.
+      let gets = 0
+      let release = (): void => {}
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return jsonResponse(202, { auditId: 'abc', status: 'queued', pollAfterMs: 20 })
+        }
+        gets += 1
+        if (gets === 1) return jsonResponse(200, auditBody({ status: 'running' }))
+        if (gets === 2) return jsonResponse(500, { error: 'Internal server error' })
+        await new Promise<void>((resolve) => { release = resolve })
+        return jsonResponse(200, auditBody({ status: 'running' }))
+      }))
+
+      renderAt('/')
+      await submit('example.com')
+      await screen.findByText('Internal server error')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      // Still in flight: the failure must already be gone, and progress back.
+      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 2, name: 'Auditing' })).toBeVisible()
+      release()
+    })
+
     it('restores progress when retrying from a post-success poll failure', async () => {
       // The other half of the same path: the retry must not leave the failure
       // and its own button on screen for the whole flight, which is the
