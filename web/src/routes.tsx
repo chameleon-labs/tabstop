@@ -7,6 +7,7 @@ import { Dashboard } from './screens/Dashboard'
 import { Home } from './screens/Home'
 import { PageDetail } from './screens/PageDetail'
 import { Share } from './screens/Share'
+import { Signup } from './screens/Signup'
 
 /**
  * Exported as data rather than JSX so a spec can mount it with
@@ -40,6 +41,10 @@ export const routes: RouteObject[] = [
           // Public and unauthenticated. The uuid is the only credential, which
           // is what makes the link shareable at all.
           { path: 'r/:uuid', element: <Share /> },
+          // Public: the rate-limit offer on the home screen links here, and it
+          // is the one link this app shows to someone who is not signed in and
+          // has just been told to stop.
+          { path: 'signup', element: <Signup /> },
           { path: '*', element: <NotFound /> }
         ]
       }

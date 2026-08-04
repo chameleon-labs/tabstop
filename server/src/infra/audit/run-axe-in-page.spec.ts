@@ -49,6 +49,27 @@ describe('runAxeInPage', () => {
     })
   })
 
+  it('hands helpUrl back RAW, because this runs in the audited page', async () => {
+    // Sanitising here was wrong in a way worth recording: this function is
+    // serialised into the page by `page.evaluate` and runs in the page's realm.
+    // A page hostile enough to replace `window.axe` can replace `window.URL`
+    // just as easily, with a parser reporting whatever origin makes its link
+    // pass. Validation performed with the attacker's own globals is not
+    // validation - it belongs in Node, and lives in `help-url.ts`.
+    install(axeReturning({
+      testEngine: { version: '4.12.1' },
+      violations: [{
+        id: 'r', impact: 'critical', description: 'd',
+        helpUrl: 'https://evil.example/phish',
+        nodes: [{ target: ['img'], html: '<img>' }]
+      }]
+    }))
+
+    const result = await runAxeInPage()
+
+    expect(result.violations[0]?.helpUrl).toBe('https://evil.example/phish')
+  })
+
   it('flattens a nested shadow-DOM selector', async () => {
     install(axeReturning({
       testEngine: { version: '4.12.1' },

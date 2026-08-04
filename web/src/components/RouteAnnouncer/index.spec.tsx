@@ -9,7 +9,11 @@ import { renderAt } from '../../test/render'
  * activates a link and hears silence.
  */
 describe('the route announcer', () => {
-  const liveRegion = (): HTMLElement => screen.getByRole('status')
+  /**
+   * The SHELL's region, which comes first in the document. The home screen now
+   * carries a second one for audit status, so an unscoped query matches both.
+   */
+  const liveRegion = (): HTMLElement => screen.getAllByRole('status')[0] as HTMLElement
 
   it('stays quiet on first load, which the browser has already announced', async () => {
     renderAt('/')

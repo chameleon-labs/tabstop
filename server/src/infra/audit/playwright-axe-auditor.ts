@@ -9,6 +9,7 @@ import {
   bareHostname, parseAuditUrl, type UrlPolicy
 } from '../../domain/services/url-safety.js'
 import { DEFAULT_URL_POLICY } from '../net/ip-address-policy.js'
+import { safeHelpUrl } from './help-url.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -119,7 +120,6 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
   if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
     throw new Error('axe returned an unrecognised result shape')
   }
-
   return {
     axeVersion: run.testEngine.version,
     violations: (run.violations as Array<{
@@ -132,6 +132,9 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
       ruleId: violation.id,
       impact: violation.impact,
       description: violation.description,
+      // NOT sanitised here. This function runs inside the audited page, where
+      // `URL` is as replaceable as `axe` - see `help-url.ts`. The value crosses
+      // back to Node raw and is checked there.
       helpUrl: violation.helpUrl,
       nodes: violation.nodes.map((node) => ({
         // axe does not always hand back a flat list of selectors: a node
@@ -153,6 +156,29 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
  * context - at which point restating it buys nothing and can drift.
  */
 export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket' | 'addInitScript'>
+
+/**
+ * Everything that must happen to a violation AFTER it crosses back from the
+ * page, and the crossing is the whole reason this is a separate function.
+ *
+ * `runAxeInPage` executes in the audited page's realm, where `URL` is as
+ * replaceable as `axe` - so nothing it computes can be trusted, including a
+ * validation it performs itself. This runs in Node, on the far side of
+ * `page.evaluate`, with our own globals.
+ *
+ * Exported so the wiring is assertable. It was inline in `audit()` first, and
+ * deleting the sanitiser there changed no test: the unit spec covered the
+ * function and the integration spec drove a page whose real axe only ever
+ * produces trusted links, so neither could see it go.
+ */
+export const toStoredViolations = (
+  violations: EvaluatedResult['violations']
+): Array<Omit<EvaluatedResult['violations'][number], 'impact'> & { impact: Impact | null }> =>
+  violations.map((violation) => ({
+    ...violation,
+    impact: toImpact(violation.impact),
+    helpUrl: safeHelpUrl(violation.helpUrl)
+  }))
 
 /**
  * Both interceptors, registered together because leaving either off is a hole
@@ -353,10 +379,7 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       const evaluated = await page.evaluate(runAxeInPage)
 
       return {
-        violations: evaluated.violations.map((violation) => ({
-          ...violation,
-          impact: toImpact(violation.impact)
-        })),
+        violations: toStoredViolations(evaluated.violations),
         axeVersion: evaluated.axeVersion,
         durationMs: Date.now() - startedAt,
         settled
