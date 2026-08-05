@@ -14,3 +14,6 @@ allowBuilds:
   msgpackr-extract: false
   protobufjs: true
   ssh2: true
+minimumReleaseAgeExclude:
+  - '@chameleon-labs/lattice-react@0.1.0-rc.1'
+  - '@chameleon-labs/lattice-tokens@0.1.0-rc.1'

@@ -1,6 +1,39 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, vi } from 'vitest'
+
+/**
+ * Testing Library's default `findBy*` budget is 1000ms, which the landing page
+ * outgrew: it is nine sections and an SVG chart, and jsdom builds all of it on
+ * every mount with no layout to help it. Runs where several workers competed
+ * for CPU crossed the second and failed on the timer rather than on anything
+ * the assertion was about.
+ *
+ * Raised rather than worked around, because the thing being measured is jsdom's
+ * construction cost under contention, not the product's. A real browser paints
+ * this in a frame. The render cost that WAS worth fixing - every section
+ * re-rendering on each poll - is fixed at the source, in `landing.tsx`.
+ */
+configure({ asyncUtilTimeout: 4000 })
+
+/**
+ * jsdom implements no `ResizeObserver`, and the score chart measures its own
+ * container with one. Without this the home screen throws on mount and every
+ * spec against it fails inside an error boundary rather than on its assertion.
+ *
+ * A stub that observes nothing rather than a polyfill that measures: jsdom has
+ * no layout, so every box is 0x0 and a real implementation would report widths
+ * that mean nothing. The chart already renders a fallback width until its first
+ * measurement, which is exactly the state this leaves it in - so what the specs
+ * exercise is the path a browser takes before the first frame, honestly, rather
+ * than a fabricated size.
+ */
+class NoopResizeObserver implements ResizeObserver {
+  observe (): void { /* jsdom has no layout to report */ }
+  unobserve (): void { /* nothing was observed */ }
+  disconnect (): void { /* nothing to disconnect */ }
+}
+globalThis.ResizeObserver ??= NoopResizeObserver
 
 /**
  * The messages React and React Router emit when an error boundary CATCHES an

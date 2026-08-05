@@ -55,7 +55,35 @@ export const RouteAnnouncer = (): React.JSX.Element => {
      * as initial content, and assistive technology stays quiet.
      */
     const timer = setTimeout(() => { setAnnouncement(document.title) }, ANNOUNCE_DELAY_MS)
-    return () => { clearTimeout(timer) }
+
+    /**
+     * The deadline above is a guess about how long the incoming screen takes to
+     * set its title, and a guess is all it can be. A heavy screen - the landing
+     * page, which tears down nine sections and an SVG chart on the way out -
+     * can push the next screen's `useDocumentTitle` past it, and the
+     * announcement then names the page being LEFT. Silence would be better than
+     * that: naming the wrong page is the failure this component exists to
+     * prevent, wearing a disguise.
+     *
+     * Watching the title element takes the guess off the correctness path. A
+     * navigation that changes the title corrects itself whenever that lands,
+     * early or late. One that does not change it - `/pages/1` and `/pages/2`
+     * share a title - never mutates, so the deadline stays the thing that
+     * announces those. The two cover each other rather than overlapping.
+     *
+     * Found by a spec that failed one run in five once the landing page moved
+     * onto `/`, having passed reliably before it.
+     */
+    const title = document.head.querySelector('title')
+    const observer = new MutationObserver(() => { setAnnouncement(document.title) })
+    if (title !== null) {
+      observer.observe(title, { childList: true, characterData: true, subtree: true })
+    }
+
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
   }, [pathname])
 
   return (

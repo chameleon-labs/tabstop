@@ -55,7 +55,7 @@ describe('the home screen', () => {
   it('leads with what the product does', () => {
     renderAt('/')
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Paste a URL')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Accessibility monitoring')
   })
 
   it('is the site itself, so the tab says only the site name', () => {

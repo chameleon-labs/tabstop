@@ -14,7 +14,55 @@ const renderLayout = (): void => {
   render(<RouterProvider router={router} />)
 }
 
+/** A screen that brings its own header, main and footer - as the landing page does. */
+const renderOwnChrome = (): void => {
+  const router = createMemoryRouter([{
+    path: '/',
+    element: <Layout />,
+    children: [{
+      index: true,
+      handle: { ownChrome: true },
+      element: (
+        <div>
+          <header><a href="/">a wordmark</a></header>
+          <main id="main" tabIndex={-1}><h1>A screen</h1></main>
+          <footer>a footer</footer>
+        </div>
+      )
+    }]
+  }], { initialEntries: ['/'] })
+
+  render(<RouterProvider router={router} />)
+}
+
 describe('Layout', () => {
+  describe('when a screen brings its own chrome', () => {
+    it('steps back, leaving exactly one of each landmark', async () => {
+      // The shell's header plus the screen's own produced two `banner`
+      // landmarks and two "tabstop" wordmarks, and the shell's `<main>` wrapped
+      // the screen's into a `<main>` inside a `<main>` - which is invalid, and
+      // gives the skip link two `#main` candidates to choose between.
+      renderOwnChrome()
+      await screen.findByRole('heading', { level: 1, name: 'A screen' })
+
+      expect(screen.getAllByRole('banner')).toHaveLength(1)
+      expect(screen.getAllByRole('main')).toHaveLength(1)
+      expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
+      expect(document.querySelectorAll('#main')).toHaveLength(1)
+    })
+
+    it('keeps the skip link, which stays the shell\'s job either way', async () => {
+      // The screen supplies the landmarks; it does not supply the escape from
+      // them. Dropping this with the header would take the skip link off the
+      // one screen with the most chrome to skip.
+      renderOwnChrome()
+      await screen.findByRole('heading', { level: 1, name: 'A screen' })
+
+      expect(screen.getByRole('link', { name: 'Skip to content' }))
+        .toHaveAttribute('href', '#main')
+    })
+  })
+
   it('renders the matched screen into the shell', async () => {
     renderLayout()
 
