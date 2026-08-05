@@ -2,6 +2,7 @@ import type { AuditResultResponse } from '@tabstop/contract'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ANNOUNCE_DELAY_MS } from '../../a11y/announce'
 import { jsonResponse } from '../../test/http'
 import { renderAt } from '../../test/render'
 
@@ -197,6 +198,34 @@ describe('the home screen', () => {
         expect(posts.length).toBeGreaterThan(1)
         expect((posts.at(-1)?.[1] as RequestInit).body).toBe('{"url":"https://example.com/"}')
       })
+    })
+
+    it('clears the progress line when the request fails after it appeared', async () => {
+      // Reported from a browser: "That audit could not be started / Method Not
+      // Allowed" with "Requesting the audit… this usually takes about 30
+      // seconds" still underneath it.
+      //
+      // Every other failure spec misses this because they fail INSTANTLY.
+      // `AuditStatus` defers its write by ANNOUNCE_DELAY_MS, so a failure that
+      // arrives inside that window cancels the write and the line is empty for
+      // the right reason rather than the intended one. A real request takes
+      // longer than 100ms to fail, the sentence lands first, and nothing ever
+      // takes it back down.
+      // Slow enough that the progress line is on screen before the failure.
+      const slowFetch = vi.fn(async (_url: string, init?: RequestInit) => {
+        await new Promise((resolve) => setTimeout(resolve, ANNOUNCE_DELAY_MS * 3))
+        return init?.method === 'POST'
+          ? jsonResponse(405, { error: 'Method Not Allowed' })
+          : jsonResponse(200, auditBody())
+      })
+      vi.stubGlobal('fetch', slowFetch)
+      renderAt('/')
+
+      await submit('example.com')
+      await waitFor(() => { expect(statusLine()).toHaveTextContent(/Requesting the audit/) })
+
+      expect(await screen.findByText('Method Not Allowed')).toBeVisible()
+      await waitFor(() => { expect(statusLine()).toBeEmptyDOMElement() })
     })
 
     it('reports a failed POLL instead of spinning forever', async () => {

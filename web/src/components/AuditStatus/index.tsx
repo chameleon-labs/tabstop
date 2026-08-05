@@ -35,10 +35,34 @@ export const AuditStatus = ({ message }: AuditStatusProps): React.JSX.Element =>
   const [shown, setShown] = useState('')
 
   useEffect(() => {
+    /**
+     * Nothing to say means the line goes AWAY, not that the last thing said
+     * stays up.
+     *
+     * `null` arrives when an audit fails, and this used to return here with the
+     * previous sentence still rendered - so a failure panel reading "That audit
+     * could not be started" sat above "Requesting the audit… this usually takes
+     * about 30 seconds", narrating an audit that had already stopped.
+     *
+     * Reported from a browser, and invisible to every failure spec here,
+     * because those fail FASTER than the deferred write below: the timer was
+     * cancelled before it ran, so the line was empty by accident rather than
+     * because anything had cleared it. A real request takes longer than
+     * ANNOUNCE_DELAY_MS to fail, so the sentence lands first and then stays.
+     *
+     * Cleared immediately, with no defer. The delay below exists so a region
+     * that has just appeared is not written to while its content would count as
+     * initial content; emptying one announces nothing and needs no such care.
+     */
+    if (message === null) {
+      setShown('')
+      return
+    }
+
     // Only on change, so the region mutates once per thing worth saying rather
     // than once per render - the screen re-renders every second while an audit
     // runs, and thirty announcements for one audit is unusable.
-    if (message === null || message === shown) return
+    if (message === shown) return
 
     // Deferred rather than written here. A passive effect can run before the
     // browser has painted or exposed the node, so an immediate write can still
