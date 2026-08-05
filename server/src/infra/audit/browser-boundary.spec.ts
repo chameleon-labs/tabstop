@@ -90,13 +90,20 @@ describe('browser compilation boundary', () => {
 
   it('refuses Node globals inside the browser unit', async () => {
     // Compiled from inside the browser project rather than through a copy of
-    // its options, because automatic @types inclusion depends on the project
-    // ROOT: it looks in the root's own node_modules/@types and does not walk
-    // up. A probe in its own directory therefore sees no Node types whatever
-    // the config says, which made the first version of this test pass against
-    // a config with `types: []` removed.
+    // its options, so the project root is the real one.
     //
-    // What it guards: `process.env` typechecking inside a function that
+    // Two different mechanisms are easy to conflate here, and only the first
+    // matters. AUTOMATIC @types inclusion - what happens with no `types` field
+    // - was measured on TypeScript 7.0.2 in this pnpm layout and does not
+    // reach `server/node_modules/@types` from a root below it: probes one and
+    // two directories down both saw no `process`. EXPLICIT resolution does,
+    // which is why `types: ["node"]` from the same root makes this test fail.
+    //
+    // So `types: []` is belt-and-braces rather than the mechanism: this unit's
+    // root has no node_modules of its own, and gets no Node types either way.
+    // What the test actually guards is somebody adding them back explicitly.
+    //
+    // What that would cost: `process.env` typechecking inside a function that
     // page.evaluate serialises into a browser is a compile-time green light
     // for a guaranteed runtime failure.
     const output = await compileInBrowserProject(
