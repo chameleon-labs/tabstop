@@ -1,0 +1,36 @@
+{
+  "//": [
+    "Its own compilation unit because a lib is program-wide. Adding \"DOM\" to",
+    "the server's tsconfig would make document, window, localStorage and a",
+    "DOM-flavoured fetch compile everywhere in a Node process, and a per-file",
+    "/// <reference lib=\"dom\" /> does not scope per file - it pulls the globals",
+    "into the whole program. A separate project is the only real isolation.",
+    "See #38.",
+    "",
+    "Referenced from ../../../../tsconfig.json, so the auditor imports these by",
+    "source path and TypeScript redirects to the declarations emitted here.",
+    "That is also why outDir must mirror the main program's: the emitted",
+    "dist/infra/audit/playwright-axe-auditor.js resolves ./browser/*.js",
+    "relative to itself."
+  ],
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024", "DOM"],
+    "types": [],
+    "rootDir": ".",
+    "outDir": "../../../../dist/infra/audit/browser",
+    "composite": true,
+    "declaration": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["."]
+}

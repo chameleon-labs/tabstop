@@ -1,4 +1,15 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts", "src/**/test/**"]
+  "//": [
+    "`exclude` replaces rather than merges, so the browser project has to be",
+    "listed again here. Leaving it out would pull DOM-typed sources into this",
+    "program under ES2024 and fail the build. #38."
+  ],
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "src/**/test/**",
+    "src/infra/audit/browser"
+  ],
+  "references": [{ "path": "./src/infra/audit/browser" }]
 }

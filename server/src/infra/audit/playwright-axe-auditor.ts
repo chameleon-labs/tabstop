@@ -10,6 +10,13 @@ import {
 } from '../../domain/services/url-safety.js'
 import { DEFAULT_URL_POLICY } from '../net/ip-address-policy.js'
 import { safeHelpUrl } from './help-url.js'
+// Both run in the audited page, and live in a separate compilation unit
+// because a `lib` is program-wide: DOM types belong to code that executes in a
+// browser, not to a Node server. See browser/tsconfig.json and #38.
+import { runAxeInPage, type EvaluatedResult } from './browser/run-axe-in-page.js'
+import {
+  DISABLE_UNINTERCEPTED_TRANSPORTS
+} from './browser/disable-unintercepted-transports.js'
 
 const AXE_PATH = fileURLToPath(new URL('./vendor/axe.min.js', import.meta.url))
 
@@ -19,47 +26,13 @@ export type AuditBudgets = {
   fallbackSettleMs: number
 }
 
-/** What the browser hands back. Impact is nullable in axe's own results. */
-type EvaluatedResult = {
-  axeVersion: string
-  violations: Array<{
-    ruleId: string
-    impact: string | null
-    description: string
-    helpUrl: string
-    nodes: Array<{ target: string[], html: string }>
-  }>
-}
-
 /**
- * Exported so a spec can prove these hold by driving a real context, rather
- * than by reading the object back and agreeing with itself.
+ * Re-exported because it is part of this module's surface even though it runs
+ * in the page: `installGuards` registers it, and a spec proves the wiring by
+ * driving a real context rather than by reading the object back and agreeing
+ * with itself.
  */
-/**
- * Removed before any page script runs.
- *
- * WebRTC and WebTransport are intercepted by neither `route` nor
- * `routeWebSocket`. A data channel needs no permission and will send packets
- * to whatever ICE candidate address a page supplies; WebTransport opens QUIC
- * to any host. Both are direct paths to an internal address past every check
- * here. Non-configurable so a page cannot put them back.
- *
- * This covers pages and frames. Init scripts do not reach dedicated workers,
- * so a worker could still construct either - closing that needs enforcement
- * below the browser, recorded with the download gap on #16.
- */
-export const DISABLE_UNINTERCEPTED_TRANSPORTS = (): void => {
-  // WebTransport rides QUIC and is intercepted by neither route nor
-  // routeWebSocket either, so an https page could open one straight to a
-  // private endpoint on 443.
-  for (const name of [
-    'RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport'
-  ]) {
-    Object.defineProperty(globalThis, name, {
-      value: undefined, configurable: false, writable: false
-    })
-  }
-}
+export { DISABLE_UNINTERCEPTED_TRANSPORTS }
 
 export const AUDIT_CONTEXT_OPTIONS = {
   viewport: { width: 1280, height: 720 },
@@ -80,74 +53,10 @@ export const AUDIT_CONTEXT_OPTIONS = {
 } as const
 
 /**
- * Runs in the BROWSER: page.evaluate serialises this function, so it may not
- * reference anything in this module. Exported and kept self-contained for that
- * reason, and so it can be exercised directly in Node against a stand-in
- * global rather than only through a real page.
- *
- * The globals are reached through a cast because this file is typechecked as
- * part of a Node project - `lib` is ES2024, and adding "DOM" would make
- * `document`, `window` and `localStorage` compile throughout the server, while
- * a per-file `/// <reference lib="dom" />` leaks program-wide (verified). #38
- * moves this into its own DOM-typed compilation unit and removes the cast.
- *
- * Until then the cast is at least CHECKED rather than merely asserted: the
- * shape is verified before use, so an axe that is absent or has changed shape
- * fails with a message the classifier maps to an engine failure instead of
- * producing an undefined-property error somewhere downstream.
+ * Re-exported for the same reason: it runs in the page, but `audit()` below
+ * is what hands it to `page.evaluate`, and its spec drives it directly.
  */
-export const runAxeInPage = async (): Promise<EvaluatedResult> => {
-  const browserGlobals = globalThis as unknown as {
-    document?: unknown
-    axe?: {
-      run?: (context: unknown, options: { resultTypes: string[] }) => Promise<unknown>
-    }
-  }
-
-  const axe = browserGlobals.axe
-  if (axe === undefined || typeof axe.run !== 'function') {
-    // Wording matters: the classifier matches this as a permanent engine
-    // failure, so the user is told the engine could not run rather than
-    // seeing three retries of an unrecognised error.
-    throw new Error('axe is not defined on the page')
-  }
-
-  const run = await axe.run(browserGlobals.document, { resultTypes: ['violations'] }) as {
-    testEngine?: { version?: unknown }
-    violations?: unknown
-  }
-
-  if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
-    throw new Error('axe returned an unrecognised result shape')
-  }
-  return {
-    axeVersion: run.testEngine.version,
-    violations: (run.violations as Array<{
-      id: string
-      impact: string | null
-      description: string
-      helpUrl: string
-      nodes: Array<{ target: Array<string | string[]>, html: string }>
-    }>).map((violation) => ({
-      ruleId: violation.id,
-      impact: violation.impact,
-      description: violation.description,
-      // NOT sanitised here. This function runs inside the audited page, where
-      // `URL` is as replaceable as `axe` - see `help-url.ts`. The value crosses
-      // back to Node raw and is checked there.
-      helpUrl: violation.helpUrl,
-      nodes: violation.nodes.map((node) => ({
-        // axe does not always hand back a flat list of selectors: a node
-        // inside shadow DOM arrives as a NESTED array, verified as
-        // [["#host","img"]]. Flattening here keeps `string[]` true all the way
-        // down, and ' >>> ' is Playwright's own shadow-piercing notation so
-        // the result still reads as a selector path.
-        target: node.target.map((entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry),
-        html: node.html
-      }))
-    }))
-  }
-}
+export { runAxeInPage }
 
 /**
  * Just the two methods this needs, taken from Playwright's own type rather

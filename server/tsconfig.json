@@ -16,5 +16,15 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//": [
+    "src/infra/audit/browser runs in the audited page and is compiled with DOM",
+    "types. It is excluded here and referenced instead, so those globals cannot",
+    "leak into this program - `lib` has no per-file scope, so a separate project",
+    "is the only real isolation. Imports of it resolve to the declarations that",
+    "project emits, which means it must be built first: see the typecheck and",
+    "build scripts in package.json. #38."
+  ],
+  "exclude": ["src/infra/audit/browser"],
+  "references": [{ "path": "./src/infra/audit/browser" }]
 }
