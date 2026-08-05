@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DISABLE_UNINTERCEPTED_TRANSPORTS, installGuards, type GuardedContext } from './playwright-axe-auditor.js'
+import { installGuards, type GuardedContext } from './playwright-axe-auditor.js'
+import { DISABLE_UNINTERCEPTED_TRANSPORTS } from './browser/disable-unintercepted-transports.js'
 import type { RouteLike } from './request-guard.js'
 
 /**

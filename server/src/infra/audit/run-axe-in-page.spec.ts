@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { runAxeInPage } from './playwright-axe-auditor.js'
+import { runAxeInPage } from './browser/run-axe-in-page.js'
 
 /**
  * runAxeInPage is serialised into the browser by page.evaluate, so it reads
@@ -122,6 +122,15 @@ describe('runAxeInPage', () => {
     const source = runAxeInPage.toString()
 
     expect(source).not.toMatch(/\bIMPACTS\b|\bAXE_PATH\b|\bisImpact\b|\bAUDIT_CONTEXT_OPTIONS\b/)
-    expect(source).toContain('globalThis')
+    // The stronger version of the same rule, and the one that matters now the
+    // function lives in its own file: a value import of axe-core, or anything
+    // a bundler rewrote into a module lookup, would leave a call here that
+    // resolves to nothing once the source is evaluated in the page.
+    expect(source).not.toMatch(/\b(?:require|import)\s*\(/)
+    expect(source).not.toMatch(/\bexports\b|\bmodule\b/)
+    // It reads the engine and the DOM off the page's own globals, which is
+    // what makes driving it against stand-ins below meaningful.
+    expect(source).toMatch(/\btypeof axe\b/)
+    expect(source).toMatch(/\baxe\.run\(document\b/)
   })
 })
