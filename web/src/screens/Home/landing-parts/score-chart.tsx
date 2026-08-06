@@ -37,7 +37,7 @@ const MARGIN = { top: 8, right: 8, bottom: 0, left: -24 }
 // instead of drawing under them: the auto-reserved column absorbs it. Both
 // constants, and the 8px tick-to-plot gap used below, are read directly off
 // the rendered source (`.recharts-yAxis`/`.recharts-xAxis` tick and dot
-// positions in `Custom Design System (1)` at localhost:5173) rather than
+// positions in the original design bundle) rather than
 // recomputed: `firstDotCx` (36) minus `margin.left` (-24) gives 60; the
 // container-bottom-to-plot-bottom gap measured the same way gives 30. Both
 // are pixel constants independent of container width, so copying the
@@ -69,14 +69,14 @@ function dotToneClass(score: number): 'good' | 'warn' | 'bad' {
  * The "Score history — acme.example" section's line chart.
  *
  * Page-local, not a library component — see the module docs on
- * `landing-page.tsx` and the gap list's "Deliberate omissions" section:
+ * `landing.tsx`:
  * charting is product surface, not a design-system concern, so this reaches
  * for no charting dependency and ships nothing under `../index.js`. It
  * exists at all because a `Table` (this section's original substitution)
  * cannot show the *shape* of a regression, which is what the section's own
  * copy — "−20 pts since Jul 21" — is pointing at.
  *
- * Ported from the source bundle's `ScoreChart` (`Custom Design System
+ * Ported from Lattice's `ScoreChart` (`packages/react/src/pages
  * (1)/src/app/App.tsx`) as inline SVG rather than Recharts: same margins,
  * same 50–100 Y domain, same monotone interpolation (`./monotone-path.ts`,
  * a direct port of d3-shape's `curveMonotoneX` — see that file for why a
@@ -97,7 +97,7 @@ function dotToneClass(score: number): 'good' | 'warn' | 'bad' {
  * alternative that reads well point-by-point — so the accessible
  * equivalent is the same nine-row `Table` this component replaces, kept
  * alongside it in a `VisuallyHidden` wrapper by this component's caller
- * (`ScoreHistory`, in `landing-page.tsx`) rather than removed.
+ * (`ScoreHistory`, in `landing.tsx`) rather than removed.
  */
 export function ScoreChart({ data, referenceDate }: ScoreChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)

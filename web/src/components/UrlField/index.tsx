@@ -32,7 +32,6 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
 
   const parsed = normaliseUrl(raw)
   const problem = submitted && !parsed.ok ? URL_PROBLEMS[parsed.problem] : null
-  // Only worth showing once it differs from what they typed.
   const preview = parsed.ok && parsed.url !== raw.trim() ? parsed.url : null
 
   const describedBy = [
@@ -49,11 +48,12 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
         if (parsed.ok) onSubmit(parsed.url)
       }}
     >
-      <label htmlFor={inputId} className="landing-page__url-label">Page to audit</label>
-
       <div className="landing-page__url-row">
         <Input
           id={inputId}
+          // Not the placeholder: it disappears on the first keystroke, and
+          // is not exposed as a name by every browser and screen reader.
+          aria-label="Page to audit"
           // `type="url"` would let the browser reject `example.com` before this
           // component ever sees it, which is precisely the input to accept.
           type="text"
@@ -82,11 +82,6 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
         </Button>
       </div>
 
-      {/*
-        A live region, because the message appears in response to submitting
-        rather than to focus moving - a screen reader user who pressed Enter
-        would otherwise get silence and a form that appeared to do nothing.
-      */}
       <p id={errorId} role="alert">{problem}</p>
 
       <p id={previewId}>

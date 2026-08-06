@@ -39,16 +39,16 @@ import { ScoreChart } from './landing-parts/score-chart'
 /**
  * The tabstop landing page, rebuilt from Lattice components alone.
  *
- * Source: `Custom Design System/src/app/App.tsx` — a marketing page for a
- * fictional accessibility-monitoring product, nine sections behind a sticky
- * nav. This is a faithful port of that structure, not a reinterpretation.
- * Two constructions the library cannot express are built as page-local
- * components rather than substituted with a lesser one — see the module
- * docs in `landing-page.stories.tsx` for the "one consumer, no reusable
- * guarantee" reasoning both share: the hero's `ScoreArc` gauge
- * (`./score-arc.js`) and the score-history section's line chart
- * (`./score-chart.js`), reproduced as inline SVG rather than by taking a
- * charting dependency.
+ * Ported from `packages/react/src/pages/landing-page.tsx` in the Lattice
+ * repository, where it was built as the design system's own reference page.
+ * Nine sections behind a sticky nav, kept as a faithful port of that
+ * structure rather than a reinterpretation.
+ *
+ * Two constructions the package does not export are vendored beside this
+ * file in `landing-parts/`: the hero's `ScoreArc` gauge and the score
+ * history line chart, both inline SVG rather than a charting dependency.
+ * They have one consumer and offer no reusable guarantee, which is why
+ * Lattice keeps them page-local too.
  *
  * Every impact badge (`critical`/`serious`/`moderate`/`minor`) carries both
  * an icon and its text label — colour never carries severity alone, per the
@@ -112,9 +112,9 @@ const VIOLATIONS: ReadonlyArray<{ impact: Impact; count: number; rule: string; d
   }
 ]
 
-// The Recharts line chart this replaces plotted these same nine points on a
-// continuous axis; a `Table` reads them as data instead of shape, which is
-// the trade the gap list records.
+// A `Table` reads these as data rather than as a shape, which is the trade
+// made when the original Recharts line chart was dropped: nine points on a
+// continuous axis become nine rows.
 const SCORE_HISTORY = [
   { date: 'Jul 1', score: 91 },
   { date: 'Jul 5', score: 89 },

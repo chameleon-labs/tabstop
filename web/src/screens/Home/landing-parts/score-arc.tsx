@@ -15,7 +15,7 @@ export interface ScoreArcProps {
  * `EmptyState` out of the library. See the design spec's §7.3 and the gap
  * list's "Deliberate omissions" section.
  *
- * Ported from the source bundle's `ScoreArc` (`Custom Design System/src/app/App.tsx`)
+ * Ported from Lattice's `ScoreArc` (`packages/react/src/pages/score-arc.tsx`)
  * with its geometry untouched — the −210°→30° sweep, the `size * 0.38`
  * radius, the `size * 0.22` / `size * 0.09` text sizes are all proportional
  * to the `size` prop, not CSS roles, so they stay inline rather than moving

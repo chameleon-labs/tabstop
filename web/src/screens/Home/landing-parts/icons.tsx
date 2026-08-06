@@ -3,7 +3,7 @@ import type { SVGProps } from 'react'
 /**
  * The page-local icon set.
  *
- * This package takes no icon dependency — the two page stories draw their own
+ * No icon dependency — this draws its own
  * inline SVGs from lucide's path data rather than importing `lucide-react`.
  * Every icon here sits beside a text label and carries no meaning of its own,
  * so each defaults to `aria-hidden="true"` and inherits `currentColor` rather
