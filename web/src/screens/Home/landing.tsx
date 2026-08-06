@@ -7,7 +7,6 @@ import {
   CardBody,
   CardHeader,
   Eyebrow,
-  Input,
   Stat,
   TBody,
   THead,
@@ -31,10 +30,10 @@ import {
   Sun,
   TrendingDown,
   X
-} from './landing-parts/icons'
-import type { IconProps } from './landing-parts/icons'
-import { ScoreArc } from './landing-parts/score-arc'
-import { ScoreChart } from './landing-parts/score-chart'
+} from '../../components/Icons'
+import type { IconProps } from '../../components/Icons'
+import { ScoreArc } from './LandingParts/score-arc'
+import { ScoreChart } from './LandingParts/score-chart'
 
 /**
  * The tabstop landing page, rebuilt from Lattice components alone.
@@ -45,7 +44,7 @@ import { ScoreChart } from './landing-parts/score-chart'
  * structure rather than a reinterpretation.
  *
  * Two constructions the package does not export are vendored beside this
- * file in `landing-parts/`: the hero's `ScoreArc` gauge and the score
+ * file in `LandingParts/`: the hero's `ScoreArc` gauge and the score
  * history line chart, both inline SVG rather than a charting dependency.
  * They have one consumer and offer no reusable guarantee, which is why
  * Lattice keeps them page-local too.
@@ -347,7 +346,7 @@ function Hero({ urlField, live }: { urlField: ReactNode; live: ReactNode }) {
                 </div>
                 <div className="landing-page__audit-trend">
                   <TrendingDown size={12} />
-                  <span>−20 pts since Jul 21 deploy</span>
+                  <span>−23 pts on the Jul 21 deploy</span>
                 </div>
                 <div className="landing-page__audit-alert">
                   <Mail size={11} />
@@ -432,7 +431,7 @@ const HowItWorks = memo(function HowItWorks() {
  * see `./score-chart.tsx` for the geometry and interpolation, and the gap
  * list's "Deliberate omissions" for why a chart at all: a `Table` alone
  * reads these nine points as data, not as the shape of a regression, and
- * the section's own copy ("−20 pts since Jul 21") is pointing at that
+ * the section's own copy ("−20 pts since Jul 1") is pointing at that
  * shape.
  *
  * The chart is `aria-hidden`, so the `Table` stays — as the accessible
@@ -449,7 +448,7 @@ const ScoreHistory = memo(function ScoreHistory() {
         <CardHeader label="Score history — acme.example">
           <Badge variant="danger">
             <TrendingDown size={12} />
-            −20 pts since Jul 21
+            −20 pts since Jul 1
           </Badge>
         </CardHeader>
         <CardBody className="landing-page__score-history-body">
@@ -462,7 +461,7 @@ const ScoreHistory = memo(function ScoreHistory() {
 
           <figure
             className="landing-page__chart-figure"
-            aria-label="Score history for acme.example: a line chart of nine audits from Jul 1 to Aug 2, trending down 20 points since Jul 21"
+            aria-label="Score history for acme.example: a line chart of nine audits from Jul 1 to Aug 2, trending down 20 points since Jul 1"
           >
             <ScoreChart data={SCORE_HISTORY} referenceDate="Jul 21" />
             <VisuallyHidden>
@@ -503,9 +502,9 @@ const Why = memo(function Why() {
       <div className="landing-page__why-grid">
         <div>
           <h2 className="landing-page__heading landing-page__heading--why">
-            CI catches regressions
+            CI catches regressions{' '}
             <br />
-            if you set it up.
+            if you set it up.{' '}
             <br />
             <span className="landing-page__muted-inline">Nobody sets it up.</span>
           </h2>
