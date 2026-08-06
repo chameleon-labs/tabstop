@@ -199,7 +199,7 @@ function ImpactBadge({ impact, count }: { impact: Impact; count?: number }) {
   const Icon = IMPACT_ICON[impact]
   return (
     <Badge variant={impact as BadgeVariant}>
-      <Icon size={10} />
+      <Icon size="sm" />
       {count === undefined ? impact : `${count} ${impact}`}
     </Badge>
   )
@@ -213,9 +213,9 @@ function BoolCell({ value }: { value: boolean }) {
   return (
     <Td className="landing-page__bool-cell">
       {value ? (
-        <Check size={13} className="landing-page__bool-check" />
+        <Check size="md" className="landing-page__bool-check" />
       ) : (
-        <X size={13} className="landing-page__bool-x" />
+        <X size="md" className="landing-page__bool-x" />
       )}
       <VisuallyHidden>{value ? 'Yes' : 'No'}</VisuallyHidden>
     </Td>
@@ -251,12 +251,12 @@ const Nav = memo(function Nav() {
           aria-label="Preview the other theme"
           onClick={() => setIsDark((v) => !v)}
         >
-          {isDark ? <Sun size={13} /> : <Moon size={13} />}
+          {isDark ? <Sun size="md" /> : <Moon size="md" />}
         </Button>
 
         <Button variant="primary" size="sm" className="landing-page__nav-cta">
           Try it free
-          <ArrowRight size={13} />
+          <ArrowRight size="md" />
         </Button>
       </div>
     </header>
@@ -345,11 +345,11 @@ function Hero({ urlField, live }: { urlField: ReactNode; live: ReactNode }) {
                   </div>
                 </div>
                 <div className="landing-page__audit-trend">
-                  <TrendingDown size={12} />
+                  <TrendingDown size="sm" />
                   <span>−23 pts on the Jul 21 deploy</span>
                 </div>
                 <div className="landing-page__audit-alert">
-                  <Mail size={11} />
+                  <Mail size="sm" />
                   <span>Alert sent</span>
                 </div>
               </div>
@@ -371,7 +371,7 @@ function Hero({ urlField, live }: { urlField: ReactNode; live: ReactNode }) {
             <div className="landing-page__audit-footer">
               <Button variant="link" size="sm">
                 View full report
-                <ExternalLink size={10} />
+                <ExternalLink size="sm" />
               </Button>
             </div>
           </Card>
@@ -447,7 +447,7 @@ const ScoreHistory = memo(function ScoreHistory() {
       <Card>
         <CardHeader label="Score history — acme.example">
           <Badge variant="danger">
-            <TrendingDown size={12} />
+            <TrendingDown size="sm" />
             −20 pts since Jul 1
           </Badge>
         </CardHeader>
@@ -578,7 +578,7 @@ const V1Scope = memo(function V1Scope() {
             <ul className="landing-page__scope-list">
               {V1_IN.map((item) => (
                 <li key={item}>
-                  <Check size={13} className="landing-page__check-icon" />
+                  <Check size="md" className="landing-page__check-icon" />
                   <span>{item}</span>
                 </li>
               ))}
@@ -592,7 +592,7 @@ const V1Scope = memo(function V1Scope() {
             <ul className="landing-page__scope-list landing-page__scope-list--muted">
               {V1_OUT.map((item) => (
                 <li key={item}>
-                  <ChevronRight size={13} />
+                  <ChevronRight size="md" />
                   <span>{item}</span>
                 </li>
               ))}
@@ -632,7 +632,7 @@ const CTA = memo(function CTA() {
             render={<a href="#audit" />}
           >
             Audit a page
-            <ArrowRight size={13} aria-hidden="true" />
+            <ArrowRight size="md" aria-hidden="true" />
           </Button>
 
           <p className="landing-page__meta">MIT licensed · Built in public · Follow DECISIONS.md</p>
