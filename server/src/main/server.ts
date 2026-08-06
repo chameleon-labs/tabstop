@@ -2,14 +2,23 @@ import { setupApp } from './config/app.js'
 import { env } from './config/env.js'
 import { connectDatabase, disconnectDatabase, getDatabase } from './config/database.js'
 import { closeRateLimiter } from './factories/middlewares/rate-limit-factory.js'
+import { startListening } from './config/listen.js'
 import { PostgresHealthAdapter } from '../infra/db/postgres/health/postgres-health-adapter.js'
 
 connectDatabase(env.databaseUrl)
 
 const app = setupApp()
 
-const server = app.listen(env.port, () => {
-  console.log(`Server running at http://localhost:${env.port}`)
+const server = startListening(app, env.port, {
+  info: (message) => { console.log(message) },
+  // Exit rather than log and continue. A process that stays alive holding no
+  // socket is the failure this replaces: the log claimed it was serving, and
+  // nothing - supervisor or `concurrently --kill-others` - saw an exit to
+  // react to. See #84.
+  fatal: (message) => {
+    console.error(message)
+    process.exit(1)
+  }
 })
 
 // The reachability probe is purely informational - a log line - so it must
