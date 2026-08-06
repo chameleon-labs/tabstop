@@ -85,6 +85,19 @@ a { color: var(--accent); }
    it wins whether or not the browser considers the focus keyboard-driven. */
 main:focus { outline: none; }
 
+/* Lattice draws a field's focus ring on the WRAPPER, through
+   `.lat-input-field:focus-within`, because the control it names is the whole
+   field - border and globe addon included - not just the text box inside it.
+   The rule above then drew a second ring around that inner `<input>`, so a
+   focused field carried two. Storybook does not load this stylesheet, which is
+   why it showed only in the app.
+
+   `.lat-button` needs no equivalent: Lattice ships
+   `.lat-button:focus-visible { outline: none }`, which outranks the rule above
+   on specificity. Its Input has no such guard, so the guard is made here.
+   Delete this once Lattice's Input defends itself the way its Button does. */
+.lat-input:focus-visible { outline: none; }
+
 .site-header {
   display: flex;
   gap: 1.5rem;
