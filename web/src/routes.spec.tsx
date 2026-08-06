@@ -23,7 +23,7 @@ describe('the route table', () => {
     renderAt('/')
 
     expect(await screen.findByRole('heading', { level: 1 }))
-      .toHaveTextContent('Paste a URL')
+      .toHaveTextContent('Accessibility monitoring')
   })
 
   it('resolves /dashboard for a signed-in visitor', async () => {
@@ -59,7 +59,7 @@ describe('the route table', () => {
 
     // Landed on home, not on the dashboard behind a spinner.
     expect(await screen.findByRole('heading', { level: 1 }))
-      .toHaveTextContent('Paste a URL')
+      .toHaveTextContent('Accessibility monitoring')
     expect(screen.queryByRole('heading', { name: 'Dashboard' })).not.toBeInTheDocument()
   })
 

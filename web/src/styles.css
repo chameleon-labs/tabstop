@@ -4,33 +4,20 @@
  * system here on purpose (#17: build four screens first, extract later if ever).
  */
 
-:root {
-  --ink: #16181d;
-  --muted: #5b6270;
-  --surface: #ffffff;
-  --accent: #1f4ed8;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e8eaf0;
-    --muted: #9aa2b1;
-    --surface: #14161b;
-    --accent: #8fb0ff;
-  }
-}
+/* Lattice sets no color-scheme, and it is what makes native controls and
+   scrollbars follow the theme its tokens already switch. */
+:root { color-scheme: light dark; }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--surface);
-  color: var(--ink);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--lat-bg);
+  color: var(--lat-text);
+  font-family: var(--lat-text-body-font-family);
+  line-height: 1.6;
 }
 
-a { color: var(--accent); }
 
 /*
  * Visible to assistive technology, not to the eye. Not `display: none` and not
@@ -59,8 +46,8 @@ a { color: var(--accent); }
   top: -3rem;
   z-index: 1;
   padding: 0.5rem 0.75rem;
-  background: var(--surface);
-  border: 2px solid var(--accent);
+  background: var(--lat-bg);
+  border: 2px solid var(--lat-accent-solid);
   border-radius: 4px;
   transition: top 120ms ease-in;
 }
@@ -74,7 +61,7 @@ a { color: var(--accent); }
 /* Strengthened, never removed. The default ring is thin and often low contrast
    against a coloured surface; this replaces it rather than deleting it. */
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--lat-focus-ring);
   outline-offset: 2px;
 }
 
@@ -85,22 +72,19 @@ a { color: var(--accent); }
    it wins whether or not the browser considers the focus keyboard-driven. */
 main:focus { outline: none; }
 
+/* Lattice rings the wrapper, so the inner input must not ring too. */
+.lat-input:focus-visible { outline: none; }
+
 .site-header {
   display: flex;
   gap: 1.5rem;
   align-items: baseline;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--ink) 15%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--lat-text) 15%, transparent);
 }
 
 .wordmark {
   font-weight: 700;
   text-decoration: none;
-  color: var(--ink);
-}
-
-main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
+  color: var(--lat-text);
 }

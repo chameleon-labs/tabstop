@@ -52,7 +52,7 @@ describe('App', () => {
     // spec uses - so this is the one place the production router is exercised.
     renderApp()
 
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Paste a URL')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Accessibility monitoring')
   })
 
   it('provides a query client its descendants can actually use', async () => {
@@ -65,7 +65,7 @@ describe('App', () => {
     renderApp()
 
     // The 401 sends the gate home, which is reachable only by having asked.
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Paste a URL')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Accessibility monitoring')
     expect(fetchMock).toHaveBeenCalled()
   })
 

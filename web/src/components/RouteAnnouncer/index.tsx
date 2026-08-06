@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
-import { ANNOUNCE_DELAY_MS } from '../../a11y/announce'
+import { ANNOUNCE_DELAY_MS, onDocumentTitleSet } from '../../a11y/announce'
 
 /**
  * Says the new page's name after a client-side navigation.
@@ -44,18 +44,29 @@ export const RouteAnnouncer = (): React.JSX.Element => {
     setAnnouncement('')
 
     /**
-     * Deferred for two reasons, both required.
+     * Waits for the incoming screen to name itself, rather than guessing when
+     * it will. `useDocumentTitle` signals; until it does there is nothing
+     * truthful to announce, and announcing on a timer named the page being
+     * LEFT whenever a screen was slower than the timer.
      *
-     * The screen's `useDocumentTitle` has not run yet - this component is a
-     * sibling that appears earlier in the tree, so its effect fires first, and
-     * reading the title synchronously here would announce the PREVIOUS page.
+     * The deferral is still needed once the signal arrives: a live region has
+     * to be in the DOM and empty before text lands in it, or the content counts
+     * as initial content and assistive technology stays quiet.
      *
-     * And the live region has to be in the DOM and empty before the text lands
-     * in it; content present at the same moment the region appears is treated
-     * as initial content, and assistive technology stays quiet.
+     * Exactly one announcement per navigation. An earlier version announced on
+     * schedule and corrected afterwards, which fixed the final text and left a
+     * screen reader hearing both.
      */
-    const timer = setTimeout(() => { setAnnouncement(document.title) }, ANNOUNCE_DELAY_MS)
-    return () => { clearTimeout(timer) }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const stop = onDocumentTitleSet(() => {
+      stop()
+      timer = setTimeout(() => { setAnnouncement(document.title) }, ANNOUNCE_DELAY_MS)
+    })
+
+    return () => {
+      stop()
+      clearTimeout(timer)
+    }
   }, [pathname])
 
   return (

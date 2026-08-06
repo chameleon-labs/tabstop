@@ -52,16 +52,41 @@ describe('AuditStatus', () => {
     expect(region()).toBeEmptyDOMElement()
   })
 
-  it('does not erase what it just said when the message goes null', () => {
-    // Completion arrives and the phase stops. Clearing then would announce
-    // nothing and wipe the last thing said.
+  it('clears the line when there is nothing left to say', () => {
+    // REVERSED, and the old rule was written from a premise its own caller
+    // cannot produce. It read "does not erase what it just said when the
+    // message goes null", reasoning that completion stops the phase and
+    // clearing would wipe the last thing said.
+    //
+    // Completion does not go null. `completionAnnouncement` returns a string
+    // for every input, so the screen hands over "Audit complete. Score 72…"
+    // and the retention below is what keeps it. The only caller that passes
+    // null is a FAILED audit - and there, holding the last phase leaves
+    // "Requesting the audit… this usually takes about 30 seconds" sitting
+    // under a panel saying the audit could not be started. Reported from a
+    // browser; see the Home spec for the end-to-end case.
     const { rerender } = render(<AuditStatus message="Scoring" />)
     settle()
 
     rerender(<AuditStatus message={null} />)
     settle()
 
-    expect(region()).toHaveTextContent('Scoring')
+    expect(region()).toBeEmptyDOMElement()
+  })
+
+  it('keeps a completion message once the audit has finished', () => {
+    // The requirement the old rule was reaching for, asserted against what the
+    // screen actually sends: completion is a message, not an absence, so it
+    // survives every re-render after it - which is what the region needs, since
+    // nothing else speaks once the audit ends.
+    const complete = 'Audit complete. Score 72. 1 issue found.'
+    const { rerender } = render(<AuditStatus message={complete} />)
+    settle()
+
+    rerender(<AuditStatus message={complete} />)
+    settle()
+
+    expect(region()).toHaveTextContent('Audit complete. Score 72.')
   })
 
   it('changes only when the message changes', () => {

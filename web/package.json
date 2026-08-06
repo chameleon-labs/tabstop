@@ -15,6 +15,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ariakit/react": "^0.4.36",
+    "@chameleon-labs/lattice-react": "0.1.0-rc.1",
+    "@chameleon-labs/lattice-tokens": "0.1.0-rc.1",
     "@tanstack/react-query": "^5.101.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

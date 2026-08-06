@@ -35,7 +35,10 @@ export const routes: RouteObject[] = [
       {
         errorElement: <RouteError />,
         children: [
-          { index: true, element: <Home /> },
+          // Declares that Home renders its own header, main and footer: its
+          // design carries a nav and footer, and nesting those inside the
+          // shell's would produce two banners and a nested <main>. See Layout.
+          { index: true, element: <Home />, handle: { ownChrome: true } },
           { path: 'dashboard', element: <RequireAuth><Dashboard /></RequireAuth> },
           { path: 'pages/:id', element: <RequireAuth><PageDetail /></RequireAuth> },
           // Public and unauthenticated. The uuid is the only credential, which

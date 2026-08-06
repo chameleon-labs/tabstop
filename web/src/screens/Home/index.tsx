@@ -9,6 +9,7 @@ import { AuditResult } from '../../components/AuditResult'
 import { UrlField } from '../../components/UrlField'
 import { useAuditPhase } from '../../hooks/use-audit-phase'
 import { useDocumentTitle } from '../../hooks/use-document-title'
+import { Landing } from './landing'
 
 /**
  * The product's entire hook: paste a URL, wait, get something worth sharing.
@@ -96,35 +97,47 @@ export const Home = (): React.JSX.Element => {
     submit(url)
   }
 
+  /**
+   * Everything that is not the form, in the slot the sample audit card
+   * occupies while idle.
+   *
+   * `null` while nothing has been asked for, which is what keeps the sample on
+   * screen: it is the illustration of the product, and it stops being an
+   * illustration the moment a real audit could be mistaken for it.
+   *
+   * The states stay mutually exclusive, as they were when this screen was a
+   * plain column. A result still showing beneath a new audit's progress reads
+   * as though the new one had already finished, and moving into a hero
+   * changes none of that.
+   */
+  const live = startedAt === null && failure === null
+    ? null
+    : (
+      <>
+        {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
+
+        {/*
+          ALWAYS mounted once anything has been asked for, and empty until
+          there is something to say. A region whose content is present when it
+          appears is initial content, announced by nothing - and one that
+          unmounts when the audit ends cannot announce that it ended.
+        */}
+        <AuditStatus message={announcement} />
+
+        {failure === null && done && audit.data !== undefined && (
+          <>
+            <AuditResult audit={audit.data} />
+            <TrackThisPage />
+          </>
+        )}
+      </>
+      )
+
   return (
-    <>
-      <section aria-labelledby="home-heading">
-        <h1 id="home-heading">Paste a URL, get an accessibility audit</h1>
-        <p>
-          Audits run real Chromium with the same engine behind most accessibility
-          tooling. No signup, no setup.
-        </p>
-        <UrlField onSubmit={submit} disabled={waiting} />
-      </section>
-
-      {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
-
-      {/*
-        ALWAYS mounted, and empty until there is something to say. A region
-        whose content is present when it appears is initial content, announced
-        by nothing - and one that unmounts when the audit ends cannot announce
-        that it ended. Sitting here, above everything conditional, it satisfies
-        both without a second hidden copy of the same sentence.
-      */}
-      <AuditStatus message={announcement} />
-
-      {failure === null && done && audit.data !== undefined && (
-        <>
-          <AuditResult audit={audit.data} />
-          <TrackThisPage />
-        </>
-      )}
-    </>
+    <Landing
+      urlField={<UrlField onSubmit={submit} disabled={waiting} />}
+      live={live}
+    />
   )
 }
 
