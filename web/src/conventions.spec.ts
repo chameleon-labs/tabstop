@@ -88,12 +88,29 @@ describe('the component folder convention', () => {
 
     expect(tracked.length).toBeGreaterThan(0)
 
-    // Every component folder git knows about, taken from git rather than from
-    // the filesystem, so a rename that only changed case is visible.
+    /**
+     * Every tracked path that matches a component folder case-INSENSITIVELY has
+     * to match it exactly.
+     *
+     * Asking only whether some tracked file sits under the right casing is not
+     * enough, and the gap is the very case this exists for: git holding both
+     * `Layout/index.spec.tsx` and a stale `layout/index.tsx` satisfies that
+     * question while being two directories on Linux. So the comparison is made
+     * against every candidate, not the first one that agrees.
+     *
+     * A folder with nothing tracked is also an offender - it means the move was
+     * never staged, and the tree on disk is telling a different story from the
+     * one that will be checked out.
+     */
     const folders = await componentFolders()
-    const offenders = folders.filter(
-      (folder) => !tracked.some((path) => path.startsWith(`src/${folder}/`))
-    )
+    const offenders = folders.flatMap((folder) => {
+      const prefix = `src/${folder}/`
+      const candidates = tracked.filter(
+        (path) => path.toLowerCase().startsWith(prefix.toLowerCase())
+      )
+      if (candidates.length === 0) return [`${folder}: nothing tracked`]
+      return candidates.filter((path) => !path.startsWith(prefix))
+    })
 
     expect(offenders).toEqual([])
   })
