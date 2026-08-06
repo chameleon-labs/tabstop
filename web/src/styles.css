@@ -18,7 +18,6 @@ body {
   line-height: 1.6;
 }
 
-a { color: var(--lat-accent-solid); }
 
 /*
  * Visible to assistive technology, not to the eye. Not `display: none` and not
