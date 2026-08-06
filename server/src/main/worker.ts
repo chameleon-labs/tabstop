@@ -8,6 +8,7 @@ import {
   makeQueue, makeWorker, rateLimitForAtLeast, setGlobalConcurrency, upsertDailySchedule
 } from '../infra/queue/helpers/bullmq-helper.js'
 import { runWithTimeout } from '../infra/queue/run-with-timeout.js'
+import { watchRedis } from '../infra/queue/helpers/redis-health.js'
 import { PermanentAuditError } from '../domain/errors/permanent-audit-error.js'
 import {
   closePageAuditor, makeRunAudit
@@ -38,6 +39,18 @@ const PING_TIMEOUT_MS = 10_000
 // The audit job reads and writes audit rows, so unlike the ping-only worker
 // this process now needs a database connection of its own.
 connectDatabase(env.databaseUrl)
+
+/**
+ * Before anything that talks to Redis, because the first thing that does is
+ * where an unreachable Redis hangs.
+ *
+ * `setGlobalConcurrency` below is awaited, `ioredis` retries indefinitely, and
+ * no worker exists yet to carry an error handler - so a Redis that is down used
+ * to produce no error, no warning and no `Worker started` line, for as long as
+ * anyone left it. The queue filled, the API stayed healthy, and the screen said
+ * "Waiting for a free worker", which was true and unhelpful. See #83.
+ */
+const redis = watchRedis(env.redisUrl, console.log)
 
 const pingWorker = makeWorker<PingPayload>(QUEUE_NAMES.ping, env.redisUrl, async (job) => {
   // The signal is intentionally unused: this handler has nothing to abort.
@@ -288,6 +301,7 @@ const shutdown = (signal: string): void => {
       // The queue holds its own Redis connection, separate from the worker's.
       await Promise.all([reauditQueue.close(), alertQueue.close()])
       await closePageAuditor()
+      await redis.close()
       await disconnectDatabase()
       process.exit(0)
     })
