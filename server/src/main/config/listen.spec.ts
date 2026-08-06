@@ -16,8 +16,35 @@ const reports = (): { lines: string[], fatal: string[], handlers: Parameters<typ
   return { lines, fatal, handlers: { info: (m) => lines.push(m), fatal: (m) => fatal.push(m) } }
 }
 
-const settled = async (): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, 150))
+/**
+ * Resolves once the server has either bound or failed to - whichever happens.
+ *
+ * The events rather than a fixed delay, so a slow machine cannot turn a pass
+ * into a failure and a fast one does not pay for the wait. BOTH outcomes
+ * resolve because half of these tests are about the failing path, and a helper
+ * that only knew about success would have to be raced against a timer again to
+ * be usable there.
+ *
+ * The production handlers have already run when this resolves: `startListening`
+ * registers its own listeners first, and listeners fire in registration order.
+ *
+ * NOT gated on `server.listening`, which is the trap here. It is true
+ * SYNCHRONOUSLY once the bind succeeds, while the listen callback does not run
+ * until the next tick - so a `listening` short-circuit resolves before the
+ * handler under test has said anything, and the success cases fail on an empty
+ * log. Must therefore be called in the same tick as `listen`, which is the only
+ * way it is used: later, the event would already have been missed.
+ */
+const settled = async (server: Server): Promise<Server> =>
+  await new Promise((resolve) => {
+    server.once('listening', () => { resolve(server) })
+    server.once('error', () => { resolve(server) })
+  })
+
+/** The port a server actually bound, or 0 if it never did. */
+const portOf = (server: Server): number => {
+  const address = server.address()
+  return address !== null && typeof address !== 'string' ? address.port : 0
 }
 
 describe('startListening', () => {
@@ -25,6 +52,9 @@ describe('startListening', () => {
 
   afterEach(async () => {
     for (const server of open.splice(0)) {
+      // The callback's error argument is ignored on purpose: servers that never
+      // bound are in here too, and closing one of those calls back with
+      // ERR_SERVER_NOT_RUNNING rather than throwing or emitting anything.
       await new Promise((resolve) => { server.close(() => { resolve(null) }) })
     }
   })
@@ -35,11 +65,14 @@ describe('startListening', () => {
     return server
   }
 
+  /** A port that is bound, and therefore a port that is taken. */
+  const takenPort = async (): Promise<number> =>
+    portOf(await settled(listen(0, reports().handlers)))
+
   it('says it is running once it is', async () => {
     const { lines, handlers } = reports()
 
-    listen(0, handlers)
-    await settled()
+    await settled(listen(0, handlers))
 
     expect(lines.join('\n')).toMatch(/Server running/)
   })
@@ -49,10 +82,7 @@ describe('startListening', () => {
     // got, so a line built from the requested port is provably wrong.
     const { lines, handlers } = reports()
 
-    const server = listen(0, handlers)
-    await settled()
-    const address = server.address()
-    const port = address !== null && typeof address !== 'string' ? address.port : 0
+    const port = portOf(await settled(listen(0, handlers)))
 
     expect(port).toBeGreaterThan(0)
     expect(lines.join('\n')).toContain(String(port))
@@ -62,29 +92,19 @@ describe('startListening', () => {
     // The defect. Express 5 runs the listen callback even when the bind failed
     // - `listening` is false and `address()` is null - so the one line a reader
     // uses to know the server is up was printed on the path where it is down.
-    const first = reports()
-    const server = listen(0, first.handlers)
-    await settled()
-    const address = server.address()
-    const port = address !== null && typeof address !== 'string' ? address.port : 0
+    const port = await takenPort()
 
     const second = reports()
-    listen(port, second.handlers)
-    await settled()
+    await settled(listen(port, second.handlers))
 
     expect(second.lines.join('\n')).not.toMatch(/Server running/)
   })
 
   it('reports the conflict, and names the port so it can be freed', async () => {
-    const first = reports()
-    const server = listen(0, first.handlers)
-    await settled()
-    const address = server.address()
-    const port = address !== null && typeof address !== 'string' ? address.port : 0
+    const port = await takenPort()
 
     const second = reports()
-    listen(port, second.handlers)
-    await settled()
+    await settled(listen(port, second.handlers))
 
     expect(second.fatal.join('\n')).toMatch(/EADDRINUSE|already in use/i)
     expect(second.fatal.join('\n')).toContain(String(port))
@@ -93,15 +113,10 @@ describe('startListening', () => {
   it('treats a failed bind as fatal, so a supervisor learns what the log says', async () => {
     // Nothing exits today, which is why the failure is invisible: the process
     // stays alive holding no socket and `--kill-others` sees no exit.
-    const first = reports()
-    const server = listen(0, first.handlers)
-    await settled()
-    const address = server.address()
-    const port = address !== null && typeof address !== 'string' ? address.port : 0
+    const port = await takenPort()
 
     const second = reports()
-    listen(port, second.handlers)
-    await settled()
+    await settled(listen(port, second.handlers))
 
     expect(second.fatal).toHaveLength(1)
   })

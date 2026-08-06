@@ -58,7 +58,10 @@ export const startListening = (
     if (bound !== null) handlers.info(`Server running at http://localhost:${bound}`)
   })
 
-  server.on('error', (error: NodeJS.ErrnoException) => {
+  // `once`, because one listen attempt has one outcome. Node emits a single
+  // error for a failed bind and none from `close`, so this states the intent
+  // rather than fixing a double call anyone has observed.
+  server.once('error', (error: NodeJS.ErrnoException) => {
     handlers.fatal(
       error.code === 'EADDRINUSE'
         ? `Port ${port} is already in use (EADDRINUSE) - stop whatever holds it, or set PORT`
