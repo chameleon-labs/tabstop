@@ -31,24 +31,36 @@ src/
   api/
     client.ts                 the only place that calls fetch
     query-client.ts           retry policy
-    audits.ts                 audit query + mutation hooks
-    session.ts                who is signed in
-  hooks/
-    use-document-title.ts
-  components/
-    Layout/                   shell: skip link, header, route announcer, <Outlet />
-    NotFound/
-    RequireAuth/              the session gate
-    RouteAnnouncer/
-    RouteError/               the error boundary element
+  a11y/
+    announce.ts               the shared defer both live regions need
   screens/
-    Home/  Dashboard/  PageDetail/  Share/
+    components/               shared by every route
+      Icons/                  the icon set
+      Layout/                 shell: skip link, header, route announcer, <Outlet />
+      NotFound/
+      RouteAnnouncer/
+      RouteError/             the error boundary element
+    hooks/
+      use-document-title.ts
+    modules/
+      audit/                  failure · grouping · phase · url · violation · audits
+        components/           AuditFailure/ AuditResult/ AuditStatus/ UrlField/ ViolationList/
+        hooks/                use-audit-phase.ts
+        pages/                Home/ Dashboard/ PageDetail/ Share/
+      account/                session.ts
+        components/           RequireAuth/
+        pages/                Signup/
   test/
     http.ts                   response builders, free of React
     render.tsx                mounts the real route table, or a component in providers
 ```
 
-**Every component is a folder holding `index.tsx` and `index.spec.tsx`,** named in PascalCase after the component. A component and its test move together, and the import is the folder (`from '../NotFound'`). Hooks are not components and live in `hooks/`, named for the file rather than a folder — `useDocumentTitle` is imported by every screen while only the shell renders the announcer it feeds, so bundling it into a component folder would have made five screens import a component directory to get a hook.
+**Feature first, kind second.** A module owns its pages, its components, its hooks and its domain logic, so the things that change together sit together. `screens/components` and `screens/hooks` are for what genuinely crosses features; `api/client.ts` and `api/query-client.ts` stay shared because they are transport rather than feature. A folder earns a module when it has more than one file in it.
+
+**`@/` is the src root**, and the rule reveals locality: an import within a module is relative, so `../../audits` reads as "my module", while anything crossing an area uses the alias, so `@/screens/hooks/use-document-title` reads as "shared".
+
+
+**Every component is a folder holding `index.tsx` and `index.spec.tsx`,** named in PascalCase after the component. A component and its test move together, and the import is the folder (`from '../NotFound'`). Hooks are not components and live in a `hooks/` folder, named for the file rather than a folder — `useDocumentTitle` is imported by every screen while only the shell renders the announcer it feeds, so bundling it into a component folder would have made five screens import a component directory to get a hook.
 
 **Props are always a named, exported type** — `RequireAuthProps`, `AppProps`, `ErrorPageProps` — never inlined into the signature. It gives consumers something to reference, and keeps the signature readable once a component has more than one prop.
 

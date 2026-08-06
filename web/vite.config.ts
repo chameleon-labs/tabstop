@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { createLogger } from 'vite'
 // `vitest/config` rather than `vite`: as of Vitest 4 the `test` key is not
@@ -78,6 +79,11 @@ const quietProxyErrors = (): ReturnType<typeof createLogger> => {
 
 export default defineConfig({
   plugins: [react()],
+  // `@/` is the src root. Feature folders nest four deep, and the relative
+  // alternative - `../../../../api/client` - is both unreadable and silently
+  // wrong after any move. `tsconfig.json` declares the same mapping so the
+  // compiler and the bundler cannot disagree.
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   customLogger: quietProxyErrors(),
   server: {
     proxy: {
