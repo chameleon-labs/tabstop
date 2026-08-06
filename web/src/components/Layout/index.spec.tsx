@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { Layout } from '.'
+import { RouteError } from '../RouteError'
 
 const renderLayout = (): void => {
   const router = createMemoryRouter([{
@@ -49,6 +50,30 @@ describe('Layout', () => {
       expect(screen.getAllByRole('main')).toHaveLength(1)
       expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
       expect(document.querySelectorAll('#main')).toHaveLength(1)
+    })
+
+    it('still has a #main for the skip link when the screen throws', async () => {
+      // The route still matches and its handle still says `ownChrome`, so the
+      // shell steps back exactly as it would for a working screen - but what
+      // renders is the error boundary, which is not the screen. Left alone that
+      // produces an error page with no landmarks and a retained skip link
+      // pointing at a `#main` that does not exist.
+      const Boom = (): React.JSX.Element => { throw new Error('boom') }
+      const router = createMemoryRouter([{
+        path: '/',
+        element: <Layout />,
+        children: [{
+          errorElement: <RouteError />,
+          children: [{ index: true, element: <Boom />, handle: { ownChrome: true } }]
+        }]
+      }], { initialEntries: ['/'] })
+      render(<RouterProvider router={router} />)
+      await screen.findByRole('heading', { level: 1, name: 'Something went wrong' })
+
+      expect(screen.getAllByRole('main')).toHaveLength(1)
+      expect(document.querySelectorAll('#main')).toHaveLength(1)
+      expect(screen.getByRole('link', { name: 'Skip to content' }))
+        .toHaveAttribute('href', '#main')
     })
 
     it('keeps the skip link, which stays the shell\'s job either way', async () => {

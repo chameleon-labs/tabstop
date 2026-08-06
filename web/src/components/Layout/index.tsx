@@ -9,7 +9,7 @@ export type RouteChrome = { ownChrome?: boolean }
  * route may put anything there, and asserting a shape onto it would compile
  * just as happily against a typo in the route table.
  */
-const providesOwnChrome = (handle: unknown): boolean =>
+export const providesOwnChrome = (handle: unknown): boolean =>
   typeof handle === 'object' && handle !== null && 'ownChrome' in handle &&
   handle.ownChrome === true
 
@@ -33,8 +33,12 @@ const providesOwnChrome = (handle: unknown): boolean =>
  * for the skip link to land on. Declared in the route table rather than matched
  * on a path here, so the exception is visible where routes are read.
  */
+/** True when the matched route says it renders its own header, main and footer. */
+export const useOwnChrome = (): boolean =>
+  useMatches().some((match) => providesOwnChrome(match.handle))
+
 export const Layout = (): React.JSX.Element => {
-  const ownChrome = useMatches().some((match) => providesOwnChrome(match.handle))
+  const ownChrome = useOwnChrome()
 
   return (
     <>
