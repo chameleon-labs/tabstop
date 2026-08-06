@@ -50,7 +50,7 @@ connectDatabase(env.databaseUrl)
  * anyone left it. The queue filled, the API stayed healthy, and the screen said
  * "Waiting for a free worker", which was true and unhelpful. See #83.
  */
-const redis = watchRedis(env.redisUrl, (message) => { console.log(message) })
+const redis = watchRedis(env.redisUrl, console.log)
 
 const pingWorker = makeWorker<PingPayload>(QUEUE_NAMES.ping, env.redisUrl, async (job) => {
   // The signal is intentionally unused: this handler has nothing to abort.
