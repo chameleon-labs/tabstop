@@ -97,14 +97,14 @@ Install from the repository root (`pnpm install`), not from here — this is one
 
 ## Development against a real server
 
-`pnpm dev` **from the repository root** starts the API and this together, each line prefixed with the project it came from. Two terminals still work if you prefer them separate:
+`pnpm dev` **from the repository root** starts the API, the audit worker and this together, each line prefixed with the project it came from. Two terminals still work if you prefer them separate:
 
 ```
-cd ../server && pnpm dev      # terminal 1
-pnpm dev                      # terminal 2
+cd ../server && pnpm dev      # terminal 1: API and worker
+pnpm dev                      # terminal 2: this
 ```
 
-Neither form starts the audit **worker** — no audit will ever leave `queued` without `pnpm dev:worker` in `../server`.
+Both forms start the worker. Without one, an audit is accepted and enqueued and never runs — the screen says "Waiting for a free worker", which is true and unhelpful.
 
 `vite.config.ts` proxies `/api` to `http://localhost:3000`, and that proxy is what makes the session cookie work locally. The mechanism is the **request URL**, not a header: `Set-Cookie` carries no `Domain`, so the browser scopes the cookie to the host it asked — `localhost:5173` — and returns it on every same-origin call. Point the app straight at `localhost:3000` instead and the cookie belongs to a different origin, where cross-site rules start deciding whether it travels.
 

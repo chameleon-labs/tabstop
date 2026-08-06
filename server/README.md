@@ -48,8 +48,9 @@ Deliberately excluded to keep this minimal, same reasoning as the template: no `
 pnpm install
 docker compose up -d   # local Postgres + Redis, required by pnpm dev
 pnpm migrate           # run migrations
-pnpm dev          # tsx watch, loads .env
-pnpm dev:worker        # worker process, tsx watch
+pnpm dev               # API and worker together, tsx watch, loads .env
+pnpm dev:api           # the API alone
+pnpm dev:worker        # the worker alone
 pnpm test         # requires Docker: starts a throwaway Postgres + Redis per run
 pnpm test:watch
 pnpm typecheck
@@ -260,3 +261,14 @@ Four things to know before touching it:
 - **The frontend and API must share a registrable domain** (`app.example.com` and `api.example.com`). `SameSite=Lax` otherwise makes the session a third-party cookie, which Safari blocks outright — login appears to succeed and nothing is ever authenticated. Clients must also send `credentials: 'include'` on every request, and read auth state from `GET /api/me` rather than from storage, since `httpOnly` means JavaScript can never see the cookie.
 
 Passwords use `node:crypto` scrypt with a self-describing digest (`scrypt$N$r$p$salt$key`), so `SCRYPT_COST` can rise later without invalidating stored passwords. The suite lowers the cost — at the production setting each hash is ~89ms and would dominate the run.
+
+### What `pnpm dev` does and does not guarantee
+
+`concurrently --kill-others` ties the two **commands** together: if one exits — Ctrl-C, or `tsx` failing to launch — the other goes down with it, so you never keep half a stack by accident.
+
+It does **not** propagate a crash of the process under the watcher. `tsx watch` deliberately survives its child so it can reload after you fix the file, which is what you want while editing and means `concurrently` sees no exit. Two consequences worth knowing:
+
+- A worker that dies and does not come back leaves the API serving and nothing consuming the audit queue. Measured: killing the worker's child leaves `pnpm dev` reporting nothing and the API answering 200.
+- A worker that cannot reach Redis is **silent**. ioredis retries indefinitely, so there is no error and no "Worker started" line — for 45 seconds and counting. The API says `Database connection established` or `Database unreachable`; the worker says nothing about its own dependency.
+
+So a queue that is not draining is worth checking directly (`docker exec … redis-cli llen bull:audit:wait`) rather than inferred from the absence of errors.
