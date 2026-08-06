@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { Button, Input } from '@chameleon-labs/lattice-react'
 import { URL_PROBLEMS, normaliseUrl } from '../../audit/url'
-import { Globe, Zap } from '../../screens/Home/landing-parts/icons'
+import { Globe, Zap } from '../Icons'
 
 export type UrlFieldProps = {
   /** Receives the canonical URL, never the raw text. */
