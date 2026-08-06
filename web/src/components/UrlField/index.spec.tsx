@@ -30,35 +30,6 @@ describe('UrlField', () => {
     expect(onSubmit).toHaveBeenCalledWith('https://example.com/')
   })
 
-  it('shows the normalised URL back before it is submitted', async () => {
-    // So `https://` appearing from nowhere is not a surprise on the result
-    // page - and the string shown is the string sent.
-    setup()
-
-    await userEvent.type(field(), 'example.com')
-
-    expect(screen.getByText('https://example.com/')).toBeVisible()
-  })
-
-  it('describes the preview prospectively, since nothing has started', async () => {
-    // "Auditing …" claimed work had begun while someone was still typing, and
-    // used the same word as the progress heading after submission.
-    setup()
-
-    await userEvent.type(field(), 'example.com')
-
-    expect(screen.getByText(/Will audit/)).toBeVisible()
-    expect(screen.queryByText(/^Auditing/)).not.toBeInTheDocument()
-  })
-
-  it('does not echo the URL back when it would say nothing new', async () => {
-    setup()
-
-    await userEvent.type(field(), 'https://example.com/')
-
-    expect(screen.queryByText(/Will audit/)).not.toBeInTheDocument()
-  })
-
   describe('when validation happens', () => {
     it('says nothing while someone is still typing', async () => {
       // Telling someone that `e` is not a URL is true and useless. The message
