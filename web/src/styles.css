@@ -88,3 +88,9 @@ main:focus { outline: none; }
   text-decoration: none;
   color: var(--lat-text);
 }
+
+/* Sized from the type scale, because an icon is sized to the text beside it.
+   rem-based, so icons grow when the reader enlarges their font. */
+.icon { inline-size: var(--lat-font-size-sm); block-size: var(--lat-font-size-sm); flex: none; }
+.icon--sm { inline-size: var(--lat-font-size-xs); block-size: var(--lat-font-size-xs); }
+.icon--lg { inline-size: var(--lat-font-size-base); block-size: var(--lat-font-size-base); }

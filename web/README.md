@@ -35,7 +35,7 @@ src/
     announce.ts               the shared defer both live regions need
   screens/
     components/               shared by every route
-      Icons/                  the icon set
+      Icons/                  one folder per icon, over a single SvgIcon
       Layout/                 shell: skip link, header, route announcer, <Outlet />
       NotFound/
       RouteAnnouncer/
@@ -56,6 +56,8 @@ src/
 ```
 
 **Feature first, kind second.** A module owns its pages, its components, its hooks and its domain logic, so the things that change together sit together. `screens/components` and `screens/hooks` are for what genuinely crosses features; `api/client.ts` and `api/query-client.ts` stay shared because they are transport rather than feature. A folder earns a module when it has more than one file in it.
+
+**Icons are sized from the type scale, not the spacing one.** `sm` is `--lat-font-size-xs` (12px), `md` is `--lat-font-size-sm` (14px) and the default, `lg` is `--lat-font-size-base` (16px) — because an icon is sized to the text beside it, and the sizes the call sites had chosen by hand already landed on the type scale. The values live in CSS so icons grow with the reader's font size, and `size` takes no raw number: a new size is a change to the scale rather than a decision at one call site.
 
 **`@/` is the src root**, and the rule reveals locality: an import within a module is relative, so `../../audits` reads as "my module", while anything crossing an area uses the alias, so `@/screens/hooks/use-document-title` reads as "shared".
 

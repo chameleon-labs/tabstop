@@ -50,7 +50,7 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
           inputMode="url"
           autoComplete="url"
           placeholder="example.com"
-          addonStart={<Globe size={14} aria-hidden="true" />}
+          addonStart={<Globe size="md" aria-hidden="true" />}
           className="landing-page__url-field"
           inputClassName="landing-page__url-input"
           value={raw}
@@ -68,7 +68,7 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
 
         <Button type="submit" variant="primary" size="lg" disabled={disabled}>
           Audit this page
-          <Zap size={13} aria-hidden="true" />
+          <Zap size="md" aria-hidden="true" />
         </Button>
       </div>
 
