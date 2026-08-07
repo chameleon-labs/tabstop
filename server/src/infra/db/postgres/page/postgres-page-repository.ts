@@ -345,7 +345,8 @@ export class PostgresPageRepository implements
    * no sparkline. `row_number() ... where rank <= 30` emits the right rows but
    * does not stop the scan underneath: measured on Postgres 17 with 3,000
    * audits per page, it read all 30,000 rows and 397 buffers to return 300,
-   * where this reads 30 rows and 34 buffers and stays there as history grows.
+   * whereas this reads 30 rows and 34 buffers and stays there as history
+   * grows.
    * The dashboard is the polled endpoint, so its cost must not track how long
    * the account has been a customer.
    */

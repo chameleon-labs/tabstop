@@ -20,7 +20,7 @@ export type Phase = {
 
 /**
  * Boundaries taken from the worker's own budgets. The last phase is the longest
- * deliberately: overrunning into "Scoring" looks like the end of a job, where
+ * deliberately: overrunning into "Scoring" looks like the end of a job, whereas
  * overrunning into "Fetching the page" looks like a stuck one.
  */
 export const PHASES: readonly Phase[] = [

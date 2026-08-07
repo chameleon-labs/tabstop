@@ -10,7 +10,7 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
   // manual re-audit because the nightly run happened.
   //
   // It also makes the day a property of the RUN rather than the insert: a
-  // fan-out starting at 23:59:59 stamps one date, where `created_at::date`
+  // fan-out starting at 23:59:59 stamps one date, whereas `created_at::date`
   // splits it across two and lets both halves insert.
   await sql`alter table audits add column scheduled_for date`.execute(db)
 

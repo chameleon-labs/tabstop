@@ -35,7 +35,7 @@ export const MAX_PAGES_PER_RUN = 50_000
  * long queue, so each candidate is confirmed against the queue before being
  * retired. Twelve hours clears every legitimate reason to be waiting - the
  * jitter window is six hours and the work is done by 08:00 UTC - and being
- * generous costs only a slower reclaim, where being aggressive costs a Redis
+ * generous costs only a slower reclaim, whereas being aggressive costs a Redis
  * round trip per healthy pending audit.
  */
 export const STALE_AFTER_MS = 12 * 60 * 60 * 1000

@@ -108,7 +108,7 @@ export const enqueueAudit = async (
  * simply down, nothing ever enqueued - leaves a `queued` row nothing will run:
  * a client polling a 202 forever, and no sweeper to reap it.
  *
- * So the rare interleaving costs one logged failure where the common outage
+ * So the rare interleaving costs one logged failure, whereas the common outage
  * would cost a permanent lie. A confirmed `has === true` still keeps the row;
  * what this refuses is to read "I could not measure" as "it is there".
  */

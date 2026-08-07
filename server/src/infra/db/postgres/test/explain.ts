@@ -6,8 +6,8 @@ import type { Database } from '../database.js'
  * Tools for asserting on how a query RUNS, not only on what it returns.
  *
  * Both have caught real defects: row counts found a history query whose output
- * was bounded while its scan was not, and plan text catches an index quietly
- * dropped because a predicate changed shape.
+ * was bounded while its scan was not, and plan text catches an index the
+ * planner quietly stops choosing because a predicate changed shape.
  *
  * Both read the query the repository ACTUALLY issued, captured off Kysely's
  * log hook - a copy pasted into a spec stops testing anything the moment the
