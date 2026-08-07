@@ -105,8 +105,8 @@ export const enqueueAudit = async (
 }
 
 /**
- * Whether the queue already holds this job. Bounded, and a queue that cannot
- * answer is treated as NOT holding it - so the caller cleans up.
+ * Bounded, and a queue that cannot answer is treated as NOT holding the job -
+ * so the caller cleans up.
  *
  * That direction is deliberate and it is the one a reader will want to argue
  * with, because an indeterminate answer does not prove absence: if the enqueue

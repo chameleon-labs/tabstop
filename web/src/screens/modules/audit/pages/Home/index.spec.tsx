@@ -37,8 +37,8 @@ const server = (
 }
 
 /**
- * The audit's status line. The shell carries its own polite region for route
- * announcements and appears first in the document, so this is the later one.
+ * The shell carries its own polite region for route announcements and appears
+ * first in the document, so the audit's status line is the later one.
  */
 const statusLine = (): HTMLElement => {
   const regions = screen.getAllByRole('status')
