@@ -1,15 +1,9 @@
 /**
  * The two 409s `POST /api/pages` answers with, as separate variants.
  *
- * Both are conflicts a client has to TELL APART rather than only display - "you
- * are at your limit" wants an upgrade prompt, "you already track this" wants a
- * link to the page - which is why the server sends a machine-readable `code`
- * alongside the sentence.
- *
- * Declared as a discriminated union rather than as `code: string` because the
- * variants do not carry the same data: the limit case sends the limit, and a
- * screen that says "you are tracking 10 of 10 pages" cannot get that number
- * from anywhere else. A single loose shape drops it on the floor.
+ * A discriminated union rather than `code: string` because the variants carry
+ * different data: only the limit case sends the limit, and a screen saying
+ * "tracking 10 of 10 pages" can get that number from nowhere else.
  */
 export type PageLimitReachedBody = {
   code: 'page_limit_reached'

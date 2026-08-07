@@ -2,15 +2,15 @@ import type { CodedConflictBody, PageConflictBody, RateLimitedBody } from '@tabs
 
 /**
  * Empty by default, which makes every request same-origin and sends it through
- * the dev proxy. A deployed build sets `VITE_API_URL` to the API origin -
- * `app.tabstop.dev` calling `api.tabstop.dev` is same-SITE, which is what lets
- * `SameSite=Lax` work, but it is still cross-ORIGIN.
+ * the dev proxy. A deployed build sets `VITE_API_URL`: `app.tabstop.dev`
+ * calling `api.tabstop.dev` is same-SITE, which is what lets `SameSite=Lax`
+ * work, but it is still cross-ORIGIN.
  */
 const BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 /**
  * A response the server produced. Distinct from a `fetch` rejection, which
- * means the request never got an answer at all - the two want different retry
+ * means the request never got an answer - the two want different retry
  * behaviour, and only this one carries a body worth reading.
  */
 export class ApiError extends Error {
@@ -29,20 +29,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
- * Error bodies are validated at runtime; success bodies are not. That is a
- * deliberate split rather than an oversight.
+ * Error bodies are validated at runtime; success bodies are not.
  *
- * A success body is described by `@tabstop/contract`, and the server is checked
- * against that same contract at compile time - `presentation/helpers/
- * contract-proof.ts` fails the server's typecheck if its mapper stops matching.
- * Re-validating it here would duplicate a guarantee that already exists, in a
- * bundle the user downloads.
- *
- * An error body has no such guarantee: a 502 from a proxy, an nginx error page,
- * or a rate limiter that fell over produce responses the server never wrote. We
- * BRANCH on these - a 429's `resetAt` becomes a countdown, a 409's `code`
- * chooses a different screen - so being wrong about the shape is a behaviour
- * bug, not a display bug.
+ * A success body is described by `@tabstop/contract` and the server's typecheck
+ * fails if its mapper stops matching, so re-validating here would duplicate an
+ * existing guarantee in a bundle the user downloads. An error body has no such
+ * guarantee - a proxy 502 or a limiter that fell over produce responses the
+ * server never wrote - and callers BRANCH on these, so a wrong shape is a
+ * behaviour bug rather than a display one.
  */
 const errorMessage = (body: unknown, response: Response): string => {
   if (isRecord(body) && typeof body['error'] === 'string' && body['error'] !== '') {
@@ -55,23 +49,20 @@ const readBody = async (response: Response): Promise<unknown> => {
   if (response.status === 204) return null
   const type = response.headers.get('content-type') ?? ''
   if (!type.includes('application/json')) return null
-  // A truncated or malformed body is still a response the caller has to handle;
-  // it must not become a different, more confusing error than the status.
+  // A malformed body must not become a different, more confusing error than
+  // the status the caller already has to handle.
   return await response.json().catch(() => null)
 }
 
 /**
  * Our defaults, then the caller's, with the caller winning.
  *
- * Built through `Headers` rather than object spread because `RequestInit.headers`
- * has three legal forms - a record, a `Headers` instance, and an array of
- * pairs - and spreading the last two produces `{}`. The caller's headers would
- * be dropped in silence, which is the worst way to lose an authorization or an
- * idempotency key.
+ * Through `Headers` rather than object spread: `RequestInit.headers` has three
+ * legal forms, and spreading a `Headers` instance or an array of pairs yields
+ * `{}` - silently dropping an authorization or idempotency key.
  *
- * `content-type` is set only when there is a body to describe. Announcing JSON
- * on a bodyless GET is the kind of header that quietly turns a simple request
- * into a preflighted one.
+ * `content-type` only when there is a body to describe, since announcing JSON
+ * on a bodyless GET can turn a simple request into a preflighted one.
  */
 const headersFor = (init: RequestInit): Headers => {
   const headers = new Headers({ accept: 'application/json' })
@@ -85,13 +76,9 @@ const headersFor = (init: RequestInit): Headers => {
 /**
  * The only place the app calls `fetch`.
  *
- * `credentials: 'include'` is on every request and is not optional. The session
- * is an httpOnly cookie (#10), `fetch` does not send cookies cross-origin
- * without this, and omitting it returns 401 from a perfectly valid session
- * while looking exactly like a backend bug.
- *
- * `T` is the caller's claim about the success body. See `errorMessage` above
- * for why that claim is not re-checked here.
+ * `credentials: 'include'` is not optional: the session is an httpOnly cookie
+ * (#10), and without this a valid session returns 401 while looking exactly
+ * like a backend bug.
  */
 export const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -114,13 +101,10 @@ export const isApiError = (error: unknown): error is ApiError => error instanceo
 /**
  * The 429 details, or null if this was not a usable rate-limit response.
  *
- * Validated against what the server actually promises, not merely against
- * JavaScript's type tags. The middleware sends `Math.max(1, Math.ceil(ms/1000))`
- * and an ISO timestamp, so anything else came from a proxy or a limiter that
- * fell over - and a caller renders these, so being permissive here shows a
- * person `Invalid Date`, or a countdown that starts negative and never ends.
- *
- * Null is always safe: the caller falls back to displaying `error.message`.
+ * Validated against what the server promises rather than against JavaScript's
+ * type tags: a caller renders these, so a bad shape shows a person
+ * `Invalid Date` or a countdown that starts negative. Null is always safe -
+ * the caller falls back to `error.message`.
  */
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value > 0
@@ -151,15 +135,13 @@ export const conflictOf = (error: unknown): CodedConflictBody | null => {
 /**
  * A `POST /api/pages` conflict, narrowed to the variant it actually is.
  *
- * `conflictOf` above answers the generic question - is this a coded conflict,
- * and what is the code - which is what a shared handler wants. It cannot answer
- * this one: `limit` only exists on one variant, and a shape wide enough to
- * cover both drops it, leaving a screen unable to say "10 of 10" without
+ * `conflictOf` answers the generic question a shared handler wants. It cannot
+ * answer this one: `limit` exists on only one variant, and a shape wide enough
+ * for both drops it, leaving a screen unable to say "10 of 10" without
  * hardcoding the cap the server owns.
  *
- * Null for a code this build does not know, which is deliberate rather than a
- * gap. A server that adds a third code should degrade to displaying the
- * sentence it sent, not to a screen branching on a variant it cannot fill in.
+ * Null for an unknown code, deliberately: a server that adds a third should
+ * degrade to displaying the sentence it sent.
  */
 export const pageConflictOf = (error: unknown): PageConflictBody | null => {
   const conflict = conflictOf(error)
@@ -171,8 +153,7 @@ export const pageConflictOf = (error: unknown): PageConflictBody | null => {
 
   if (conflict.code === 'page_limit_reached') {
     const limit = error.body['limit']
-    // A limit that is not a positive integer cannot be rendered as a count, and
-    // guessing one would put a wrong number in front of a person.
+    // Guessing a limit would put a wrong number in front of a person.
     if (!isPositiveInteger(limit)) return null
     return { code: 'page_limit_reached', error: conflict.error, limit }
   }

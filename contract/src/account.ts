@@ -1,10 +1,9 @@
 /**
  * `GET /api/me`, 200 - or 401 with an `ApiErrorBody` when there is no session.
  *
- * That pair IS the auth state. The session is an httpOnly cookie, so the
- * frontend can never read it; there is no "is there a token in storage" check
- * to make, and initial load is planned around one call to this endpoint rather
- * than around inspecting anything locally.
+ * That pair IS the auth state. The session is an httpOnly cookie the frontend
+ * can never read, so there is no local token to inspect and initial load is
+ * planned around one call to this endpoint.
  */
 export type AccountResponse = {
   id: string
