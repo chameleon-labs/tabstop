@@ -253,7 +253,8 @@
       "rules": {
         "typescript/no-non-null-assertion": "off",
         "no-magic-numbers": "off",
-        "vitest/require-mock-type-parameters": "off"
+        "vitest/require-mock-type-parameters": "off",
+        "unicorn/consistent-function-scoping": "off"
       }
     }
   ]
