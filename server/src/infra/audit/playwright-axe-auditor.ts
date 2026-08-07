@@ -36,10 +36,8 @@ export { DISABLE_UNINTERCEPTED_TRANSPORTS }
 
 export const AUDIT_CONTEXT_OPTIONS = {
   viewport: { width: 1280, height: 720 },
-  // Nothing is ever saved. This does NOT stop the request being issued -
-  // measured: a download reaches the server with this false, and with the
-  // download event cancelled - but it keeps hostile bytes off the worker's
-  // disk. See the residual recorded in DECISIONS.md and on #16.
+  // Keeps hostile bytes off the worker's disk. Measured: it does NOT stop the
+  // request being issued. Residual recorded in DECISIONS.md and on #16.
   acceptDownloads: false,
   // context.route does not reliably intercept requests made by a service
   // worker, and service workers are enabled by default - so an audited page
@@ -103,12 +101,10 @@ export const installGuards = async (
   context: GuardedContext,
   guard: (route: RouteLike) => Promise<void>
 ): Promise<void> => {
-  // The one place Playwright's Route is translated into the guard's own
-  // contract. It cannot be structural: Route.fulfill takes Playwright's
-  // APIResponse, so satisfying RouteLike structurally would mean importing
-  // Playwright into request-guard.ts and losing the boundary that makes the
-  // guard unit-testable at all. An adapter converting a vendor type into a
-  // local port is exactly where a cast earns its place.
+  // Where Playwright's Route becomes the guard's own contract. It cannot be
+  // structural - `Route.fulfill` takes Playwright's APIResponse, so matching
+  // RouteLike structurally would drag Playwright into request-guard.ts and
+  // lose the boundary that makes it unit-testable.
   await context.addInitScript(DISABLE_UNINTERCEPTED_TRANSPORTS)
   await context.route('**/*', (route) => guard(route as unknown as RouteLike))
   await context.routeWebSocket('**/*', (ws) => { ws.close() })
@@ -183,10 +179,8 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     const pending = this.launching
     if (pending !== null) {
       const browser = await pending
-      // A crashed browser stays cached otherwise, and every retry of the
-      // deliberately-transient "browser crashed" failure would call
-      // newContext() on the same dead object - so the retry could never
-      // succeed, which defeats the point of classifying it as retryable.
+      // Otherwise a crashed browser stays cached and every retry calls
+      // newContext() on the same dead object, so it could never succeed.
       if (browser.isConnected()) return browser
       if (this.launching === pending) this.launching = null
     }
@@ -212,37 +206,31 @@ export class PlaywrightAxeAuditor implements PageAuditor {
 
     const context = await browser.newContext(AUDIT_CONTEXT_OPTIONS)
 
-    // Every request the page makes is checked, not only the navigation: a page
-    // can embed <img src="http://169.254.169.254/..."> and the worker would
-    // fetch it from inside the network. Nothing reaches the user either way -
-    // axe reads the DOM, not image bytes - so this is about side effects
-    // rather than disclosure, but a GET that changes state still fires.
+    // Every request is checked, not only the navigation: a page can embed
+    // <img src="http://169.254.169.254/..."> and the worker would fetch it from
+    // inside the network. About side effects rather than disclosure - axe reads
+    // the DOM, not image bytes - but a GET that changes state still fires.
     //
-    // The resolver is wrapped per AUDIT and coalesces only lookups that are
-    // in flight together - it never holds a completed answer. Caching one
-    // would mean validating an address once and trusting it for the rest of an
-    // audit that can run for tens of seconds, which is long enough to flip DNS
-    // underneath it.
-    // Shared with the pre-navigation check below, so one host resolves once.
+    // Coalesces only lookups in flight together and never holds a completed
+    // answer: caching one would validate an address once and trust it for an
+    // audit long enough for DNS to flip underneath it. Shared with the
+    // pre-navigation check, so one host resolves once.
     const guardResolver = new CoalescingDnsResolver(this.dnsResolver)
     const policy = this.urlPolicy ?? DEFAULT_URL_POLICY
     const guard = makeRequestGuard(guardResolver, policy)
     await installGuards(context, guard)
 
-    // A timed-out job must kill the browser, not merely stop awaiting it -
-    // otherwise the work carries on unattended with a live Chromium behind it.
-    // `void` discards the value, NOT the rejection. If the browser has already
-    // crashed, close() rejects and Node treats an unhandled rejection as fatal
-    // - killing the worker instead of letting the job be retried. The awaited
-    // close in `finally` is what reports a genuine cleanup failure.
+    // A timed-out job must kill the browser, not merely stop awaiting it.
+    // `void` discards the value, NOT the rejection: on an already-crashed
+    // browser close() rejects, and an unhandled rejection is fatal in Node -
+    // killing the worker instead of retrying the job. The awaited close in
+    // `finally` reports a genuine cleanup failure.
     const abort = (): void => { void context.close().catch(() => undefined) }
     signal.addEventListener('abort', abort, { once: true })
 
     try {
-      // Launching Chromium and opening a context take real time, and an abort
-      // during that window has already fired - so the listener just registered
-      // will never run. Without this re-check the audit would run to
-      // completion for a job whose budget expired before it began.
+      // Launching Chromium takes real time, and an abort during that window
+      // has already fired, so the listener just registered will never run.
       signal.throwIfAborted()
 
       const page = await context.newPage()
@@ -252,11 +240,10 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       page.on('dialog', (dialog) => { void dialog.dismiss().catch(() => undefined) })
       context.on('page', (popup) => { void popup.close().catch(() => undefined) })
 
-      // The submitted URL is checked BEFORE navigating, not only by the route
-      // guard. A route handler is a network boundary, and `file:` and `data:`
-      // are not guaranteed to produce an interceptable HTTP request at all -
-      // a file:/// audit could read the worker's own disk before the guard
-      // ever saw a request. This is the same policy, applied one layer up.
+      // Checked BEFORE navigating, not only by the route guard: `file:` and
+      // `data:` need not produce an interceptable HTTP request at all, so a
+      // file:/// audit could read the worker's disk before the guard saw
+      // anything. The same policy, one layer up.
       if (!await isNavigable(url, guardResolver, policy)) {
         throw new Error(`net::ERR_BLOCKED_BY_CLIENT at ${url}`)
       }
@@ -279,12 +266,10 @@ export class PlaywrightAxeAuditor implements PageAuditor {
 
       await page.addScriptTag({ path: AXE_PATH })
 
-      // Mapped INSIDE the browser. Measured on a fixture: the raw result
-      // serialises to 42,996 bytes and 41,922 with resultTypes - a 2.5%
-      // saving, not the "dramatic" one the issue assumed - while returning
-      // only the mapped violations is 621 bytes, because `passes` never
-      // crosses the CDP boundary at all. It also means no axe type ever
-      // exists in Node, so the protocol boundary is real rather than nominal.
+      // Mapped INSIDE the browser. Measured on a fixture: the raw result is
+      // 42,996 bytes against 621 for the mapped violations, because `passes`
+      // never crosses the CDP boundary. It also keeps every axe type out of
+      // Node, making the protocol boundary real rather than nominal.
       const evaluated = await page.evaluate(runAxeInPage)
 
       return {
@@ -305,9 +290,8 @@ export class PlaywrightAxeAuditor implements PageAuditor {
     this.launching = null
     if (pending === null) return
 
-    // Await the in-flight launch rather than ignoring it: a browser that
-    // finishes launching after shutdown began would otherwise outlive the
-    // process's intent to stop.
+    // Await the in-flight launch: a browser finishing after shutdown began
+    // would otherwise outlive the process's intent to stop.
     const browser = await pending.catch(() => null)
     if (browser !== null && browser.isConnected()) await browser.close()
   }

@@ -25,22 +25,19 @@ import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
  * in a second while the work it scheduled takes six hours.
  *
  * IDEMPOTENT IN TWO LAYERS, because one is not enough. The eligibility query
- * excludes pages that already have work in flight, which is cheap and catches
- * every ordinary case. It is also check-then-act: two overlapping runs both
- * select the same page before either inserts. `addScheduled` returning null is
- * the second layer - the unique index refusing a day that already has an audit
- * - and it is the one that actually makes "exactly one per page per day" true.
- * The gap between the two is deliberately left open rather than papered over
- * with a lock, so the constraint stays load-bearing rather than decorative.
+ * excludes pages with work in flight, which is cheap and catches every
+ * ordinary case - but it is check-then-act, so two overlapping runs both
+ * select a page before either inserts. `addScheduled` returning null is the
+ * second layer, and the one that actually makes "exactly one per page per day"
+ * true. The gap is left open rather than locked, so the constraint stays
+ * load-bearing rather than decorative.
  */
 /**
  * What the reclaim pass writes on a row whose job no longer exists.
  *
- * Deliberately silent about how far the audit got, because both live statuses
- * end up here and they got different distances: a `queued` row was never
- * picked up, while a `running` one was started by a worker that then died. The
- * fact they share - and the only one this pass established - is that nothing
- * is left to finish it.
+ * Silent about how far the audit got: `queued` was never picked up and
+ * `running` was started by a worker that died, and the only fact this pass
+ * established is that nothing is left to finish it.
  */
 export const ABANDONED_ERROR = 'Abandoned: no job remained to finish this audit'
 
@@ -152,22 +149,14 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
   /**
    * Retires unfinished audits that no job is ever going to run.
    *
-   * This exists because an unfinished audit hides its page from every future
-   * worklist, so a row left behind by a lost enqueue - or by a worker killed
-   * between the insert and the enqueue - ends that page's monitoring silently
-   * and permanently.
+   * An unfinished audit hides its page from every future worklist, so a row
+   * left by a lost enqueue ends that page's monitoring silently and forever.
    *
-   * The obvious fix, ageing rows out of the eligibility query after a fixed
-   * interval, is wrong in a way worth recording: on a queue that has not
-   * drained within the interval, real pending audits look abandoned too, so
-   * their pages get scheduled again and each night piles more work onto a
-   * backlog the workers are already behind on. Age cannot answer "is this
-   * work still live" - only the queue can.
-   *
-   * So age is a filter and the queue is the verdict: old rows are candidates,
-   * and only a candidate whose job is genuinely gone is retired. The interval
-   * is therefore free to be generous; it decides how much this scans, not
-   * what it concludes.
+   * Ageing rows out of the eligibility query instead is wrong in a way worth
+   * recording: on a queue that has not drained, real pending audits look
+   * abandoned too, and each night piles more work onto the backlog. Age is a
+   * filter and the queue is the verdict, so the interval is free to be
+   * generous - it decides how much this scans, not what it concludes.
    */
   private async reclaimAbandoned (
     now: Date, stopped: () => boolean
@@ -179,16 +168,11 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     let examined = 0
     let after: StaleAudit | null = null
 
-    // PAGED, for the same reason the worklist is - and here the consequence of
-    // not paging is worse than falling behind.
-    //
-    // A single first batch starves. `created_at` never changes, so candidates
-    // that are old but legitimately pending hold the front of this list every
-    // night, and on a queue that has not drained within the stale window that
-    // is the normal state rather than an edge case. An orphan behind them is
-    // never examined, and its page is excluded from re-audits permanently -
-    // which is exactly what this pass exists to prevent, so a version of it
-    // that can be starved is a version that quietly does not work.
+    // PAGED, and here not paging is worse than falling behind: `created_at`
+    // never changes, so old-but-legitimately-pending candidates hold the front
+    // of the list every night. An orphan behind them is never examined and its
+    // page is excluded from re-audits permanently - the exact failure this
+    // pass exists to prevent.
     while (examined < this.maxPagesPerRun) {
       if (stopped()) break
 
@@ -198,13 +182,10 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       try {
         candidates = await this.audits.loadStaleInFlight(staleBefore, wanted, after)
       } catch {
-        // Never fatal. Reclaiming is maintenance; failing at it must not stop
-        // the night's actual work, and the same rows are still here tomorrow.
-        //
-        // Counted, though, and not as zero. Reporting "nothing needed
-        // reclaiming" for "I could not look" would hide the one failure mode
-        // this pass exists to prevent: rows that keep excluding their pages
-        // while every run reports a healthy night.
+        // Never fatal - reclaiming is maintenance and the rows keep. Counted
+        // rather than reported as zero, because "nothing needed reclaiming"
+        // and "I could not look" are opposite facts, and conflating them hides
+        // rows excluding their pages while every run looks healthy.
         return { reclaimed, failed: failed + 1 }
       }
 
@@ -245,23 +226,18 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
    * Whether the queue still holds this audit's job - and a queue that cannot
    * answer is treated as still holding it.
    *
-   * That direction is the opposite of the one `audit-submission.ts` takes for
-   * the same question, deliberately, because the two are deciding different
-   * things. There, an unanswerable lookup costs one stray job that fails once
-   * and is gone. Here it would mark a live audit as abandoned and schedule a
-   * second one for the same page - so a Redis blip during the nightly run
-   * would manufacture duplicate work out of healthy rows. Waiting a day to
-   * reclaim a genuinely dead one is much the cheaper mistake.
+   * The OPPOSITE default to `audit-submission.ts`, deliberately: there an
+   * unanswerable lookup costs one stray job, here it would mark a live audit
+   * abandoned and schedule a second for the same page, so a Redis blip would
+   * manufacture duplicate work. Waiting a day is the cheaper mistake.
    */
   private async queueVerdict (auditId: string): Promise<'pending' | 'gone' | 'unknown'> {
     try {
-      // BOUNDED, because a `catch` alone does not implement "fails closed" -
-      // an unreachable Redis does not reject here, it hangs. BullMQ configures
-      // its connection to retry forever, which `audit-submission.ts` measured
-      // at five minutes with no resolution. Unbounded, one dead candidate
-      // would stall the fan-out until the job timeout, and the lookup would
-      // still be pending afterwards - free to resume and start mutating rows
-      // outside the attempt that was supposed to have ended.
+      // BOUNDED, because a `catch` alone does not fail closed: an unreachable
+      // Redis hangs rather than rejecting, since BullMQ retries forever. One
+      // dead candidate would stall the fan-out until the job timeout, and the
+      // lookup would still be pending afterwards - free to resume and mutate
+      // rows outside the attempt that was supposed to have ended.
       //
       // `isPending`, not `has`: a terminal job is a record BullMQ keeps for a
       // while, not work that is coming.
@@ -278,16 +254,12 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
   }
 
   /**
-   * One page: create the row, then queue the job.
+   * One page: create the row, then queue the job - never the reverse, since a
+   * worker that dequeues an id whose row does not exist has nothing to run.
    *
-   * In that order and never the reverse, for the reason every other submission
-   * path in this codebase gives - a worker that dequeues an id whose row does
-   * not exist yet has nothing to run.
-   *
-   * Sequential rather than a Promise.all over the whole list. The run has
-   * hours, the database pool is shared with the audit worker, and a fan-out
-   * that opened one connection per monitored page would take the pool out from
-   * under the audits it just scheduled.
+   * Sequential rather than `Promise.all`: the run has hours, and a fan-out
+   * opening one connection per page would take the shared pool out from under
+   * the audits it just scheduled.
    */
   private async schedule (
     page: DuePage, scheduledFor: string
@@ -313,20 +285,13 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     )
 
     if (enqueued === 'failed') {
-      // The row should go: a queued audit nothing will ever run renders on the
-      // dashboard as permanently in progress, and while it exists it keeps
-      // this page out of the worklist.
+      // A queued audit nothing will run shows as permanently in progress and
+      // keeps its page out of the worklist, so the row should go.
       //
-      // If the delete fails too, the row survives and the page is out of the
-      // worklist until the reclaim pass above retires it - which it will, on
-      // a later run, once the row is old enough to be a candidate and the
-      // queue confirms no job is behind it. Recovery is that pass, not this
-      // line: the eligibility query excludes unfinished audits regardless of
-      // age, deliberately, because ageing them out compounds under load.
-      //
-      // So the delete is swallowed rather than retried. The outage that failed
-      // it would fail the retry, and the cost of not having it is one page
-      // missing one night instead of monitoring stopping for good.
+      // Swallowed rather than retried: the outage that failed the delete would
+      // fail the retry. If it fails, the reclaim pass above retires the row on
+      // a later run, so the cost is one page missing one night rather than
+      // monitoring stopping for good.
       //
       // `unknown` deliberately does not land here: the queue may have taken
       // the job and lost the reply, and deleting the row then would leave a

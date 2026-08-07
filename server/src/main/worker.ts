@@ -42,13 +42,9 @@ connectDatabase(env.databaseUrl)
 
 /**
  * Before anything that talks to Redis, because the first thing that does is
- * where an unreachable Redis hangs.
- *
- * `setGlobalConcurrency` below is awaited, `ioredis` retries indefinitely, and
- * no worker exists yet to carry an error handler - so a Redis that is down used
- * to produce no error, no warning and no `Worker started` line, for as long as
- * anyone left it. The queue filled, the API stayed healthy, and the screen said
- * "Waiting for a free worker", which was true and unhelpful. See #83.
+ * where an unreachable Redis hangs: `setGlobalConcurrency` is awaited,
+ * `ioredis` retries forever, and no worker exists yet to carry an error
+ * handler. A Redis that was down produced no output at all. See #83.
  */
 const redis = watchRedis(env.redisUrl, console.log)
 
@@ -59,11 +55,9 @@ const pingWorker = makeWorker<PingPayload>(QUEUE_NAMES.ping, env.redisUrl, async
   })
 })
 
-// Before the audit worker exists, because a Worker starts pulling jobs the
-// moment it is constructed. Every audit is ~30s of Chromium at 300-500MB, so
-// this is the cost backstop the per-IP rate limit is not: the limit bounds one
-// source, and this bounds the whole system regardless of how many sources or
-// how many worker replicas there are.
+// Before the audit worker exists, because a Worker pulls jobs the moment it is
+// constructed. The cost backstop the per-IP rate limit is not: that bounds one
+// source, this bounds the system across every source and every replica.
 await setGlobalConcurrency(QUEUE_NAMES.audit, env.redisUrl, env.auditConcurrency)
 
 const auditWorker = makeWorker<AuditPayload>(QUEUE_NAMES.audit, env.redisUrl, async (job) => {
@@ -96,15 +90,12 @@ const auditWorker = makeWorker<AuditPayload>(QUEUE_NAMES.audit, env.redisUrl, as
   lockDuration: env.auditJobTimeoutMs + 15_000
 })
 
-// The nightly re-audit (#13), which is what makes this a monitoring product
-// rather than a one-off audit tool.
+// The nightly re-audit (#13), which makes this a monitoring product rather
+// than a one-off audit tool.
 //
-// A BullMQ job scheduler rather than a timer, and deliberately NOT for the
-// reason the session sweeper below is a timer. That one avoids Redis because
-// authentication must not depend on it; this job's entire output is BullMQ
-// jobs, so Redis is already on its critical path - and a timer would fire once
-// per worker replica, racing N fan-outs over the same rows every night. The
-// schedule lives in Redis and fires once however many workers are running.
+// A job scheduler rather than a timer: this job's output IS BullMQ jobs, so
+// Redis is already on its critical path, and a timer would fire once per
+// replica, racing N fan-outs over the same rows nightly.
 const reauditQueue = makeQueue<ReauditPayload>(QUEUE_NAMES.reaudit, env.redisUrl)
 
 reauditQueue.on('error', (error) => {
@@ -134,37 +125,22 @@ const reauditWorker = makeWorker<ReauditPayload>(
   QUEUE_NAMES.reaudit, env.redisUrl, async (job) => {
     const startedAt = Date.now()
 
-    // TWO deadlines, and the gap between them is the point.
+    // TWO deadlines, and the gap between them is the point. The soft one is a
+    // signal the run honours, so it stops at its next page and RETURNS a
+    // summary; `runWithTimeout` rejects outright, discarding the summary in
+    // exactly the case somebody most wants one. The hard bound stays because
+    // the soft one assumes the loop is running - a run wedged in a query
+    // checks no signals.
     //
-    // The soft one is a signal the run honours, so it stops at its next page
-    // and RETURNS a summary - which is what keeps a timed-out night
-    // observable. The hard one is `runWithTimeout`, which rejects outright:
-    // once it fires the return value is discarded no matter how cooperatively
-    // the handler finished, so a run bounded only by it would produce no
-    // record at all in exactly the case somebody most wants one.
-    //
-    // The hard bound stays because the soft one assumes the loop is running:
-    // a run wedged in a query that never returns checks no signals, and
-    // something has to end the attempt.
-    //
-    // It ends the ATTEMPT, and the work underneath is now bounded too.
-    // `runWithTimeout` still only aborts a signal the queries never receive,
-    // but the pool sets a statement_timeout (#52), so a lock-stalled statement
-    // is cancelled by Postgres rather than holding its connection until the
-    // loop happens to resume - which it could previously do after BullMQ had
-    // already started the retry.
-    //
-    // The unique index and the eligibility query still matter: they are what
-    // keeps a zombie and its retry from scheduling the same page twice, and
-    // they cover the window between the attempt ending and the statement
-    // being cancelled. The difference is that the window is now bounded by
-    // DATABASE_STATEMENT_TIMEOUT_MS rather than open-ended.
+    // It ends the ATTEMPT; the work underneath is bounded by the pool's
+    // statement_timeout (#52). The unique index and eligibility query cover
+    // the window between the attempt ending and the statement being cancelled,
+    // keeping a zombie and its retry from scheduling one page twice.
     const softDeadline = AbortSignal.timeout(REAUDIT_RUN_TIMEOUT_MS)
 
-    // The counters as of the last batch, kept for the path where the run
-    // never gets to return them. An interrupted run has already scheduled real
-    // audits; without this its numbers leave with the exception, the retry's
-    // own summary covers only the tail, and nothing reconstructs the night.
+    // Counters as of the last batch, for the path where the run never returns
+    // them: an interrupted run has already scheduled real audits, and without
+    // this its numbers leave with the exception.
     let progress: ReauditRunSummary | null = null
 
     const summary = await runWithTimeout(
@@ -181,10 +157,8 @@ const reauditWorker = makeWorker<ReauditPayload>(
         })
       }
     ).catch((error: unknown) => {
-      // The hard bound fired, or the run threw. Still emit a record, with
-      // whatever counters it had reached - a night that produced nothing but a
-      // stack trace is a night nobody can reconstruct, and this is the one an
-      // operator will come looking for.
+      // The hard bound fired, or the run threw. Still emit a record: a night
+      // that produced only a stack trace is one nobody can reconstruct.
       console.log(JSON.stringify({
         event: 'reaudit-run',
         outcome: 'aborted',
@@ -196,10 +170,9 @@ const reauditWorker = makeWorker<ReauditPayload>(
       throw error
     })
 
-    // One structured line per run, emitted even when there was nothing to do.
-    // A scheduler that stops firing breaks this product silently - nothing
-    // errors, users simply stop being told their pages got worse - so the
-    // absence of this line is the signal. #25 forwards it to PostHog.
+    // One line per run, emitted even when there was nothing to do: a scheduler
+    // that stops firing breaks this product silently, so the ABSENCE of this
+    // line is the signal. #25 forwards it to PostHog.
     console.log(JSON.stringify({
       event: 'reaudit-run',
       outcome: 'completed',
@@ -208,10 +181,9 @@ const reauditWorker = makeWorker<ReauditPayload>(
       durationMs: Date.now() - startedAt
     }))
 
-    // Thrown AFTER the summary is logged, so the record of what happened
-    // survives the failure. Retrying is safe and cheap: every page the attempt
-    // did schedule now has an audit in flight and is excluded from the
-    // eligibility query, so the next attempt picks up only what is still owed.
+    // Thrown AFTER the summary is logged, so the record survives the failure.
+    // Safe to retry: pages the attempt scheduled are excluded from the
+    // eligibility query, so the next one picks up only what is still owed.
     const failure = reauditRunFailure(summary, reauditShutdown.signal.aborted)
     if (failure !== null) throw new Error(failure)
   }
@@ -243,15 +215,12 @@ const alertWorker = makeWorker<AlertQueuePayload>(
   { limiter: ALERT_EMAIL_WORKER_LIMITER }
 )
 
-// Expired sessions were enforced at read time but never removed, so the
-// table only grew - one row per login, forever. This runs here rather than in
-// the API because the API scales horizontally and would have N instances
-// issuing the same delete, and because the worker already owns background
-// work and a database connection.
+// Here rather than in the API, which scales horizontally and would have N
+// instances issuing the same delete.
 //
-// Left as a timer rather than folded into the scheduler above, which #13's
-// comment proposed: #10's design turns on authentication not depending on
-// Redis, and a repeatable job would make session maintenance do exactly that.
+// A timer rather than the scheduler above, deliberately: #10's design turns on
+// authentication not depending on Redis, and a repeatable job would make
+// session maintenance do exactly that.
 const sessionSweeper = startSessionSweeper(new PostgresSessionRepository(getDatabase()))
 
 const workers = [pingWorker, auditWorker, reauditWorker, alertWorker]

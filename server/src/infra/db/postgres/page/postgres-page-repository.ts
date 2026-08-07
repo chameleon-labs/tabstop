@@ -27,25 +27,20 @@ import { toAuditModel } from '../audit/audit-mapper.js'
 import { toPageModel } from './page-mapper.js'
 
 /**
- * How many recent scores the dashboard sparkline (#20) draws.
- *
- * Bounded in SQL rather than sliced in application code. A monitored page is
- * audited daily and nothing prunes history, so "fetch them all and keep
- * thirty" is a query whose cost grows for as long as the account exists.
+ * How many recent scores the dashboard sparkline (#20) draws. Bounded in SQL
+ * rather than sliced in code: history is never pruned, so "fetch all, keep
+ * thirty" costs more for as long as the account exists.
  */
 export const HISTORY_POINTS = 30
 
 const MAX_BIGINT = 9223372036854775807n
 
 /**
- * Postgres rejects a value that cannot be a `bigint` (SQLSTATE 22P03, or 22003
- * when it overflows) instead of returning zero rows, so an id from a url path
- * has to be checked before it reaches a query. A value that cannot BE an id
- * cannot match a row - it is a miss, not an error, which is what keeps
- * `Promise<PageModel | null>` an honest signature.
- *
- * Same rule PostgresAuditRepository applies to `public_uuid`, for the same
- * reason: the database's own type checking must not become a 500.
+ * Postgres rejects a non-`bigint` (SQLSTATE 22P03, or 22003 on overflow)
+ * rather than returning zero rows, so an id from a url path is checked first.
+ * A value that cannot BE an id is a miss, not an error - which is what keeps
+ * `Promise<PageModel | null>` honest and the database's type checking from
+ * becoming a 500.
  */
 const isStorableId = (value: string): boolean =>
   /^\d{1,19}$/.test(value) && BigInt(value) <= MAX_BIGINT
@@ -63,17 +58,14 @@ export class PostgresPageRepository implements
    * One transaction, because the four things it does are only correct
    * together.
    *
-   * It opens by locking the account's own row. That lock is what makes the cap
-   * exact: `count` then `insert` is check-then-act, so without it two
-   * concurrent adds both see nine pages and both insert, and an account that
-   * may hold ten holds eleven. Serialising per account costs nothing real -
-   * adds are rare and the ten-page ceiling bounds how long one can take - and
-   * accounts never contend with each other. It is also the only lock taken, so
-   * there is no acquisition order to deadlock on.
+   * It opens by locking the account's row, which is what makes the cap exact:
+   * `count` then `insert` is check-then-act, so without it two concurrent adds
+   * both see nine pages and an account that may hold ten holds eleven.
+   * Serialising per account is free - adds are rare, accounts never contend -
+   * and it is the only lock taken, so there is no order to deadlock on.
    *
-   * `userId` comes from the session that the auth middleware resolved, never
-   * from the request body, so it needs no id guard: a value that is not an
-   * account id could not have got here.
+   * `userId` comes from the resolved session, never the request body, so it
+   * needs no id guard.
    */
   async add (params: AddPageRepositoryParams): Promise<AddPageRepositoryResult> {
     return await this.db.transaction().execute(async (trx) => {
@@ -110,12 +102,9 @@ export class PostgresPageRepository implements
 
       const page = await trx.insertInto('pages')
         .values({ site_id: siteId, url: params.url })
-        // `do nothing` rather than catching SQLSTATE 23505. A raised error
-        // inside a transaction ABORTS it, so every statement after the catch
-        // would fail with 25P02 and the recovery would have to be "start
-        // over"; this returns zero rows and leaves the transaction usable.
-        // Unreachable while the lock above is held, and kept because the
-        // constraint is what actually guarantees it.
+        // `do nothing` rather than catching 23505: an error inside a
+        // transaction ABORTS it, so everything after would fail with 25P02.
+        // This returns zero rows and leaves the transaction usable.
         .onConflict((oc) => oc.constraint('pages_site_id_url_unique').doNothing())
         .returningAll()
         .executeTakeFirst()
@@ -135,33 +124,22 @@ export class PostgresPageRepository implements
   }
 
   /**
-   * One batch of the nightly run's worklist: monitored pages with nothing
-   * recently in flight and nothing audited yet today (#13).
+   * One batch of the nightly run's worklist: monitored pages with nothing in
+   * flight and nothing audited yet today (#13).
    *
-   * Two `not exists` clauses rather than a left join and a filter, because
-   * each is answered by an index that stops at the first matching row instead
-   * of building a result to discard.
+   * Two `not exists` clauses rather than a left join and filter, so each is
+   * answered by an index that stops at the first matching row. The first reads
+   * the partial `audits_in_flight_page_idx`, without which this walks a page's
+   * whole audit history to find nothing, once per page per night.
    *
-   * The first reads `audits_in_flight_page_idx`, which is partial on `status
-   * in ('queued','running')` so it holds only live work. Without it this check
-   * walks a page's entire audit history to find nothing - a cost that grows
-   * for as long as the account is a customer, paid once per page per night.
+   * NO age limit on that clause, deliberately: ageing unfinished audits out
+   * compounds under load, since on a queue that has not drained real pending
+   * audits read as abandoned and their pages pile more work onto the backlog.
+   * Whether work is still live is a question only the queue can answer.
    *
-   * There is deliberately no age limit on that clause. Ageing unfinished
-   * audits out would compound under load: once the queue stops draining within
-   * a day, real pending audits read as abandoned and their pages are scheduled
-   * again, so each night adds work on top of a backlog. A row that is
-   * genuinely abandoned is reclaimed by asking the queue whether its job still
-   * exists, which no SQL predicate can answer.
-   *
-   * The second reads `audits_page_created_idx` on its leading columns. It
-   * keys on `created_at`, not on `scheduled_for`: a page somebody audited
-   * manually an hour ago should not be fetched again tonight, and that is a
-   * cost control the unique index deliberately does not enforce.
-   *
-   * The order is `pages.id` because the cursor is, and because a run that does
-   * stop early should stop somewhere reproducible rather than wherever the
-   * planner felt like ending.
+   * The second keys on `created_at`, not `scheduled_for`, so a page audited
+   * manually an hour ago is not fetched again tonight. Ordered by `pages.id`
+   * because the cursor is, so a run that stops early stops reproducibly.
    */
   async loadDueForReaudit (query: DuePageQuery): Promise<DuePage[]> {
     let statement = this.db.selectFrom('pages')
@@ -232,14 +210,11 @@ export class PostgresPageRepository implements
    * The trend chart's data (#21): one page, every audit since `since`.
    *
    * Ownership is settled by the first statement, so a page belonging to
-   * somebody else never reaches the audit read at all - there is no window in
-   * which this touches rows the caller may not see.
+   * somebody else never reaches the audit read.
    *
-   * The audit read is a single index scan on `audits_page_created_idx`. That
-   * index is declared `(page_id, created_at desc)` and this wants ascending;
-   * Postgres walks it backwards for the same cost and still returns rows in
-   * order, so ascending here buys the chart a list it can render directly
-   * rather than one it has to reverse - and costs nothing to get.
+   * `audits_page_created_idx` is declared `(page_id, created_at desc)` and
+   * this wants ascending; Postgres walks it backwards for the same cost, so
+   * the chart gets a list it can render without reversing.
    *
    * No status filter. Every audit in the window is a point, `failed` included.
    */
@@ -304,13 +279,10 @@ export class PostgresPageRepository implements
   }
 
   /**
-   * Find-or-create, in that order, then find again.
-   *
    * `on conflict do nothing` plus a re-select rather than check-then-insert:
    * losing a race on `sites_user_domain_unique` is a normal outcome and must
-   * resolve to the row that won, never to a 500. The lock in `add` makes the
-   * race unreachable today - this is what keeps that true if it ever stops
-   * being.
+   * resolve to the row that won, never to a 500. The lock in `add` makes that
+   * race unreachable today; this keeps it correct if that changes.
    */
   private async findOrCreateSite (
     trx: Kysely<Database>, userId: string, domain: string
@@ -343,10 +315,9 @@ export class PostgresPageRepository implements
   /**
    * The latest audit per page whatever its status, in one round trip.
    *
-   * `distinct on` is the Postgres idiom for it and reads straight off
-   * `audits_page_created_idx`, whose column order - (page_id, created_at desc)
-   * - is exactly this. The dashboard needs the status rather than only the
-   * score, because a failed run has to look different from a bad one.
+   * `distinct on` reads straight off `audits_page_created_idx`, whose column
+   * order is exactly this. Status as well as score, because a failed run has
+   * to look different from a bad one.
    */
   private async loadLatestAudits (pageIds: string[]): Promise<Map<string, AuditModel>> {
     const rows = await this.db.selectFrom('audits')
@@ -369,20 +340,14 @@ export class PostgresPageRepository implements
    * The last HISTORY_POINTS finished scores for every page at once, oldest
    * first so a sparkline renders in array order.
    *
-   * A LATERAL join, so the bound is on work rather than only on output.
-   *
-   * A plain `limit` cannot do this at all: one limit over a multi-page result
-   * truncates at whichever pages sort first, leaving later pages with no
-   * sparkline. `row_number() ... where rank <= 30` was the first version and
-   * looks equivalent - Postgres 15 and later even push the comparison into the
-   * window as a Run Condition, so it emits exactly 30 rows per page. But the
-   * scan underneath it is not what stops: measured on Postgres 17 with 3,000
-   * finished audits per page, the index scan still read all 30,000 rows and
-   * touched 397 buffers to return 300. This form asks for 30 rows per page and
-   * reads 30 - 34 buffers for the same result, and stays there as the history
-   * grows. On a nightly monitor that difference is the whole point: the
-   * dashboard is the polled endpoint, and its cost must not track how long the
-   * account has been a customer.
+   * A LATERAL join, so the bound is on WORK and not only on output. A plain
+   * `limit` truncates at whichever pages sort first, leaving later pages with
+   * no sparkline. `row_number() ... where rank <= 30` emits the right rows but
+   * does not stop the scan underneath: measured on Postgres 17 with 3,000
+   * audits per page, it read all 30,000 rows and 397 buffers to return 300,
+   * where this reads 30 rows and 34 buffers and stays there as history grows.
+   * The dashboard is the polled endpoint, so its cost must not track how long
+   * the account has been a customer.
    */
   private async loadRecentScores (pageIds: string[]): Promise<Map<string, PageScorePoint[]>> {
     const rows = await this.db.selectFrom('pages')
