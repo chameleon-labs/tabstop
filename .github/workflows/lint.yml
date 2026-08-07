@@ -1,0 +1,62 @@
+name: Lint
+
+# Its own workflow rather than steps inside the two package ones, because
+# linting and formatting are the only checks here that are NOT per-package:
+# both commands read `web/`, `server/` and `contract/` in one pass, so putting
+# them in either workflow would either duplicate the work or skip it whenever
+# the other package was the one that changed.
+#
+# The filter is correspondingly wide. Note `.oxlintrc.json` and `.oxfmtrc.json`
+# specifically: a change to either alters what every file is checked against
+# while touching no source at all, and neither package workflow watches them -
+# so without these two entries a rule could be turned off in a commit that
+# nothing verified.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'server/**'
+      - 'contract/**'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/lint.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'server/**'
+      - 'contract/**'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/lint.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          # The ROOT manifest: `packageManager` lives at the workspace root, and
+          # pointing this at a package fails with "No pnpm version is specified".
+          package_json_file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: 'web/.nvmrc'
+          cache: 'pnpm'
+          cache-dependency-path: 'pnpm-lock.yaml'
+      - run: pnpm install --frozen-lockfile
+
+      # Both run even when the first fails, so one push reports every problem
+      # rather than hiding the formatting behind the linting. They are
+      # independent checks and neither is a prerequisite of the other.
+      - run: pnpm lint
+      - if: '!cancelled()'
+        run: pnpm format:check
