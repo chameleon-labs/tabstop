@@ -18,7 +18,9 @@
   },
   "ignorePatterns": [
     "**/dist/**",
-    "**/coverage/**"
+    "**/coverage/**",
+    "**/vendor/**",
+    "**/*.min.*"
   ],
   "rules": {
     "array-callback-return": "error",

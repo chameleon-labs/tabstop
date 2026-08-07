@@ -9,6 +9,8 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/coverage/**",
-    "**/*.snap"
+    "**/*.snap",
+    "**/vendor/**",
+    "**/*.min.*"
   ]
 }
