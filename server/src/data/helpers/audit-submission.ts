@@ -8,11 +8,10 @@ const ENQUEUE_BACKOFF_MS = 50
 /**
  * Bounds a single call into the queue.
  *
- * BullMQ configures its connection to retry a lost Redis forever, so `add`
- * does not reject when Redis is down - it hangs. Measured: five minutes with
- * no resolution, and `enableOfflineQueue: false` does not change it. Without
- * this bound the retry-and-recover path below is unreachable and the request
- * simply never answers.
+ * BullMQ retries a lost Redis forever, so `add` hangs rather than rejecting.
+ * Measured at five minutes with no resolution, and `enableOfflineQueue: false`
+ * does not change it. Unbounded, the recovery path below is unreachable and
+ * the request never answers.
  */
 export const ENQUEUE_TIMEOUT_MS = 2000
 
@@ -27,14 +26,11 @@ export const withTimeout = async <T>(work: Promise<T>, ms: number): Promise<T> =
 /**
  * Whether every address the host resolves to is safe to fetch.
  *
- * This is defence in depth rather than the boundary: the worker re-resolves at
- * fetch time, because this answer cannot be trusted by then. What it buys is
- * refusing what is ALREADY known to be wrong before it becomes a queued job, a
- * browser launch and a failed audit thirty seconds later - and, for a
- * monitored page, before it becomes that every night.
- *
- * It costs a lookup per call, which is only affordable because a rate limit
- * sits in front of every caller.
+ * Defence in depth, not the boundary - the worker re-resolves at fetch time
+ * because this answer cannot be trusted by then. It buys refusing what is
+ * already known to be wrong before it costs a queued job, a browser launch and
+ * thirty seconds, nightly for a monitored page. One lookup per call, affordable
+ * only because a rate limit sits in front of every caller.
  */
 export const resolvesSafely = async (
   url: URL, dnsResolver: DnsResolver, urlPolicy: UrlPolicy
@@ -53,13 +49,12 @@ export const resolvesSafely = async (
 }
 
 /**
- * Three outcomes rather than a boolean or a throw, because the two failures
- * call for opposite responses and only the caller knows which it wants.
+ * Three outcomes rather than a boolean, because the two failures call for
+ * opposite responses and only the caller knows which it wants.
  *
- * `unknown` is the one that matters: failing to confirm an enqueue is not the
- * same as it not happening - Redis may have committed the job and lost the
- * reply - so a caller that would clean up on `failed` must not clean up here,
- * or it leaves a job pointing at a row that no longer exists.
+ * `unknown` is the one that matters: Redis may have committed the job and lost
+ * the reply, so a caller that cleans up on `failed` must not clean up here, or
+ * it leaves a job pointing at a row that no longer exists.
  */
 export type EnqueueOutcome = 'queued' | 'unknown' | 'failed'
 
@@ -67,11 +62,10 @@ export type EnqueueOutcome = 'queued' | 'unknown' | 'failed'
  * Most enqueue failures are a blip; absorbing them keeps cleanup for real
  * outages.
  *
- * `delayMs` is how long the queue holds the job before a worker may take it:
- * zero for anything a person is waiting on, and the daily scheduler's
- * per-domain jitter for a re-audit. It changes nothing about the retry
- * semantics below - the job is enqueued the moment `add` returns, and the
- * delay is a property of the job rather than of getting it there.
+ * `delayMs` is how long the queue holds the job before a worker may take it -
+ * zero for anything a person waits on, the scheduler's per-domain jitter for a
+ * re-audit. It changes no retry semantics: the job is enqueued when `add`
+ * returns, and the delay is a property of the job rather than of getting there.
  */
 export const enqueueAudit = async (
   queue: AuditJobQueue, auditId: string, delayMs = 0
@@ -105,26 +99,18 @@ export const enqueueAudit = async (
 }
 
 /**
- * Whether the queue already holds this job. Bounded, and a queue that cannot
- * answer is treated as NOT holding it - so the caller cleans up.
+ * Bounded, and a queue that cannot answer is treated as NOT holding the job -
+ * so the caller cleans up.
  *
- * That direction is deliberate and it is the one a reader will want to argue
- * with, because an indeterminate answer does not prove absence: if the enqueue
- * committed, lost its reply, and Redis then went away, this reports `failed`
- * and the audit row is deleted under a job that exists. The two residuals are
- * not symmetric, though, and the common case decides it.
+ * The residuals are asymmetric and the common case decides it. Failing toward
+ * cleanup, a stray job's next delivery finds no audit, raises
+ * PermanentAuditError, fails once and is gone. Failing the other way - Redis
+ * simply down, nothing ever enqueued - leaves a `queued` row nothing will run:
+ * a client polling a 202 forever, and no sweeper to reap it.
  *
- * Failing toward cleanup, the stray job's next delivery finds no audit;
- * `DbRunAudit` raises PermanentAuditError, so it fails ONCE, is not retried,
- * and is gone. Failing the other way, the far more likely case - Redis is
- * simply down, so nothing was ever enqueued - leaves a `queued` row that
- * nothing will ever run: a client polling a 202 forever, a dashboard row stuck
- * in progress, and no sweeper to reap either.
- *
- * So the rare interleaving costs one logged failure, and the common outage
- * would cost a permanent lie. A confirmed `has === true` still keeps the row -
- * what this refuses to do is treat "I could not measure" as "it is there",
- * exactly as `queueIsSaturated` refuses to read it as "it is full".
+ * So the rare interleaving costs one logged failure, whereas the common outage
+ * would cost a permanent lie. A confirmed `has === true` still keeps the row;
+ * what this refuses is to read "I could not measure" as "it is there".
  */
 const queueAlreadyHas = async (queue: AuditJobQueue, auditId: string): Promise<boolean> => {
   try {

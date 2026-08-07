@@ -10,8 +10,7 @@ export interface ScoreChartProps {
   /** Nine (date, score) points, oldest first — `ScoreHistory`'s own data,
    *  the same array the hidden `Table` renders. */
   data: readonly ScoreChartPoint[]
-  /** The date the dashed reference line marks. Must match one of `data`'s
-   *  `date` values; if it doesn't, no reference line is drawn. */
+  /** Must match one of `data`'s `date` values, or no line is drawn. */
   referenceDate: string
 }
 
@@ -66,8 +65,6 @@ function dotToneClass(score: number): 'good' | 'warn' | 'bad' {
 }
 
 /**
- * The "Score history — acme.example" section's line chart.
- *
  * Page-local, not a library component — see the module docs on
  * `landing.tsx`:
  * charting is product surface, not a design-system concern, so this reaches

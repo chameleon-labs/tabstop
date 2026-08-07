@@ -43,38 +43,31 @@ export const applyCookies = (res: Response, cookies: CookieDirective[] | undefin
  * Generic, so a controller can declare the request shape it expects without
  * every factory casting it back to `Controller<unknown>`.
  *
- * `Controller.handle` is a property rather than a method, so under
- * `strictFunctionTypes` its parameter is contravariant and
- * `Controller<AddPageRequest>` is NOT assignable to `Controller<unknown>` -
- * which is why five factories carried an `as Controller`. Those casts each
- * silenced the check at a call site that had no way to justify it. Taking the
- * type parameter here moves the one genuinely unavoidable assertion to the
- * only place that can explain it: see below.
+ * `Controller.handle` is a property, so under `strictFunctionTypes` its
+ * parameter is contravariant and `Controller<AddPageRequest>` is NOT
+ * assignable to `Controller<unknown>` - which is why five factories carried an
+ * `as Controller`. The type parameter moves the one unavoidable assertion to
+ * the only place that can explain it: see below.
  */
 export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
   return async (req: Request, res: Response): Promise<void> => {
-    // Client-supplied input first, then everything WE established - cookies we
-    // parsed, then whatever the auth middleware put in res.locals. Both must
-    // outrank the body: with res.locals first, a client posts {"userId": 1}
-    // and impersonates. Pinned by a spec.
+    // Client-supplied input first, then what WE established - parsed cookies,
+    // then res.locals from the auth middleware. Both must outrank the body, or
+    // a client posts {"userId": 1} and impersonates. Pinned by a spec.
     //
-    // Within the client-supplied half the order is body, then query, then
-    // params - weakest claim to strongest. A path segment is what the route
-    // actually matched and what a cache keys on, so it must not be reachable
-    // from a query string: with query last, `GET /api/audits/<uuid>?uuid=<other>`
-    // is answered from <other> while the url still says <uuid>.
+    // Within the client half: body, query, params - weakest claim to
+    // strongest. A path segment is what the route matched and what a cache
+    // keys on, so it must not be reachable from a query string, or
+    // `GET /api/audits/<uuid>?uuid=<other>` answers from <other>.
     //
-    // Logout needs the cookie without sitting behind the auth middleware, so
-    // that it stays idempotent (204 on an absent or dead session) rather than
-    // answering 401.
+    // Logout reads the cookie without sitting behind auth, so it stays
+    // idempotent (204 on an absent session) rather than answering 401.
     //
-    // The one cast in this layer, and the only place in the codebase that can
-    // account for it: this object is assembled at runtime from a body, a query
-    // string and a params bag that the framework types as `any`, so no static
-    // check upstream of here means anything. Every controller re-validates
-    // what it reads - `typeof request.id !== 'string'` is a 404, a zod schema
-    // is a 400 - so the assertion is a claim about SHAPE that each consumer
-    // then verifies, not a claim about trustworthiness that nobody checks.
+    // The one cast in this layer, and the only place that can account for it:
+    // this is assembled at runtime from a body, query and params the framework
+    // types as `any`, so no static check upstream means anything. Every
+    // controller re-validates what it reads, so the assertion is a claim about
+    // SHAPE that each consumer verifies, not one about trustworthiness.
     const httpRequest = {
       ...req.body,
       ...req.query,

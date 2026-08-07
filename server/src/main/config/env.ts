@@ -41,17 +41,14 @@ const DEFAULT_SCRYPT_COST = 32768
 const DEFAULT_SESSION_TTL_DAYS = 30
 
 /**
- * Browsers cap cookie expiry at 400 days (RFC 6265bis; Chrome 104+ enforces
- * it), so a longer session cannot be honoured by the cookie anyway - the
- * browser would silently clamp it while the row kept the longer expiry,
- * reintroducing exactly the cookie/row divergence that taking expiresAt from
+ * Browsers cap cookie expiry at 400 days (RFC 6265bis), so a longer session
+ * cannot be honoured: the browser clamps silently while the row keeps the
+ * longer expiry, which is the cookie/row divergence taking `expiresAt` from
  * the persisted session exists to prevent.
  *
- * It also keeps the arithmetic inside Date's range. `Date.now() + days * 86400000`
- * overflows at about 99,979,338 days, and node-postgres serialises the
- * resulting Invalid Date as "0NaN-NaN-NaNTNaN:NaN:NaN.NaN+NaN:NaN", which
- * Postgres rejects - so an absurd TTL would 500 every signup and login rather
- * than merely being an odd setting.
+ * It also keeps the arithmetic inside Date's range - past it, node-postgres
+ * serialises the Invalid Date to something Postgres rejects, so an absurd TTL
+ * would 500 every signup rather than merely being an odd setting.
  */
 const MAX_SESSION_TTL_DAYS = 400
 
@@ -70,13 +67,11 @@ const DEFAULT_AUDIT_RATE_PER_HOUR = 5
 const DEFAULT_AUDIT_QUEUE_MAX_DEPTH = 100
 const MAX_AUDIT_QUEUE_MAX_DEPTH = 10_000
 /**
- * This is the one dial documented as production-tunable, which is exactly
- * why it needs a ceiling like every other numeric variable in this file:
- * unlike a typo in a timeout, AUDIT_RATE_CAPACITY=50000 boots cleanly and
- * silently removes the limit that makes deploying this endpoint safe. 1000
- * is far beyond what MAX_AUDIT_CONCURRENCY (16 concurrent Chromium contexts)
- * could ever sustain, so it still catches a stray extra zero without
- * constraining any real deployment.
+ * Production-tunable, which is exactly why it needs a ceiling: unlike a typo
+ * in a timeout, AUDIT_RATE_CAPACITY=50000 boots cleanly and silently removes
+ * the limit that makes this endpoint safe to deploy. 1000 is far past what 16
+ * concurrent Chromium contexts could sustain, so it catches a stray zero
+ * without constraining any real deployment.
  */
 const MAX_AUDIT_RATE_CAPACITY = 1000
 const MAX_AUDIT_RATE_PER_HOUR = 1000

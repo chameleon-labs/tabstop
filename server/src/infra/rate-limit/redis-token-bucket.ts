@@ -8,21 +8,15 @@ import { makeRateLimitAllowance } from './rate-limit-allowance.js'
 const MS_PER_HOUR = 3_600_000
 
 /**
- * Not `(cost - tokens) / refillPerMs`: `refillPerMs` is itself already a
- * rounded division (`refillPerHour / msPerHour`), and dividing by it a second
- * time compounds that rounding into a result a whole millisecond over the
- * true value at exact-boundary deficits (e.g. capacity 3, refillPerHour 1, a
- * deficit of exactly 1 token - `1 / (1 / 3600000) === 3600000.0000000005` in
- * IEEE754, and Lua's numbers are the same doubles JS uses). Deriving the wait
- * straight from `refillPerHour` keeps it to one division instead of a
- * division of a division.
+ * Not `(cost - tokens) / refillPerMs`: `refillPerMs` is already a rounded
+ * division, and dividing by it again compounds that into a result a whole
+ * millisecond over the true value at exact-boundary deficits -
+ * `1 / (1 / 3600000) === 3600000.0000000005`, and Lua uses the same doubles.
  *
- * Exported verbatim so `redis-token-bucket.spec.ts` can eval this exact
- * expression against a real Lua interpreter with controlled inputs: forcing
- * SCRIPT's own `tokens` to land at precisely `cost - 1` would mean racing
- * Redis's TIME() call, which cannot be done deterministically, so the
- * boundary is instead verified here, sharing this string so the production
- * formula and the spec can never silently diverge.
+ * Exported verbatim so the spec can eval this exact expression against a real
+ * Lua interpreter: landing SCRIPT's own `tokens` on precisely `cost - 1` would
+ * mean racing Redis's TIME(), so the boundary is checked here instead and the
+ * shared string keeps the two from diverging.
  */
 export const WAIT_MS_FORMULA = '(cost - tokens) * msPerHour / refillPerHour'
 
@@ -31,10 +25,9 @@ export const WAIT_MS_FORMULA = '(cost - tokens) * msPerHour / refillPerHour'
  * equivalent: two concurrent requests both see the last token and both
  * proceed, which a spec fires twenty parallel consumes to prove.
  *
- * `now` comes from Redis rather than from Node. With more than one API
- * instance (#16) the app clocks drift, and a bucket shared between them would
- * refill at whichever instance's clock ran fast. Redis 7+ replicates scripts
- * by effects, so calling TIME and then writing is permitted.
+ * `now` comes from Redis: with more than one API instance (#16) the app clocks
+ * drift, and a shared bucket would refill at whichever ran fast. Redis 7+
+ * replicates by effects, so calling TIME then writing is permitted.
  */
 const SCRIPT = `
 local msPerHour     = ${MS_PER_HOUR}
@@ -72,20 +65,15 @@ return { 0, math.floor(tokens), math.ceil(${WAIT_MS_FORMULA}) }
 /**
  * How long a command waits for the connection to come up before giving up.
  *
- * The client is built with `enableOfflineQueue: false`, which is what makes a
- * dead Redis reject rather than hang - but it draws no distinction between
- * dead and NOT YET CONNECTED. A socket takes a few milliseconds to become
- * writable, and until it does every command fails with "Stream isn't writeable
- * and enableOfflineQueue options is false". So the first request a process
- * served degraded to the in-process fallback for no reason beyond its own
- * timing, and every rate-limit decision for the next five seconds came from a
- * per-process bucket instead of the shared one.
+ * `enableOfflineQueue: false` is what makes a dead Redis reject rather than
+ * hang, but it does not distinguish dead from NOT YET CONNECTED - so until the
+ * socket became writable, the first request a process served degraded to the
+ * in-process fallback purely on its own timing, taking the next five seconds
+ * of decisions with it.
  *
- * ioredis offers unbounded queueing or none. This is the middle: queue
- * briefly, then fail. A second is far longer than a connection needs and short
- * enough that a real outage is still noticed promptly - and an outage costs
- * one wait per degraded window rather than one per request, because the first
- * failure puts the limiter on its fallback for the next five seconds.
+ * ioredis offers unbounded queueing or none; this is the middle. A second is
+ * far longer than a connection needs and short enough to notice a real outage,
+ * which costs one wait per degraded window rather than one per request.
  */
 export const READY_TIMEOUT_MS = 1000
 
@@ -108,35 +96,26 @@ export class RedisTokenBucket implements RateLimiter {
   }
 
   /**
-   * One wait shared by every request that arrives while the socket is opening.
+   * One wait shared by every request arriving while the socket is opening.
    *
-   * Coalesced for the same reason `CoalescingDnsResolver` is, plus one this
-   * class cannot avoid: each wait attaches `ready` and `error` listeners to the
-   * client, and Node warns past ten. A burst arriving at startup - which is
-   * precisely when a connection is still opening - would print
-   * MaxListenersExceededWarning to stderr, which is the noise this whole change
-   * exists to remove.
+   * Each wait attaches `ready` and `error` listeners and Node warns past ten,
+   * so a burst at startup - precisely when a connection is still opening -
+   * would print MaxListenersExceededWarning to stderr.
    *
-   * Cleared on settlement, so a later disconnect gets a fresh wait rather than
-   * a memo of the last one.
+   * Cleared on settlement, so a later disconnect gets a fresh wait.
    */
   private connecting: Promise<void> | null = null
 
   /**
    * Waits for a connection that is on its way, and only for that.
    *
-   * `end` is terminal - the client has been closed and will never emit
-   * `ready` - so it fails immediately rather than spending the timeout
-   * learning that. Everything else is either already usable or connecting.
+   * `end` is terminal, so it fails immediately rather than spending the
+   * timeout learning that; everything else is usable or connecting. `once`
+   * rejects on `error` too, so a refused socket does not wait out the budget.
    *
-   * `once` rejects on an `error` from the client as well as on the timeout,
-   * which is what keeps a refused connection fast: there is no reason to wait
-   * out the full budget for a socket that has already been told no.
-   *
-   * A client that closes WHILE this waits is not caught by either and costs
-   * the full budget. Left alone: it needs a shutdown to land inside the
-   * window, and a second of latency on the way out is not worth racing two
-   * listeners to avoid.
+   * A client that closes WHILE this waits is caught by neither and costs the
+   * full budget - left alone, since it needs a shutdown to land inside the
+   * window and a second on the way out is not worth racing listeners over.
    */
   private async awaitConnection (): Promise<void> {
     if (this.redis.status === 'ready') return

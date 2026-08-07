@@ -1,24 +1,19 @@
 /**
  * The audit endpoints, as they appear on the wire.
  *
- * These are deliberately NOT the server's domain models, and not re-exports of
- * them. `domain/` may import nothing but relative paths - `architecture.spec.ts`
- * asserts it - so a domain model cannot be declared here, and this package sits
- * below the server so it cannot reach the other way either. The layering makes
- * the redeclaration compulsory rather than accidental.
+ * Deliberately NOT the server's domain models. `domain/` may import nothing but
+ * relative paths and this package sits below the server, so neither side can
+ * reach the other and the redeclaration is compulsory.
  *
- * What keeps the two honest is `presentation/helpers/audit-view.ts`: its mapper
- * is annotated with `AuditResultResponse`, and it carries explicit exactness
- * assertions for the unions below. Widen `AuditStatus` or `Impact` in the domain
- * without widening it here and `pnpm typecheck` fails in the server.
+ * `presentation/helpers/audit-view.ts` keeps the two honest: its mapper is
+ * annotated with `AuditResultResponse` and asserts exactness for the unions
+ * below, so widening one in the domain alone fails the server's typecheck.
  */
 
 /**
- * Severity as axe reports it.
- *
- * Ordered least to most severe, which is also the order `CountsByImpact` is
- * written in. Nothing depends on the declaration order - a UI that wants to sort
- * should say so - but keeping it consistent means a reader never has to check.
+ * Severity as axe reports it, ordered least to most severe - the same order
+ * `CountsByImpact` is written in. Nothing depends on it; consistency just saves
+ * the reader a check.
  */
 export type Impact = 'minor' | 'moderate' | 'serious' | 'critical'
 
@@ -32,25 +27,23 @@ export type ViolationNode = {
   /**
    * A markup snippet captured from an arbitrary third-party page.
    *
-   * Rendered AS TEXT, never as markup. React escapes by default, so the whole
-   * rule is that `dangerouslySetInnerHTML` never touches this field. This is the
-   * specific exposure that motivated an httpOnly session cookie over a
-   * JS-readable token, and the two should stay connected in the reader's mind.
+   * Rendered AS TEXT, never as markup: React escapes by default, so the rule is
+   * that `dangerouslySetInnerHTML` never touches this field. The same exposure
+   * is why the session is an httpOnly cookie rather than a JS-readable token.
    */
   html: string
 }
 
 /**
- * Named and exported rather than inlined into the response, because three
- * surfaces consume it - live progress (#19), audit detail (#21) and the share
- * page (#23) - and each wants to type a component against a single violation
- * without reaching into the response type to extract it.
+ * Named rather than inlined into the response: three surfaces consume it -
+ * live progress (#19), audit detail (#21), the share page (#23) - and each
+ * types a component against a single violation.
  */
 export type Violation = {
   ruleId: string
   /**
-   * Null when axe reports no severity. Load-bearing: such violations are real
-   * findings, and treating the null as "no problem" hides them.
+   * Null when axe reports no severity. Load-bearing: those are real findings,
+   * and reading the null as "no problem" hides them.
    */
   impact: Impact | null
   description: string
@@ -86,9 +79,8 @@ export type RequestAuditResponse = {
   auditId: string
   status: AuditStatus
   /**
-   * How long to wait before polling. Comes from the server precisely so the
-   * interval can be widened without a frontend deploy - a client that picks its
-   * own number takes that lever away.
+   * How long to wait before polling. From the server so the interval can be
+   * widened without a frontend deploy.
    */
   pollAfterMs: number
 }

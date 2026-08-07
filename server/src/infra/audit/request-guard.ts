@@ -56,13 +56,10 @@ export type RouteLike = {
 }
 
 /**
- * A redirect is not simply "the same request at a new URL".
- *
- * 303 always demotes to GET, and 301/302 do so universally in practice - every
- * browser has done it for decades. 307 and 308 exist precisely to preserve the
- * method. Replaying the original POST at every hop, which is what reusing the
- * request wholesale does, means repeating a side effect the server already
- * performed and sending a body to an endpoint that never expected one.
+ * A redirect is not "the same request at a new URL". 303 always demotes to
+ * GET and 301/302 do so universally in practice; 307 and 308 exist to preserve
+ * the method. Replaying the original POST at every hop repeats a side effect
+ * the server already performed.
  */
 const METHOD_PRESERVING_REDIRECTS = new Set([307, 308])
 
@@ -138,24 +135,17 @@ export const makeRequestGuard = (
   return async (route: RouteLike): Promise<void> => {
     const request = route.request()
 
-    // Every request is walked, subresources included. Handing a subresource to
-    // route.continue() after one check reintroduces exactly the bypass this
-    // guard exists to close: Chromium follows its 30x internally and the
-    // handler is never called for the target, so <img src="http://public/r">
-    // redirecting to a metadata address would sail through.
+    // Every request is walked, subresources included: handing one to
+    // route.continue() after a single check reopens the bypass this guard
+    // closes, since Chromium follows its own 30x and the handler never fires
+    // for the target. Navigations and subresources differ only in what
+    // aborting COSTS - a failed audit versus a page auditable without it.
     //
-    // Navigations and subresources differ only in blast radius, which is a
-    // property of what aborting DOES here, not of what gets checked: refusing
-    // a navigation fails the audit, refusing a subresource leaves the page
-    // auditable without it.
-    //
-    // Redirect-following is taken away from the browser deliberately.
-    // Verified: context.route fires only for the FIRST hop, so a 302 to a
-    // private address is followed internally and never offered here - the
-    // redirect check simply would not happen, and page.goto resolves with the
-    // private response in the page. Walking the chain by hand is what makes
-    // every hop checkable, and it makes the cap countable too, which
-    // page.goto does not otherwise expose.
+    // Redirect-following is taken from the browser deliberately. Verified:
+    // context.route fires only for the FIRST hop, so a 302 to a private
+    // address is followed internally and page.goto resolves with the private
+    // response in the page. Walking the chain by hand is what makes every hop
+    // checkable, and the cap countable.
     const body = request.postDataBuffer()
     const originalUrl = request.url()
     let attempt: Attempt = {
@@ -180,17 +170,14 @@ export const makeRequestGuard = (
         // The chain ended here. If it never moved, serve what we fetched.
         if (attempt.url === originalUrl) return await fulfilAndDispose(route, response)
 
-        // It DID move, and fulfilling this body against the original request
-        // would collapse the chain: Playwright copies status, headers and body
-        // onto the FIRST url, so Chromium keeps the document at the start
-        // address. Measured - `/start` redirecting to `/dir/page` left the
-        // page at `/start`, resolved `<img src="asset.png">` to `/asset.png`
-        // (a 404), and ran the target's content under the start origin.
+        // Fulfilling this body against the original request would collapse
+        // the chain: Playwright copies status, headers and body onto the FIRST
+        // url. Measured - `/start` redirecting to `/dir/page` left the page at
+        // `/start`, resolved `<img src="asset.png">` to a 404, and ran the
+        // target's content under the start origin.
         //
-        // So hand the browser a redirect to the final url instead and let it
-        // own the document. Every hop has already been checked on the way
-        // here; the cost is that the final url is fetched once more, by the
-        // browser, which for a page audit is a repeated GET.
+        // So hand the browser a redirect to the final url and let it own the
+        // document. Every hop is already checked; the cost is one repeated GET.
         await response.dispose()
         return await route.fulfill({
           status: 302,

@@ -65,7 +65,6 @@ describe('startListening', () => {
     return server
   }
 
-  /** A port that is bound, and therefore a port that is taken. */
   const takenPort = async (): Promise<number> =>
     portOf(await settled(listen(0, reports().handlers)))
 

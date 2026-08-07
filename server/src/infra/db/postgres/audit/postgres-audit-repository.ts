@@ -48,11 +48,10 @@ const CLAIM_SAFETY_MARGIN_MS = 60_000
 /**
  * How long a claim is honoured before another delivery may take the audit.
  *
- * Derived, not chosen: an attempt occupies its job budget and may then unwind
- * for the grace period on top, so the lease has to exceed that sum or a second
- * worker can reclaim an audit the first is still running. A fixed ten minutes
- * looked generous against the 45s default and was in fact SHORTER than the
- * 600s maximum the environment schema permits plus its 15s grace.
+ * Derived, not chosen: an attempt occupies its job budget then unwinds for the
+ * grace period, so the lease must exceed that sum or a second worker reclaims
+ * an audit the first is still running. A fixed ten minutes looked generous
+ * against the 45s default and was SHORTER than the permitted 600s plus grace.
  */
 export const claimLeaseFor = (jobTimeoutMs: number, unwindGraceMs: number): number =>
   jobTimeoutMs + unwindGraceMs + CLAIM_SAFETY_MARGIN_MS
@@ -118,18 +117,15 @@ export class PostgresAuditRepository implements
   /**
    * The nightly run's audit for one page.
    *
-   * `on conflict ... do nothing` rather than catching SQLSTATE 23505: a raised
-   * error inside a transaction aborts it, and the caller is looping over every
-   * monitored page. Returning zero rows leaves the connection usable and turns
-   * the conflict into the answer the protocol wants - null, meaning another
-   * run already scheduled this page today.
+   * `on conflict ... do nothing` rather than catching 23505: an error inside a
+   * transaction aborts it, and the caller loops over every monitored page.
+   * Zero rows leaves the connection usable and IS the answer - null, meaning
+   * another run already scheduled this page today.
    *
-   * The conflict target is spelled as columns plus the index predicate rather
-   * than `on constraint`, because a partial unique index is not a constraint
-   * and Postgres will not infer one by name. Repeating the predicate is what
-   * makes it infer THIS index rather than any unique index on the table -
-   * bare `do nothing` would also swallow a public_uuid collision, which is a
-   * different problem that should never be silent.
+   * The target is columns plus the index predicate, not `on constraint`: a
+   * partial unique index is not a constraint and cannot be inferred by name.
+   * Repeating the predicate pins THIS index - a bare `do nothing` would also
+   * swallow a public_uuid collision, which should never be silent.
    */
   async addScheduled (params: AddScheduledAuditParams): Promise<AuditModel | null> {
     const row = await this.db
@@ -173,15 +169,11 @@ export class PostgresAuditRepository implements
   }
 
   async claimForRun (auditId: string): Promise<Date | null> {
-    // Status alone is not mutual exclusion. Under READ COMMITTED a second
-    // delivery re-evaluates this predicate after the first commits, so
-    // `status in ('queued','running')` would still match the row the first
-    // one just claimed - and both would run Chromium against the same audit,
-    // then overwrite each other's metadata.
-    //
-    // The lease is what makes it exclusive: a claim younger than
-    // staleClaimAfterMs excludes everyone else, while an older one is assumed
-    // to belong to a worker that died and is reclaimable.
+    // Status alone is not mutual exclusion: under READ COMMITTED a second
+    // delivery re-evaluates this after the first commits, so the status would
+    // still match the row just claimed and both would run Chromium against it.
+    // The lease is what makes it exclusive - a claim younger than
+    // staleClaimAfterMs excludes everyone, an older one is reclaimable.
     const staleBefore = new Date(Date.now() - this.staleClaimAfterMs)
     // Kept rather than read back, so it can serve as this attempt's fence.
     const claimedAt = new Date()
@@ -349,15 +341,13 @@ export class PostgresAuditRepository implements
       .limit(limit)
 
     if (after !== null) {
-      // A row comparison, not two predicates: `created_at > x or (= x and id >
-      // y)` is the same thing written so the planner cannot use the index for
-      // it. This form matches the index's own ordering.
+      // A row comparison, not two predicates: the `or` form is equivalent but
+      // written so the planner cannot use the index. This matches its ordering.
       //
-      // The timestamp goes back as the text Postgres produced, cast
-      // explicitly so it is parsed at full precision rather than inferred.
-      // Written as raw SQL because the typed tuple builder insists the value
-      // match the column's PARSED type - a Date - which is the very thing that
-      // loses the microseconds this cursor exists to keep.
+      // The timestamp goes back as the text Postgres produced, cast explicitly
+      // for full precision. Raw SQL because the typed tuple builder demands the
+      // column's PARSED type - a Date - which loses the microseconds this
+      // cursor exists to keep.
       statement = statement.where(
         sql<SqlBool>`(created_at, id) > (${after.createdAt}::timestamptz, ${after.auditId}::bigint)`
       )
