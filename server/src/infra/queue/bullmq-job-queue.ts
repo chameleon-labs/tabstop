@@ -13,12 +13,10 @@ export class BullMqJobQueue<TPayload> implements JobQueue<TPayload> {
 }
 
 /**
- * Audit ids come from a bigserial, so every one of them is all digits - and
- * BullMQ rejects an all-digit custom id outright, because it would collide
- * with the ids BullMQ mints itself. The prefix is what makes them usable. It
- * cannot contain `:`, which BullMQ also rejects (it reserves that separator
- * for repeatable jobs). Both methods below have to derive the id identically,
- * or `has` looks up a key nothing ever wrote.
+ * Audit ids are all digits, and BullMQ rejects an all-digit custom id because
+ * it would collide with its own. The prefix cannot contain `:` either, which
+ * BullMQ reserves for repeatable jobs. Both methods below must derive the id
+ * identically, or `has` looks up a key nothing ever wrote.
  */
 const jobIdFor = (auditId: string): string => `audit-${auditId}`
 
@@ -49,13 +47,11 @@ export class BullMqAuditQueue implements AuditJobQueue {
   /**
    * The states in which BullMQ still owes this job a worker.
    *
-   * `completed` and `failed` are the ones deliberately absent: both are
-   * terminal, and both linger - `removeOnComplete` keeps a job for an hour,
-   * `removeOnFail` for a day, and the cleanup only runs when the queue is
-   * otherwise busy. Anything reading "a record exists" as "work is coming"
-   * inherits that retention as a delay.
+   * `completed` and `failed` are absent deliberately: both are terminal and
+   * both linger - an hour and a day respectively - so anything reading "a
+   * record exists" as "work is coming" inherits that retention as a delay.
    *
-   * `unknown` is treated as pending: BullMQ returns it for a job it found but
+   * `unknown` counts as pending: BullMQ returns it for a job it found but
    * could not place, which is not evidence that nothing will run it.
    */
   private static readonly PENDING_STATES = new Set([
@@ -72,36 +68,24 @@ export class BullMqAuditQueue implements AuditJobQueue {
   /**
    * Waiting only - not delayed, not active, not failed, not completed.
    *
-   * This counted `delayed` as well, on a premise that was true when it was
-   * written and that #13 removed: "nothing enqueues an audit with a delay of
-   * its own, so every delayed job is a retry that returns to the runnable line
-   * within a couple of seconds". The daily scheduler enqueues the whole
-   * night's work with delays of up to six hours, deliberately, so that tabstop
-   * does not arrive at one origin all at once.
+   * `delayed` was counted until #13, on the premise that every delayed job was
+   * a retry seconds from returning. The daily scheduler now enqueues a whole
+   * night with delays of up to six hours, so counting them as backlog would
+   * put a hundred monitored pages over AUDIT_QUEUE_MAX_DEPTH the moment the
+   * fan-out ran - answering 503 on the product's hook every night while the
+   * workers sat idle. Not the bound failing safe; the bound measuring the
+   * wrong thing.
    *
-   * Left as it was, those jobs would be counted as backlog. A hundred
-   * monitored pages would put the depth over AUDIT_QUEUE_MAX_DEPTH the moment
-   * the fan-out ran, and `POST /api/audits` - the product's hook - would
-   * answer 503 for the length of the window, every night, while the workers
-   * sat idle. That is not the bound failing safe; it is the bound measuring
-   * the wrong thing.
+   * The cost is that a job in retry backoff is uncounted until it returns,
+   * which UNDERCOUNTS - the direction an imprecise cost control should err.
+   * Delayed jobs still enter `waiting` as their time arrives, so a genuinely
+   * saturated worker refuses submissions. The residual is bounded at roughly
+   * `attempts` times the cap against a fast-failing handler, and pinned by a
+   * spec. Separating the two kinds of delay needs the scheduler off this queue
+   * entirely, which is #51.
    *
-   * What counting waiting alone gives up is the retry-backoff window the old
-   * comment was protecting: a job that threw is uncounted until it comes back.
-   * That undercounts, which is the direction this comment already argued an
-   * imprecise cost control should be wrong - and the delayed jobs are not
-   * lost, they enter `waiting` as their time arrives, so a genuinely saturated
-   * worker still refuses submissions. What changed is only that work scheduled
-   * into the future stops being charged as if it were queued now.
-   *
-   * The residual is real and bounded: against a handler that fails fast, the
-   * queue can hold roughly `attempts` times the cap in work that is coming
-   * back. Pinned by a spec rather than left as a claim. Separating the two
-   * kinds of delay needs the scheduler's off this queue entirely, which is
-   * #51 - not something to smuggle into the count here.
-   *
-   * Active is left out for the reason it always was: it is bounded by the
-   * workers' own concurrency rather than by anything a submitter can drive.
+   * Active is excluded because it is bounded by the workers' own concurrency
+   * rather than by anything a submitter can drive.
    */
   async backlogCount (): Promise<number> {
     return await this.queue.getJobCountByTypes('waiting')

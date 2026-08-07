@@ -1,75 +1,59 @@
 import { sql, type Kysely } from 'kysely'
 
 export const up = async (db: Kysely<unknown>): Promise<void> => {
-  // Which day's scheduled run produced this audit. Null for every other audit:
-  // the first one an added page gets, a one-off anonymous submission, and any
-  // manual re-audit a later issue adds.
+  // Which day's scheduled run produced this audit. Null for every other audit.
   //
-  // A date rather than a derived expression, because #13's sketch proposed
-  // deriving the day from `created_at` and that is wrong twice over. It cannot
-  // be indexed at all - `timestamptz::date` is STABLE, not IMMUTABLE, the same
-  // wall #4 hit on alert_events - and pinning the zone to fix that still leaves
-  // a constraint that counts audits nobody scheduled, so a manual re-audit
-  // would be refused because the nightly run already happened. Recording the
-  // intent instead keeps the rule about scheduled work only.
+  // A stored date rather than deriving the day from `created_at`, which is
+  // wrong twice over: `timestamptz::date` is STABLE, not IMMUTABLE, so it
+  // cannot be indexed (the wall #4 hit on alert_events), and pinning the zone
+  // still leaves a constraint that counts audits nobody scheduled - refusing a
+  // manual re-audit because the nightly run happened.
   //
-  // It also makes the day a property of the RUN rather than of the insert: a
-  // fan-out that starts at 23:59:59 stamps every row with one date, where
-  // `created_at::date` would split it across two and let both halves insert.
+  // It also makes the day a property of the RUN rather than the insert: a
+  // fan-out starting at 23:59:59 stamps one date, where `created_at::date`
+  // splits it across two and lets both halves insert.
   await sql`alter table audits add column scheduled_for date`.execute(db)
 
   // The authoritative half of "exactly one audit per enabled page per day".
-  // The eligibility query already excludes pages with work in flight, but that
-  // is check-then-act: two runs overlapping - a retry, two replicas, a
-  // scheduler misfire - both select the same page before either inserts. This
-  // is what makes the promise true regardless.
+  // The eligibility query is check-then-act, so two overlapping runs both
+  // select a page before either inserts; this makes the promise true anyway.
   //
   // Partial, so it holds only scheduled rows. NULLs never collide in a unique
-  // index, which is the trap #4 documented on alert_events; here that is
-  // exactly the wanted behaviour, and it is confined to a column nothing but
-  // the scheduler writes.
+  // index - the trap #4 documented on alert_events - which is exactly the
+  // wanted behaviour on a column only the scheduler writes.
   await sql`
     create unique index audits_one_scheduled_per_page_per_day
       on audits (page_id, scheduled_for) where scheduled_for is not null
   `.execute(db)
 
-  // Serves both halves of the nightly run, which ask different questions of
-  // the same small set of rows - but they ask DIFFERENT questions, and one
-  // index cannot answer both.
+  // The nightly run's two halves ask different questions of the same small
+  // set of rows, and one index cannot answer both.
   //
-  // The eligibility query asks whether a given page has any unfinished audit:
-  // `page_id = ?`, with no bound on age, because ageing them out compounds
-  // under load - on a queue that has not drained, real pending audits look
-  // abandoned and their pages get scheduled again on top of the backlog.
-  // Without an index that check reads every audit the page has ever had, to
-  // find none: a cost that grows for as long as the account is a customer,
-  // paid once per page per night.
+  // Eligibility asks whether a page has any unfinished audit: `page_id = ?`,
+  // unbounded by age, because ageing them out compounds under load. Without an
+  // index it reads every audit the page has ever had to find none - a cost
+  // growing for as long as the account is a customer, paid nightly per page.
   await sql`
     create index audits_in_flight_page_idx on audits (page_id)
       where status in ('queued','running')
   `.execute(db)
 
   // The reclaim pass asks a global question - which unfinished audits are old
-  // enough to be worth checking against the queue - and wants them oldest
-  // first, bounded by a limit.
+  // enough to check against the queue - oldest first, bounded by a limit.
   //
-  // That needs `created_at` LEADING. It was originally a trailing column on
-  // the index above, which reads plausibly and does not work: with `page_id`
-  // unconstrained, Postgres cannot walk that index in `created_at` order, so
-  // it reads the whole live set and sorts before applying the limit. Fine
-  // while the live set is small - and useless exactly when it is not, which
-  // is when a stale backlog has built up and this pass is the thing meant to
-  // clear it.
+  // That needs `created_at` LEADING. As a trailing column on the index above
+  // it reads plausibly and does not work: with `page_id` unconstrained,
+  // Postgres cannot walk that index in `created_at` order, so it reads the
+  // whole live set and sorts before applying the limit - useless exactly when
+  // a stale backlog has built up and this pass is meant to clear it.
   //
-  // `id` trails it as the cursor's tiebreak: the pass pages through
-  // candidates, `created_at` is not unique - `now()` is transaction time, so a
-  // fan-out's rows share one - and a cursor that cannot tell two rows apart
-  // either repeats one or steps over it.
+  // `id` trails as the cursor's tiebreak: `created_at` is not unique, since
+  // `now()` is transaction time and a fan-out's rows share one, and a cursor
+  // that cannot tell two rows apart repeats one or steps over it.
   //
-  // Both are partial on the two live statuses, so each holds a handful of
-  // rows rather than the whole table and a finished audit drops out of both.
-  // That is what makes a second index cheap enough to be worth having rather
-  // than a compromise between two access patterns that serves neither.
+  // Both are partial on the two live statuses, so each holds a handful of rows
+  // and a finished audit drops out of both - which is what makes a second
+  // index cheaper than one compromise serving neither pattern.
   await sql`
     create index audits_in_flight_created_idx on audits (created_at, id)
       where status in ('queued','running')
