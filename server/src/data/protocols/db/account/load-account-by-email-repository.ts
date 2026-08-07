@@ -1,4 +1,4 @@
-import type { AccountModel } from '../../../../domain/models/account.js'
+import type {AccountModel} from '../../../../domain/models/account.js';
 
 /**
  * The digest is deliberately NOT on AccountModel - nothing in the domain should
@@ -6,10 +6,10 @@ import type { AccountModel } from '../../../../domain/models/account.js'
  * as far as the usecase that compares it.
  */
 export type AccountWithDigest = {
-  account: AccountModel
-  passwordDigest: string
-}
+  account: AccountModel;
+  passwordDigest: string;
+};
 
 export interface LoadAccountByEmailRepository {
-  loadByEmail: (email: string) => Promise<AccountWithDigest | null>
+  loadByEmail: (email: string) => Promise<AccountWithDigest | null>;
 }

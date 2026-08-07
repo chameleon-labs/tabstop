@@ -28,7 +28,7 @@
  * on failure because `never` is assignable to everything, `MustHold<never>`
  * included, so a check written that way reports nothing when it fails.
  */
-export type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+export type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 /** Instantiating this with anything but `true` is the error. */
-export type MustHold<T extends true> = T
+export type MustHold<T extends true> = T;

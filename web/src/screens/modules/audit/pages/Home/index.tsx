@@ -1,15 +1,15 @@
-import { useState } from 'react'
-import { Link } from 'react-router'
-import { useAudit, useRequestAudit } from '../../audits'
-import { describeFailure } from '../../failure'
-import { EXPECTED_DURATION, completionAnnouncement } from '../../phase'
-import { AuditFailure } from '../../components/AuditFailure'
-import { AuditStatus } from '../../components/AuditStatus'
-import { AuditResult } from '../../components/AuditResult'
-import { UrlField } from '../../components/UrlField'
-import { useAuditPhase } from '../../hooks/use-audit-phase'
-import { useDocumentTitle } from '@/screens/hooks/use-document-title'
-import { Landing } from './landing'
+import {useState} from 'react';
+import {Link} from 'react-router';
+import {useAudit, useRequestAudit} from '../../audits';
+import {describeFailure} from '../../failure';
+import {EXPECTED_DURATION, completionAnnouncement} from '../../phase';
+import {AuditFailure} from '../../components/AuditFailure';
+import {AuditStatus} from '../../components/AuditStatus';
+import {AuditResult} from '../../components/AuditResult';
+import {UrlField} from '../../components/UrlField';
+import {useAuditPhase} from '../../hooks/use-audit-phase';
+import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import {Landing} from './landing';
 
 /**
  * The product's entire hook: paste a URL, wait, get something worth sharing.
@@ -21,18 +21,18 @@ import { Landing } from './landing'
  * already finished.
  */
 export const Home = (): React.JSX.Element => {
-  useDocumentTitle('')
+  useDocumentTitle('');
 
-  const [startedAt, setStartedAt] = useState<number | null>(null)
-  const request = useRequestAudit()
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const request = useRequestAudit();
 
   // The audit id only exists after the POST is accepted, and `pollAfterMs`
   // comes with it - passed through rather than chosen here, so the server can
   // widen the interval without a frontend deploy.
   const audit = useAudit(
     request.data?.auditId,
-    request.data === undefined ? {} : { pollAfterMs: request.data.pollAfterMs }
-  )
+    request.data === undefined ? {} : {pollAfterMs: request.data.pollAfterMs},
+  );
 
   const failure = describeFailure({
     requestError: request.error,
@@ -48,10 +48,10 @@ export const Home = (): React.JSX.Element => {
     // stayed on screen for the whole flight, which is exactly the "button did
     // nothing" shape `request.reset()` prevents on the mutation side.
     pollError: audit.isFetching ? null : audit.error,
-    audit: audit.data
-  })
-  const done = audit.data?.status === 'done'
-  const waiting = failure === null && startedAt !== null && !done
+    audit: audit.data,
+  });
+  const done = audit.data?.status === 'done';
+  const waiting = failure === null && startedAt !== null && !done;
 
   /**
    * One sentence for the live region, covering the whole wait AND its end.
@@ -60,18 +60,19 @@ export const Home = (): React.JSX.Element => {
    * has to outlive that component: it unmounts the instant the audit finishes,
    * which is precisely when there is something to say.
    */
-  const progressStatus = request.data === undefined
-    ? 'submitting'
-    : audit.data?.status ?? request.data.status
-  const phase = useAuditPhase(progressStatus, startedAt, waiting)
-  const announcement = done && audit.data !== undefined
-    ? completionAnnouncement(audit.data.score, audit.data.violations.length)
-    : waiting && phase !== null ? `${phase}… ${EXPECTED_DURATION}` : null
+  const progressStatus = request.data === undefined ? 'submitting' : (audit.data?.status ?? request.data.status);
+  const phase = useAuditPhase(progressStatus, startedAt, waiting);
+  const announcement =
+    done && audit.data !== undefined
+      ? completionAnnouncement(audit.data.score, audit.data.violations.length)
+      : waiting && phase !== null
+        ? `${phase}… ${EXPECTED_DURATION}`
+        : null;
 
   const submit = (url: string): void => {
-    setStartedAt(Date.now())
-    request.mutate(url)
-  }
+    setStartedAt(Date.now());
+    request.mutate(url);
+  };
 
   /**
    * Retries the request that actually failed.
@@ -87,15 +88,15 @@ export const Home = (): React.JSX.Element => {
    */
   const retry = (): void => {
     if (failure?.source === 'poll') {
-      void audit.refetch()
-      return
+      void audit.refetch();
+      return;
     }
 
-    const url = request.variables
-    if (url === undefined) return
-    request.reset()
-    submit(url)
-  }
+    const url = request.variables;
+    if (url === undefined) return;
+    request.reset();
+    submit(url);
+  };
 
   /**
    * Everything that is not the form, in the slot the sample audit card
@@ -110,9 +111,8 @@ export const Home = (): React.JSX.Element => {
    * as though the new one had already finished, and moving into a hero
    * changes none of that.
    */
-  const live = startedAt === null && failure === null
-    ? null
-    : (
+  const live =
+    startedAt === null && failure === null ? null : (
       <>
         {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
 
@@ -131,15 +131,10 @@ export const Home = (): React.JSX.Element => {
           </>
         )}
       </>
-      )
+    );
 
-  return (
-    <Landing
-      urlField={<UrlField onSubmit={submit} disabled={waiting} />}
-      live={live}
-    />
-  )
-}
+  return <Landing urlField={<UrlField onSubmit={submit} disabled={waiting} />} live={live} />;
+};
 
 /**
  * The signup CTA, and it lives HERE rather than inside `AuditResult`.
@@ -155,10 +150,9 @@ export const Home = (): React.JSX.Element => {
 const TrackThisPage = (): React.JSX.Element => (
   <section aria-labelledby="track-heading">
     <h2 id="track-heading">Keep an eye on this page</h2>
+    <p>tabstop can re-audit it every day and email you when the score drops or a new serious issue appears.</p>
     <p>
-      tabstop can re-audit it every day and email you when the score drops or a
-      new serious issue appears.
+      <Link to="/signup">Track this page</Link>
     </p>
-    <p><Link to="/signup">Track this page</Link></p>
   </section>
-)
+);

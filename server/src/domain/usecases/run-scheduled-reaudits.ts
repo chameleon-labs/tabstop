@@ -8,16 +8,16 @@
  */
 export type ReauditRunSummary = {
   /** The UTC day this run is for, as `YYYY-MM-DD`. */
-  scheduledFor: string
+  scheduledFor: string;
   /** Pages the eligibility query returned. */
-  pagesConsidered: number
-  auditsEnqueued: number
+  pagesConsidered: number;
+  auditsEnqueued: number;
   /**
    * Pages another run had already scheduled for this day, refused by the unique
    * index rather than the query. Non-zero is the second idempotency layer
    * working; persistently non-zero means something fires twice.
    */
-  skippedDuplicate: number
+  skippedDuplicate: number;
   /**
    * Pages whose audit could not be created or queued.
    *
@@ -25,14 +25,14 @@ export type ReauditRunSummary = {
    * not retry - the outage that failed the delete fails the retry - so a page
    * counted here sometimes leaves an unfinished row for the reclaim pass.
    */
-  failed: number
+  failed: number;
   /**
    * Unfinished audits retired because the queue no longer held their job.
    *
    * Expected to be zero. Each one silently blocked a page's monitoring, so a
    * climbing number means enqueues are being lost.
    */
-  abandonedReclaimed: number
+  abandonedReclaimed: number;
   /**
    * Reclaim attempts that could not be carried out at all.
    *
@@ -41,14 +41,14 @@ export type ReauditRunSummary = {
    * failing, stranded rows keep excluding their pages and every other number
    * here still looks healthy.
    */
-  reclaimFailures: number
+  reclaimFailures: number;
   /**
    * Whether the run stopped with pages still due - circuit breaker, or asked to
    * shut down. Normally false however many pages there are, since the run pages
    * through the whole worklist.
    */
-  truncated: boolean
-}
+  truncated: boolean;
+};
 
 export type RunScheduledReauditsOptions = {
   /**
@@ -58,7 +58,7 @@ export type RunScheduledReauditsOptions = {
    * mid-run force-exits - possibly between creating an audit row and queueing
    * its job. Stopping cleanly just leaves pages unscheduled for the next run.
    */
-  signal?: AbortSignal
+  signal?: AbortSignal;
   /**
    * Called with the summary so far, after the reclaim pass and every batch.
    *
@@ -67,13 +67,13 @@ export type RunScheduledReauditsOptions = {
    * many; without this they go with the exception and no log reconstructs the
    * night.
    */
-  report?: (summary: ReauditRunSummary) => void
-}
+  report?: (summary: ReauditRunSummary) => void;
+};
 
 export interface RunScheduledReaudits {
   /**
    * `now` is passed rather than read, so the UTC day this run belongs to is
    * decided once and shared by every row of the run.
    */
-  run: (now: Date, options?: RunScheduledReauditsOptions) => Promise<ReauditRunSummary>
+  run: (now: Date, options?: RunScheduledReauditsOptions) => Promise<ReauditRunSummary>;
 }

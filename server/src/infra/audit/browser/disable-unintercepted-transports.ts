@@ -18,11 +18,11 @@ export const DISABLE_UNINTERCEPTED_TRANSPORTS = (): void => {
   // WebTransport rides QUIC and is intercepted by neither route nor
   // routeWebSocket either, so an https page could open one straight to a
   // private endpoint on 443.
-  for (const name of [
-    'RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport'
-  ]) {
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport']) {
     Object.defineProperty(globalThis, name, {
-      value: undefined, configurable: false, writable: false
-    })
+      value: undefined,
+      configurable: false,
+      writable: false,
+    });
   }
-}
+};

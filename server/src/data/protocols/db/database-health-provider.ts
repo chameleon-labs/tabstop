@@ -1,3 +1,3 @@
 export interface DatabaseHealthProvider {
-  isReachable: () => Promise<boolean>
+  isReachable: () => Promise<boolean>;
 }

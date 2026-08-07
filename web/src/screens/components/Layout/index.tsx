@@ -1,8 +1,8 @@
-import { Link, Outlet, useMatches } from 'react-router'
-import { RouteAnnouncer } from '../RouteAnnouncer'
+import {Link, Outlet, useMatches} from 'react-router';
+import {RouteAnnouncer} from '../RouteAnnouncer';
 
 /** A route declaring that it renders its own header, main and footer. */
-export type RouteChrome = { ownChrome?: boolean }
+export type RouteChrome = {ownChrome?: boolean};
 
 /**
  * Narrowed rather than cast: `handle` is `unknown` by construction, since any
@@ -10,8 +10,7 @@ export type RouteChrome = { ownChrome?: boolean }
  * just as happily against a typo in the route table.
  */
 export const providesOwnChrome = (handle: unknown): boolean =>
-  typeof handle === 'object' && handle !== null && 'ownChrome' in handle &&
-  handle.ownChrome === true
+  typeof handle === 'object' && handle !== null && 'ownChrome' in handle && handle.ownChrome === true;
 
 /**
  * The shell every route renders into.
@@ -34,33 +33,36 @@ export const providesOwnChrome = (handle: unknown): boolean =>
  * on a path here, so the exception is visible where routes are read.
  */
 /** True when the matched route says it renders its own header, main and footer. */
-export const useOwnChrome = (): boolean =>
-  useMatches().some((match) => providesOwnChrome(match.handle))
+export const useOwnChrome = (): boolean => useMatches().some((match) => providesOwnChrome(match.handle));
 
 export const Layout = (): React.JSX.Element => {
-  const ownChrome = useOwnChrome()
+  const ownChrome = useOwnChrome();
 
   return (
     <>
-      <a className="skip-link" href="#main">Skip to content</a>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <RouteAnnouncer />
 
-      {ownChrome
-        ? <Outlet />
-        : (
-          <>
-            <header className="site-header">
-              <Link to="/" className="wordmark">tabstop</Link>
-              <nav aria-label="Main">
-                <Link to="/dashboard">Dashboard</Link>
-              </nav>
-            </header>
+      {ownChrome ? (
+        <Outlet />
+      ) : (
+        <>
+          <header className="site-header">
+            <Link to="/" className="wordmark">
+              tabstop
+            </Link>
+            <nav aria-label="Main">
+              <Link to="/dashboard">Dashboard</Link>
+            </nav>
+          </header>
 
-            <main id="main" tabIndex={-1}>
-              <Outlet />
-            </main>
-          </>
-          )}
+          <main id="main" tabIndex={-1}>
+            <Outlet />
+          </main>
+        </>
+      )}
     </>
-  )
-}
+  );
+};

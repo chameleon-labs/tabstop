@@ -1,13 +1,13 @@
-import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
-import { RouterProvider, type createBrowserRouter } from 'react-router'
+import {QueryClientProvider, type QueryClient} from '@tanstack/react-query';
+import {RouterProvider, type createBrowserRouter} from 'react-router';
 
 /** Whatever `createBrowserRouter` or `createMemoryRouter` returns. */
-export type AppRouter = ReturnType<typeof createBrowserRouter>
+export type AppRouter = ReturnType<typeof createBrowserRouter>;
 
 export type AppProps = {
-  queryClient: QueryClient
-  router: AppRouter
-}
+  queryClient: QueryClient;
+  router: AppRouter;
+};
 
 /**
  * The providers, and nothing else. Both collaborators are injected.
@@ -25,8 +25,8 @@ export type AppProps = {
  * tests turns one test's fetch into the next one's silent cache hit, and the
  * failure surfaces in whichever happened to run second.
  */
-export const App = ({ queryClient, router }: AppProps): React.JSX.Element => (
+export const App = ({queryClient, router}: AppProps): React.JSX.Element => (
   <QueryClientProvider client={queryClient}>
     <RouterProvider router={router} />
   </QueryClientProvider>
-)
+);

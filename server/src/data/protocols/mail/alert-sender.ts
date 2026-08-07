@@ -1,31 +1,31 @@
 export type AlertEmail = {
-  from: string
-  to: string
-  subject: string
-  text: string
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
   headers: {
-    'List-Unsubscribe': string
-    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-  }
+    'List-Unsubscribe': string;
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click';
+  };
   /**
    * Stable for one AlertEvent. Providers that accepted a request before the
    * worker lost the reply can return the original result instead of mailing
    * the recipient twice.
    */
-  idempotencyKey: string
-}
+  idempotencyKey: string;
+};
 
-export type AlertSendResult = 'accepted' | 'previewed'
+export type AlertSendResult = 'accepted' | 'previewed';
 
 export class PermanentAlertDeliveryError extends Error {
-  constructor (readonly reason: string) {
-    super(reason)
+  constructor(readonly reason: string) {
+    super(reason);
   }
 }
 
 export class AlertRateLimitError extends Error {
-  constructor (readonly retryAfterMs: number) {
-    super(`Alert delivery rate limited for ${retryAfterMs}ms`)
+  constructor(readonly retryAfterMs: number) {
+    super(`Alert delivery rate limited for ${retryAfterMs}ms`);
   }
 }
 
@@ -35,5 +35,5 @@ export interface AlertSender {
    * deliberately distinct so the local console adapter can never cause
    * emailed_at to claim a message left the process.
    */
-  send: (email: AlertEmail) => Promise<AlertSendResult>
+  send: (email: AlertEmail) => Promise<AlertSendResult>;
 }

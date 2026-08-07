@@ -1,3 +1,3 @@
 export interface SessionIdGenerator {
-  generate: () => string
+  generate: () => string;
 }

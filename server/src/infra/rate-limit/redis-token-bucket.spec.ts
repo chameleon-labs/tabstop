@@ -1,68 +1,68 @@
-import { randomUUID } from 'node:crypto'
-import { once } from 'node:events'
-import { Redis } from 'ioredis'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { READY_TIMEOUT_MS, RedisTokenBucket, WAIT_MS_FORMULA } from './redis-token-bucket.js'
-import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
+import {randomUUID} from 'node:crypto';
+import {once} from 'node:events';
+import {Redis} from 'ioredis';
+import {afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {READY_TIMEOUT_MS, RedisTokenBucket, WAIT_MS_FORMULA} from './redis-token-bucket.js';
+import type {BucketConfig} from '../../data/protocols/rate-limit/rate-limiter.js';
 
 const connectionUrl = (): string => {
-  const url = process.env.REDIS_URL
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup')
-  return url
-}
+  const url = process.env.REDIS_URL;
+  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  return url;
+};
 
 /** One token per 100ms, so refill is observable without a slow spec. */
-const fast: BucketConfig = { capacity: 3, refillPerHour: 36_000 }
+const fast: BucketConfig = {capacity: 3, refillPerHour: 36_000};
 /** Effectively no refill, so burst behaviour can be asserted without a race. */
-const frozen: BucketConfig = { capacity: 3, refillPerHour: 1 }
+const frozen: BucketConfig = {capacity: 3, refillPerHour: 1};
 
 describe('RedisTokenBucket', () => {
-  let redis: Redis
-  let sut: RedisTokenBucket
+  let redis: Redis;
+  let sut: RedisTokenBucket;
 
   beforeAll(() => {
-    redis = new Redis(connectionUrl())
-    sut = new RedisTokenBucket(redis)
-  })
+    redis = new Redis(connectionUrl());
+    sut = new RedisTokenBucket(redis);
+  });
 
-  afterAll(async () => { await redis.quit() })
+  afterAll(async () => {
+    await redis.quit();
+  });
 
-  const key = (): string => `spec-${randomUUID()}`
+  const key = (): string => `spec-${randomUUID()}`;
 
   it('never oversells under concurrency', async () => {
     // The reason the whole thing is one Lua script. A read-then-write from
     // Node lets two callers both see the last token and both proceed.
-    const k = key()
+    const k = key();
 
-    const results = await Promise.all(
-      Array.from({ length: 20 }, async () => await sut.consume(k, frozen))
-    )
+    const results = await Promise.all(Array.from({length: 20}, async () => await sut.consume(k, frozen)));
 
-    expect(results.filter((result) => result.allowed)).toHaveLength(3)
-  })
+    expect(results.filter((result) => result.allowed)).toHaveLength(3);
+  });
 
   it('sets a bounded TTL after refunding an allowance', async () => {
-    const k = key()
-    const allowance = await sut.consume(k, frozen)
-    if (!allowance.allowed) throw new Error('expected allowance')
-    await allowance.refund()
+    const k = key();
+    const allowance = await sut.consume(k, frozen);
+    if (!allowance.allowed) throw new Error('expected allowance');
+    await allowance.refund();
 
-    const ttl = await redis.pttl(`rl:${k}`)
+    const ttl = await redis.pttl(`rl:${k}`);
 
-    expect(ttl).toBeGreaterThan(0) // the mutation deletes the key, so pttl is -2
-    expect(ttl).toBeLessThanOrEqual(1_100)
-  })
+    expect(ttl).toBeGreaterThan(0); // the mutation deletes the key, so pttl is -2
+    expect(ttl).toBeLessThanOrEqual(1_100);
+  });
 
   it('expires an idle bucket rather than keeping a key per caller forever', async () => {
-    const k = key()
-    await sut.consume(k, fast)
+    const k = key();
+    await sut.consume(k, fast);
 
-    const ttl = await redis.pttl(`rl:${k}`)
+    const ttl = await redis.pttl(`rl:${k}`);
 
-    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeGreaterThan(0);
     // Time to refill what was taken, plus a second of grace.
-    expect(ttl).toBeLessThanOrEqual(1_100)
-  })
+    expect(ttl).toBeLessThanOrEqual(1_100);
+  });
 
   it('does not overshoot the wait by a millisecond at an exact-boundary deficit', async () => {
     // A real consume() can't drive this deterministically: forcing SCRIPT's
@@ -85,12 +85,12 @@ describe('RedisTokenBucket', () => {
       -- msPerHour directly.
       local refillPerMs = refillPerHour / msPerHour
       return math.ceil(${WAIT_MS_FORMULA})
-    `
+    `;
 
-    const result = await redis.eval(script, 0, 1, 0, 1, 3_600_000)
+    const result = await redis.eval(script, 0, 1, 0, 1, 3_600_000);
 
-    expect(Number(result)).toBe(3_600_000)
-  })
+    expect(Number(result)).toBe(3_600_000);
+  });
 
   describe('a connection that is still coming up', () => {
     /**
@@ -105,43 +105,51 @@ describe('RedisTokenBucket', () => {
      */
     const coldClient = (url: string): Redis => {
       const client = new Redis(url, {
-        enableOfflineQueue: false, maxRetriesPerRequest: 1, commandTimeout: 250
-      })
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        commandTimeout: 250,
+      });
       // The factory attaches one for the same reason: an EventEmitter with no
       // error listener takes the process down.
-      client.on('error', () => { /* expected while connecting, or when refused */ })
-      return client
-    }
+      client.on('error', () => {
+        /* expected while connecting, or when refused */
+      });
+      return client;
+    };
 
     it('serves a command issued before the socket is writable', async () => {
-      const client = coldClient(connectionUrl())
+      const client = coldClient(connectionUrl());
       try {
         // Nothing awaited between construction and use, so the status here is
         // `connecting` - which is the whole point.
-        expect(client.status).not.toBe('ready')
+        expect(client.status).not.toBe('ready');
 
-        const decision = await new RedisTokenBucket(client).consume(key(), frozen)
+        const decision = await new RedisTokenBucket(client).consume(key(), frozen);
 
-        expect(decision.allowed).toBe(true)
+        expect(decision.allowed).toBe(true);
       } finally {
-        await client.quit().catch(() => { client.disconnect() })
+        await client.quit().catch(() => {
+          client.disconnect();
+        });
       }
-    })
+    });
 
     it('records that consume in Redis, rather than only appearing to succeed', async () => {
       // The assertion that matters. Degrading also answers `allowed: true` -
       // the in-process bucket is happy to - so the observable difference is
       // whether the shared bucket was actually written.
-      const client = coldClient(connectionUrl())
-      const bucketKey = key()
+      const client = coldClient(connectionUrl());
+      const bucketKey = key();
       try {
-        await new RedisTokenBucket(client).consume(bucketKey, frozen)
+        await new RedisTokenBucket(client).consume(bucketKey, frozen);
 
-        expect(await redis.exists(`rl:${bucketKey}`)).toBe(1)
+        expect(await redis.exists(`rl:${bucketKey}`)).toBe(1);
       } finally {
-        await client.quit().catch(() => { client.disconnect() })
+        await client.quit().catch(() => {
+          client.disconnect();
+        });
       }
-    })
+    });
 
     it('shares one wait across a burst that arrives before the connection', async () => {
       // Each wait attaches `ready` and `error` listeners, and Node warns past
@@ -150,58 +158,62 @@ describe('RedisTokenBucket', () => {
       // the noise this change exists to remove, reintroduced by the fix for
       // it. Asserted on the process warning itself rather than on a listener
       // count, because the warning is the thing that would land in CI.
-      const client = coldClient(connectionUrl())
-      const warnings: string[] = []
-      const onWarning = (warning: Error): void => { warnings.push(warning.name) }
-      process.on('warning', onWarning)
+      const client = coldClient(connectionUrl());
+      const warnings: string[] = [];
+      const onWarning = (warning: Error): void => {
+        warnings.push(warning.name);
+      };
+      process.on('warning', onWarning);
 
       try {
-        const sut = new RedisTokenBucket(client)
+        const sut = new RedisTokenBucket(client);
 
-        const decisions = await Promise.all(
-          Array.from({ length: 30 }, async () => await sut.consume(key(), frozen))
-        )
+        const decisions = await Promise.all(Array.from({length: 30}, async () => await sut.consume(key(), frozen)));
 
-        expect(decisions.every((decision) => decision.allowed)).toBe(true)
-        expect(warnings).not.toContain('MaxListenersExceededWarning')
+        expect(decisions.every((decision) => decision.allowed)).toBe(true);
+        expect(warnings).not.toContain('MaxListenersExceededWarning');
       } finally {
-        process.off('warning', onWarning)
-        await client.quit().catch(() => { client.disconnect() })
+        process.off('warning', onWarning);
+        await client.quit().catch(() => {
+          client.disconnect();
+        });
       }
-    })
+    });
 
     it('waits again after the connection has been re-established', async () => {
       // The shared wait is cleared on settlement rather than memoised. Held,
       // a client that dropped and reconnected would keep answering from a
       // promise that resolved against a socket it no longer has.
-      const client = coldClient(connectionUrl())
+      const client = coldClient(connectionUrl());
       try {
-        await new RedisTokenBucket(client).consume(key(), frozen)
-        expect(client.status).toBe('ready')
+        await new RedisTokenBucket(client).consume(key(), frozen);
+        expect(client.status).toBe('ready');
 
-        const decision = await new RedisTokenBucket(client).consume(key(), frozen)
+        const decision = await new RedisTokenBucket(client).consume(key(), frozen);
 
-        expect(decision.allowed).toBe(true)
+        expect(decision.allowed).toBe(true);
       } finally {
-        await client.quit().catch(() => { client.disconnect() })
+        await client.quit().catch(() => {
+          client.disconnect();
+        });
       }
-    })
+    });
 
     it('gives up on a refused connection rather than waiting it out', async () => {
       // The other half: waiting must not turn an outage into a hang. The
       // fallback limiter degrades on a rejection, and it can only do that if
       // one arrives.
-      const client = coldClient('redis://127.0.0.1:1')
+      const client = coldClient('redis://127.0.0.1:1');
       try {
-        const startedAt = Date.now()
+        const startedAt = Date.now();
 
-        await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow()
+        await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow();
 
-        expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS)
+        expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS);
       } finally {
-        client.disconnect()
+        client.disconnect();
       }
-    })
+    });
 
     it('fails immediately once the client has been closed for good', async () => {
       // `end` is terminal, so waiting for `ready` could only ever time out.
@@ -211,16 +223,15 @@ describe('RedisTokenBucket', () => {
       // `connecting` on the next line and only settles a tick later. A spec
       // that asserted straight after it would be asserting about a client
       // that had not closed yet, and would have measured the timeout instead.
-      const client = coldClient(connectionUrl())
-      client.disconnect()
-      await once(client, 'end')
+      const client = coldClient(connectionUrl());
+      client.disconnect();
+      await once(client, 'end');
 
-      const startedAt = Date.now()
+      const startedAt = Date.now();
 
-      await expect(new RedisTokenBucket(client).consume(key(), frozen))
-        .rejects.toThrow(/closed/)
+      await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow(/closed/);
 
-      expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS)
-    })
-  })
-})
+      expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS);
+    });
+  });
+});

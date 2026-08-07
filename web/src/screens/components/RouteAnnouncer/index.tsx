@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
-import { ANNOUNCE_DELAY_MS, onDocumentTitleSet } from '@/a11y/announce'
+import {useEffect, useRef, useState} from 'react';
+import {useLocation} from 'react-router';
+import {ANNOUNCE_DELAY_MS, onDocumentTitleSet} from '@/a11y/announce';
 
 /**
  * Says the new page's name after a client-side navigation.
@@ -14,8 +14,8 @@ import { ANNOUNCE_DELAY_MS, onDocumentTitleSet } from '@/a11y/announce'
  * the announcement and the browser tab can never say different things.
  */
 export const RouteAnnouncer = (): React.JSX.Element => {
-  const { pathname } = useLocation()
-  const [announcement, setAnnouncement] = useState('')
+  const {pathname} = useLocation();
+  const [announcement, setAnnouncement] = useState('');
 
   /**
    * Seeded with the current path rather than a boolean, so the initial page is
@@ -26,11 +26,11 @@ export const RouteAnnouncer = (): React.JSX.Element => {
    * first pass and the second would announce the initial page anyway. Comparing
    * paths is idempotent, so a repeated effect is a no-op.
    */
-  const announcedFor = useRef(pathname)
+  const announcedFor = useRef(pathname);
 
   useEffect(() => {
-    if (announcedFor.current === pathname) return
-    announcedFor.current = pathname
+    if (announcedFor.current === pathname) return;
+    announcedFor.current = pathname;
 
     /**
      * Emptied first, and this is not tidying.
@@ -41,7 +41,7 @@ export const RouteAnnouncer = (): React.JSX.Element => {
      * nothing new to read and the second navigation is announced by silence.
      * Clearing makes the next write a real mutation whatever the title says.
      */
-    setAnnouncement('')
+    setAnnouncement('');
 
     /**
      * Waits for the incoming screen to name itself, rather than guessing when
@@ -57,17 +57,19 @@ export const RouteAnnouncer = (): React.JSX.Element => {
      * schedule and corrected afterwards, which fixed the final text and left a
      * screen reader hearing both.
      */
-    let timer: ReturnType<typeof setTimeout> | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const stop = onDocumentTitleSet(() => {
-      stop()
-      timer = setTimeout(() => { setAnnouncement(document.title) }, ANNOUNCE_DELAY_MS)
-    })
+      stop();
+      timer = setTimeout(() => {
+        setAnnouncement(document.title);
+      }, ANNOUNCE_DELAY_MS);
+    });
 
     return () => {
-      stop()
-      clearTimeout(timer)
-    }
-  }, [pathname])
+      stop();
+      clearTimeout(timer);
+    };
+  }, [pathname]);
 
   return (
     // `role="status"` is the polite live region, and unlike a bare `aria-live`
@@ -76,5 +78,5 @@ export const RouteAnnouncer = (): React.JSX.Element => {
     <div role="status" aria-live="polite" aria-atomic="true" className="visually-hidden">
       {announcement}
     </div>
-  )
-}
+  );
+};

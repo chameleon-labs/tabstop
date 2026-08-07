@@ -1,14 +1,14 @@
-import type { ColumnType, Generated } from 'kysely'
-import type { AlertKind } from '../../../domain/models/alert-event.js'
-import type { AuditStatus } from '../../../domain/models/audit.js'
-import type { CountsByImpact, Impact } from '../../../domain/models/impact.js'
-import type { ViolationNode } from '../../../domain/models/violation.js'
+import type {ColumnType, Generated} from 'kysely';
+import type {AlertKind} from '../../../domain/models/alert-event.js';
+import type {AuditStatus} from '../../../domain/models/audit.js';
+import type {CountsByImpact, Impact} from '../../../domain/models/impact.js';
+import type {ViolationNode} from '../../../domain/models/violation.js';
 
 /**
  * Nullable and omittable on insert. Kysely does not infer the second part from
  * `T | null` alone — a bare `string | null` column is required on every insert.
  */
-type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>
+type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>;
 
 /**
  * jsonb: reads as a parsed value, but is WRITTEN as a JSON string.
@@ -19,59 +19,59 @@ type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>
  * `invalid input syntax for type json`. Requiring a string on the insert side
  * removes the asymmetry: every jsonb write goes through JSON.stringify.
  */
-type Json<T> = ColumnType<T, string | undefined, string>
+type Json<T> = ColumnType<T, string | undefined, string>;
 
 export interface UsersTable {
-  id: Generated<string>
+  id: Generated<string>;
   /** Lowercased by the repository before every write and lookup. */
-  email: string
-  password_digest: string
+  email: string;
+  password_digest: string;
   /** Score points. Read by regression detection (#14). */
-  alert_threshold: Generated<number>
-  created_at: Generated<Date>
+  alert_threshold: Generated<number>;
+  created_at: Generated<Date>;
 }
 
 export interface SessionsTable {
   /** The cookie value: 32 random bytes as hex. Not a uuid — the format is ours. */
-  id: string
-  user_id: string
-  created_at: Generated<Date>
-  expires_at: Date
+  id: string;
+  user_id: string;
+  created_at: Generated<Date>;
+  expires_at: Date;
 }
 
 export interface SitesTable {
-  id: Generated<string>
-  user_id: string
-  domain: string
-  created_at: Generated<Date>
+  id: Generated<string>;
+  user_id: string;
+  domain: string;
+  created_at: Generated<Date>;
 }
 
 export interface PagesTable {
-  id: Generated<string>
-  site_id: string
-  url: string
-  monitoring_enabled: Generated<boolean>
-  alerts_enabled: Generated<boolean>
-  created_at: Generated<Date>
+  id: Generated<string>;
+  site_id: string;
+  url: string;
+  monitoring_enabled: Generated<boolean>;
+  alerts_enabled: Generated<boolean>;
+  created_at: Generated<Date>;
 }
 
 export interface AuditsTable {
-  id: Generated<string>
-  public_uuid: Generated<string>
-  page_id: Nullable<string>
-  url: string
-  status: AuditStatus
-  score: Nullable<number>
-  counts_by_impact: Json<CountsByImpact>
-  axe_version: Nullable<string>
-  duration_ms: Nullable<number>
-  error: Nullable<string>
-  created_at: Generated<Date>
-  completed_at: Nullable<Date>
+  id: Generated<string>;
+  public_uuid: Generated<string>;
+  page_id: Nullable<string>;
+  url: string;
+  status: AuditStatus;
+  score: Nullable<number>;
+  counts_by_impact: Json<CountsByImpact>;
+  axe_version: Nullable<string>;
+  duration_ms: Nullable<number>;
+  error: Nullable<string>;
+  created_at: Generated<Date>;
+  completed_at: Nullable<Date>;
   /** False when the page never reached network idle and was audited anyway. */
-  settled: Generated<boolean>
+  settled: Generated<boolean>;
   /** When the current attempt claimed this audit. Null before any attempt. */
-  claimed_at: Nullable<Date>
+  claimed_at: Nullable<Date>;
   /**
    * Which day's scheduled run produced this audit (#13). Null for everything
    * else: a page's first audit, an anonymous one-off, a manual re-audit.
@@ -82,39 +82,39 @@ export interface AuditsTable {
    * `audits_one_scheduled_per_page_per_day` - and `toAuditModel` does not map
    * it, so the read type below is never relied on.
    */
-  scheduled_for: ColumnType<Date | null, string | null | undefined, string | null>
+  scheduled_for: ColumnType<Date | null, string | null | undefined, string | null>;
 }
 
 export interface ViolationsTable {
-  id: Generated<string>
-  audit_id: string
-  rule_id: string
+  id: Generated<string>;
+  audit_id: string;
+  rule_id: string;
   /** Null when axe reports a violation whose checks carry no severity. */
-  impact: Nullable<Impact>
-  description: string
-  help_url: string
-  nodes: Json<ViolationNode[]>
+  impact: Nullable<Impact>;
+  description: string;
+  help_url: string;
+  nodes: Json<ViolationNode[]>;
 }
 
 export interface AlertEventsTable {
-  id: Generated<string>
-  page_id: string
-  audit_id: string
-  previous_audit_id: Nullable<string>
-  kind: AlertKind
-  created_at: Generated<Date>
-  emailed_at: Nullable<Date>
-  previewed_at: Nullable<Date>
-  failed_at: Nullable<Date>
-  failure_reason: Nullable<string>
+  id: Generated<string>;
+  page_id: string;
+  audit_id: string;
+  previous_audit_id: Nullable<string>;
+  kind: AlertKind;
+  created_at: Generated<Date>;
+  emailed_at: Nullable<Date>;
+  previewed_at: Nullable<Date>;
+  failed_at: Nullable<Date>;
+  failure_reason: Nullable<string>;
 }
 
 export interface Database {
-  users: UsersTable
-  sessions: SessionsTable
-  sites: SitesTable
-  pages: PagesTable
-  audits: AuditsTable
-  violations: ViolationsTable
-  alert_events: AlertEventsTable
+  users: UsersTable;
+  sessions: SessionsTable;
+  sites: SitesTable;
+  pages: PagesTable;
+  audits: AuditsTable;
+  violations: ViolationsTable;
+  alert_events: AlertEventsTable;
 }

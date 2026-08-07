@@ -1,4 +1,4 @@
-import { env } from './env.js'
+import {env} from './env.js';
 
 /**
  * `__Host-` is refused by browsers unless the cookie is Secure, Path=/ and has
@@ -13,6 +13,6 @@ import { env } from './env.js'
  * The prefix is invalid without Secure, so plain-http local development falls
  * back to the bare name - where no sibling host exists to exploit it.
  */
-export const sessionCookieName = (secure: boolean): string => secure ? '__Host-sid' : 'sid'
+export const sessionCookieName = (secure: boolean): string => (secure ? '__Host-sid' : 'sid');
 
-export const SESSION_COOKIE_NAME = sessionCookieName(env.sessionCookieSecure)
+export const SESSION_COOKIE_NAME = sessionCookieName(env.sessionCookieSecure);

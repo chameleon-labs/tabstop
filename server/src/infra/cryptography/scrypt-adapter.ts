@@ -1,18 +1,18 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
-import { promisify } from 'node:util'
-import type { Hasher } from '../../data/protocols/cryptography/hasher.js'
-import type { HashComparer } from '../../data/protocols/cryptography/hash-comparer.js'
+import {randomBytes, scrypt, timingSafeEqual} from 'node:crypto';
+import {promisify} from 'node:util';
+import type {Hasher} from '../../data/protocols/cryptography/hasher.js';
+import type {HashComparer} from '../../data/protocols/cryptography/hash-comparer.js';
 
 const scryptAsync = promisify(scrypt) as (
   password: string,
   salt: Buffer,
   keylen: number,
-  options: { N: number, r: number, p: number, maxmem: number }
-) => Promise<Buffer>
+  options: {N: number; r: number; p: number; maxmem: number},
+) => Promise<Buffer>;
 
-const KEY_LENGTH = 64
-const SALT_LENGTH = 16
-const BLOCK_SIZE = 8
+const KEY_LENGTH = 64;
+const SALT_LENGTH = 16;
+const BLOCK_SIZE = 8;
 
 /**
  * OWASP's scrypt guidance is a set of equivalent-defence configurations, not a
@@ -29,16 +29,16 @@ const BLOCK_SIZE = 8
  *
  * Measured: 2^15/8/1 = 86ms, 2^15/8/3 = 236ms, 2^17/8/1 = 321ms at 128 MB.
  */
-const PARALLELISATION = 3
+const PARALLELISATION = 3;
 
 /**
  * Node's default maxmem rejects any cost above N=16384 with `Invalid scrypt
  * params` - at runtime, not compile time. It has to be raised explicitly for
  * the cost this adapter actually uses.
  */
-const MAX_MEMORY = 256 * 1024 * 1024
+const MAX_MEMORY = 256 * 1024 * 1024;
 
-const DIGEST_PARTS = 6
+const DIGEST_PARTS = 6;
 
 /**
  * Node validates scrypt parameters synchronously and THROWS, so "a positive
@@ -56,13 +56,11 @@ const DIGEST_PARTS = 6
  * signup into a 500 while login keeps working, which is exactly the kind of
  * partial breakage the fail-fast config rule exists to prevent.
  */
-export const isValidScryptCost = (
-  cost: number, blockSize = BLOCK_SIZE, parallelisation = PARALLELISATION
-): boolean =>
+export const isValidScryptCost = (cost: number, blockSize = BLOCK_SIZE, parallelisation = PARALLELISATION): boolean =>
   Number.isInteger(cost) &&
   cost > 1 &&
   (cost & (cost - 1)) === 0 &&
-  128 * blockSize * (cost + parallelisation) <= MAX_MEMORY
+  128 * blockSize * (cost + parallelisation) <= MAX_MEMORY;
 
 /**
  * scrypt (RFC 7914) from the standard library. Chosen over argon2 and bcrypt
@@ -79,35 +77,37 @@ export const isValidScryptCost = (
  * rather than from configuration.
  */
 export class ScryptAdapter implements Hasher, HashComparer {
-  constructor (private readonly cost: number) {}
+  constructor(private readonly cost: number) {}
 
-  async hash (plaintext: string): Promise<string> {
-    const salt = randomBytes(SALT_LENGTH)
+  async hash(plaintext: string): Promise<string> {
+    const salt = randomBytes(SALT_LENGTH);
     const key = await scryptAsync(plaintext, salt, KEY_LENGTH, {
-      N: this.cost, r: BLOCK_SIZE, p: PARALLELISATION, maxmem: MAX_MEMORY
-    })
-    return [
-      'scrypt', this.cost, BLOCK_SIZE, PARALLELISATION,
-      salt.toString('base64'), key.toString('base64')
-    ].join('$')
+      N: this.cost,
+      r: BLOCK_SIZE,
+      p: PARALLELISATION,
+      maxmem: MAX_MEMORY,
+    });
+    return ['scrypt', this.cost, BLOCK_SIZE, PARALLELISATION, salt.toString('base64'), key.toString('base64')].join(
+      '$',
+    );
   }
 
-  async compare (plaintext: string, digest: string): Promise<boolean> {
-    const parts = digest.split('$')
-    if (parts.length !== DIGEST_PARTS) return false
+  async compare(plaintext: string, digest: string): Promise<boolean> {
+    const parts = digest.split('$');
+    if (parts.length !== DIGEST_PARTS) return false;
 
-    const [scheme, n, r, p, saltBase64, keyBase64] = parts
-    if (scheme !== 'scrypt') return false
-    if (n === undefined || r === undefined || p === undefined) return false
-    if (saltBase64 === undefined || keyBase64 === undefined) return false
+    const [scheme, n, r, p, saltBase64, keyBase64] = parts;
+    if (scheme !== 'scrypt') return false;
+    if (n === undefined || r === undefined || p === undefined) return false;
+    if (saltBase64 === undefined || keyBase64 === undefined) return false;
 
-    const parameters = { N: Number(n), r: Number(r), p: Number(p) }
-    const expected = Buffer.from(keyBase64, 'base64')
+    const parameters = {N: Number(n), r: Number(r), p: Number(p)};
+    const expected = Buffer.from(keyBase64, 'base64');
     // Must be EXACTLY the length this adapter writes, not merely non-empty.
     // The derivation below uses the stored length, so a truncated digest would
     // compare only that many bytes: a one-byte key accepts an arbitrary
     // password with probability 1/256. Measured at 3 in 1500 before this check.
-    if (expected.length !== KEY_LENGTH) return false
+    if (expected.length !== KEY_LENGTH) return false;
 
     // Parameter validity is left to scrypt itself rather than re-checked here.
     // Node validates synchronously and throws - for a cost that is not a power
@@ -120,16 +120,16 @@ export class ScryptAdapter implements Hasher, HashComparer {
       // timingSafeEqual throws RangeError on unequal-length buffers, so a
       // digest written with different parameters would throw instead of
       // returning false.
-      const actual = await scryptAsync(
-        plaintext, Buffer.from(saltBase64, 'base64'), KEY_LENGTH,
-        { ...parameters, maxmem: MAX_MEMORY }
-      )
+      const actual = await scryptAsync(plaintext, Buffer.from(saltBase64, 'base64'), KEY_LENGTH, {
+        ...parameters,
+        maxmem: MAX_MEMORY,
+      });
 
-      return timingSafeEqual(actual, expected)
+      return timingSafeEqual(actual, expected);
     } catch {
       // Backstop for any parameter combination the checks above do not
       // anticipate. Failing closed is the only safe direction here.
-      return false
+      return false;
     }
   }
 }

@@ -1,16 +1,16 @@
-import type { Violation } from '@tabstop/contract'
-import { useId, useState } from 'react'
-import { groupByImpact, startsExpanded } from '../../grouping'
-import { crossesFrames, describeTarget, safeHelpUrl } from '../../violation'
+import type {Violation} from '@tabstop/contract';
+import {useId, useState} from 'react';
+import {groupByImpact, startsExpanded} from '../../grouping';
+import {crossesFrames, describeTarget, safeHelpUrl} from '../../violation';
 
 export type ViolationListProps = {
-  violations: readonly Violation[]
-}
+  violations: readonly Violation[];
+};
 
 export type ViolationItemProps = {
-  violation: Violation
-  defaultExpanded: boolean
-}
+  violation: Violation;
+  defaultExpanded: boolean;
+};
 
 /**
  * The findings, grouped by severity, each expandable to the elements it
@@ -21,12 +21,12 @@ export type ViolationItemProps = {
  * from a div is one of the failures axe reports, and shipping one inside an
  * accessibility report would be the most quotable bug this project could have.
  */
-export const ViolationList = ({ violations }: ViolationListProps): React.JSX.Element => {
-  const groups = groupByImpact(violations)
-  const expanded = startsExpanded(violations.length)
+export const ViolationList = ({violations}: ViolationListProps): React.JSX.Element => {
+  const groups = groupByImpact(violations);
+  const expanded = startsExpanded(violations.length);
 
   if (groups.length === 0) {
-    return <p>No accessibility violations were found on this page.</p>
+    return <p>No accessibility violations were found on this page.</p>;
   }
 
   return (
@@ -46,16 +46,14 @@ export const ViolationList = ({ violations }: ViolationListProps): React.JSX.Ele
         </section>
       ))}
     </>
-  )
-}
+  );
+};
 
-const ViolationItem = ({
-  violation, defaultExpanded
-}: ViolationItemProps): React.JSX.Element => {
-  const [open, setOpen] = useState(defaultExpanded)
-  const panelId = useId()
+const ViolationItem = ({violation, defaultExpanded}: ViolationItemProps): React.JSX.Element => {
+  const [open, setOpen] = useState(defaultExpanded);
+  const panelId = useId();
   // Null when the audited page supplied something that is not a web address.
-  const help = safeHelpUrl(violation.helpUrl)
+  const help = safeHelpUrl(violation.helpUrl);
 
   return (
     <>
@@ -63,7 +61,9 @@ const ViolationItem = ({
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => { setOpen((was) => !was) }}
+        onClick={() => {
+          setOpen((was) => !was);
+        }}
       >
         {violation.description}
       </button>
@@ -83,32 +83,32 @@ const ViolationItem = ({
       <div id={panelId} hidden={!open}>
         {!open ? null : (
           <>
-        {help === null
-          ? <p>Rule <code>{violation.ruleId}</code></p>
-          : (
-            <p>
-              <a href={help} target="_blank" rel="noreferrer noopener">
-                How to fix this
-                {/* The link text alone would read as "How to fix this" out of
+            {help === null ? (
+              <p>
+                Rule <code>{violation.ruleId}</code>
+              </p>
+            ) : (
+              <p>
+                <a href={help} target="_blank" rel="noreferrer noopener">
+                  How to fix this
+                  {/* The link text alone would read as "How to fix this" out of
                     context, in a list of identical links. The rule names it. */}
-                <span className="visually-hidden"> — {violation.ruleId}</span>
-              </a>
-            </p>
+                  <span className="visually-hidden"> — {violation.ruleId}</span>
+                </a>
+              </p>
             )}
 
-        {violation.nodes.length === 0
-          ? <p>No specific elements were reported for this rule.</p>
-          : (
-            <ul>
-              {violation.nodes.map((node, index) => (
-                <li key={`${violation.ruleId}-${index}`}>
-                  <p>
-                    <code>{describeTarget(node.target)}</code>
-                    {crossesFrames(node.target) && (
-                      <span className="visually-hidden"> (inside a frame)</span>
-                    )}
-                  </p>
-                  {/*
+            {violation.nodes.length === 0 ? (
+              <p>No specific elements were reported for this rule.</p>
+            ) : (
+              <ul>
+                {violation.nodes.map((node, index) => (
+                  <li key={`${violation.ruleId}-${index}`}>
+                    <p>
+                      <code>{describeTarget(node.target)}</code>
+                      {crossesFrames(node.target) && <span className="visually-hidden"> (inside a frame)</span>}
+                    </p>
+                    {/*
                     `node.html` IS ATTACKER-CONTROLLED. It is a markup snippet
                     captured from an arbitrary third-party page, and this
                     product's whole job is to visit pages nobody vetted.
@@ -118,14 +118,16 @@ const ViolationItem = ({
                     the instinct that would introduce stored XSS here, which is
                     why the comment sits at the render site rather than in a doc.
                   */}
-                  <pre><code>{node.html}</code></pre>
-                </li>
-              ))}
-            </ul>
-              )}
+                    <pre>
+                      <code>{node.html}</code>
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>
     </>
-  )
-}
+  );
+};

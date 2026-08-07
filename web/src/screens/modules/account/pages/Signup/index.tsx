@@ -1,4 +1,4 @@
-import { useDocumentTitle } from '@/screens/hooks/use-document-title'
+import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 
 /**
  * Placeholder, and it exists now because #19 links here.
@@ -14,12 +14,12 @@ import { useDocumentTitle } from '@/screens/hooks/use-document-title'
  * signup so it is not retyped.
  */
 export const Signup = (): React.JSX.Element => {
-  useDocumentTitle('Create an account')
+  useDocumentTitle('Create an account');
 
   return (
     <section>
       <h1>Create an account</h1>
       <p>Accounts are not open yet. Audits stay free and anonymous in the meantime.</p>
     </section>
-  )
-}
+  );
+};

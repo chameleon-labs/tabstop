@@ -1,7 +1,7 @@
 export type DeletePageParams = {
-  pageId: string
-  userId: string
-}
+  pageId: string;
+  userId: string;
+};
 
 export interface DeletePage {
   /**
@@ -13,5 +13,5 @@ export interface DeletePage {
    * That is the intended privacy behaviour, tested in #4 - and it is why there
    * is no undo.
    */
-  delete: (params: DeletePageParams) => Promise<boolean>
+  delete: (params: DeletePageParams) => Promise<boolean>;
 }

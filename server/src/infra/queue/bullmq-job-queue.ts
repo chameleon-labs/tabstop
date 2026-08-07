@@ -1,14 +1,12 @@
-import type { JobQueue } from '../../data/protocols/queue/job-queue.js'
-import type { PayloadQueue } from './helpers/bullmq-helper.js'
-import type {
-  AuditJob, AuditJobQueue, EnqueueOptions
-} from '../../data/protocols/queue/audit-job-queue.js'
+import type {JobQueue} from '../../data/protocols/queue/job-queue.js';
+import type {PayloadQueue} from './helpers/bullmq-helper.js';
+import type {AuditJob, AuditJobQueue, EnqueueOptions} from '../../data/protocols/queue/audit-job-queue.js';
 
 export class BullMqJobQueue<TPayload> implements JobQueue<TPayload> {
-  constructor (private readonly queue: PayloadQueue<TPayload>) {}
+  constructor(private readonly queue: PayloadQueue<TPayload>) {}
 
-  async enqueue (payload: TPayload): Promise<void> {
-    await this.queue.add(this.queue.name, payload)
+  async enqueue(payload: TPayload): Promise<void> {
+    await this.queue.add(this.queue.name, payload);
   }
 }
 
@@ -18,16 +16,16 @@ export class BullMqJobQueue<TPayload> implements JobQueue<TPayload> {
  * BullMQ reserves for repeatable jobs. Both methods below must derive the id
  * identically, or `has` looks up a key nothing ever wrote.
  */
-const jobIdFor = (auditId: string): string => `audit-${auditId}`
+const jobIdFor = (auditId: string): string => `audit-${auditId}`;
 
 /**
  * The audit queue, which needs more than fire-and-forget: submission has to be
  * able to retry safely and to ask whether a job it failed to confirm exists.
  */
 export class BullMqAuditQueue implements AuditJobQueue {
-  constructor (private readonly queue: PayloadQueue<AuditJob>) {}
+  constructor(private readonly queue: PayloadQueue<AuditJob>) {}
 
-  async enqueueOnce (job: AuditJob, options?: EnqueueOptions): Promise<void> {
+  async enqueueOnce(job: AuditJob, options?: EnqueueOptions): Promise<void> {
     // BullMQ ignores an add whose job id already exists, which is what makes a
     // retry idempotent - without it, a reply lost after Redis committed would
     // leave two jobs racing for the same audit.
@@ -36,12 +34,12 @@ export class BullMqAuditQueue implements AuditJobQueue {
     // an interactive submission's job options stay exactly what they were.
     await this.queue.add(this.queue.name, job, {
       jobId: jobIdFor(job.auditId),
-      ...(options === undefined ? {} : { delay: options.delayMs })
-    })
+      ...(options === undefined ? {} : {delay: options.delayMs}),
+    });
   }
 
-  async has (auditId: string): Promise<boolean> {
-    return await this.queue.getJob(jobIdFor(auditId)) !== undefined
+  async has(auditId: string): Promise<boolean> {
+    return (await this.queue.getJob(jobIdFor(auditId))) !== undefined;
   }
 
   /**
@@ -55,14 +53,19 @@ export class BullMqAuditQueue implements AuditJobQueue {
    * could not place, which is not evidence that nothing will run it.
    */
   private static readonly PENDING_STATES = new Set([
-    'waiting', 'waiting-children', 'prioritized', 'active', 'delayed', 'unknown'
-  ])
+    'waiting',
+    'waiting-children',
+    'prioritized',
+    'active',
+    'delayed',
+    'unknown',
+  ]);
 
-  async isPending (auditId: string): Promise<boolean> {
-    const job = await this.queue.getJob(jobIdFor(auditId))
-    if (job === undefined) return false
+  async isPending(auditId: string): Promise<boolean> {
+    const job = await this.queue.getJob(jobIdFor(auditId));
+    if (job === undefined) return false;
 
-    return BullMqAuditQueue.PENDING_STATES.has(await job.getState())
+    return BullMqAuditQueue.PENDING_STATES.has(await job.getState());
   }
 
   /**
@@ -87,7 +90,7 @@ export class BullMqAuditQueue implements AuditJobQueue {
    * Active is excluded because it is bounded by the workers' own concurrency
    * rather than by anything a submitter can drive.
    */
-  async backlogCount (): Promise<number> {
-    return await this.queue.getJobCountByTypes('waiting')
+  async backlogCount(): Promise<number> {
+    return await this.queue.getJobCountByTypes('waiting');
   }
 }

@@ -1,13 +1,13 @@
-import { useId, useState } from 'react'
-import { Button, Input } from '@chameleon-labs/lattice-react'
-import { URL_PROBLEMS, normaliseUrl } from '../../url'
-import { Globe, Zap } from '@/screens/components/Icons'
+import {useId, useState} from 'react';
+import {Button, Input} from '@chameleon-labs/lattice-react';
+import {URL_PROBLEMS, normaliseUrl} from '../../url';
+import {Globe, Zap} from '@/screens/components/Icons';
 
 export type UrlFieldProps = {
   /** Receives the canonical URL, never the raw text. */
-  onSubmit: (url: string) => void
-  disabled?: boolean
-}
+  onSubmit: (url: string) => void;
+  disabled?: boolean;
+};
 
 /**
  * The URL input, and the product's first interaction.
@@ -20,22 +20,22 @@ export type UrlFieldProps = {
  *
  * `onSubmit` receives the normalised URL, never the raw text.
  */
-export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.JSX.Element => {
-  const [raw, setRaw] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const inputId = useId()
-  const errorId = useId()
+export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX.Element => {
+  const [raw, setRaw] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const inputId = useId();
+  const errorId = useId();
 
-  const parsed = normaliseUrl(raw)
-  const problem = submitted && !parsed.ok ? URL_PROBLEMS[parsed.problem] : null
+  const parsed = normaliseUrl(raw);
+  const problem = submitted && !parsed.ok ? URL_PROBLEMS[parsed.problem] : null;
 
   return (
     <form
       noValidate
       onSubmit={(event) => {
-        event.preventDefault()
-        setSubmitted(true)
-        if (parsed.ok) onSubmit(parsed.url)
+        event.preventDefault();
+        setSubmitted(true);
+        if (parsed.ok) onSubmit(parsed.url);
       }}
     >
       <div className="landing-page__url-row">
@@ -55,7 +55,9 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
           inputClassName="landing-page__url-input"
           value={raw}
           disabled={disabled}
-          onChange={(event) => { setRaw(event.target.value) }}
+          onChange={(event) => {
+            setRaw(event.target.value);
+          }}
           // Lattice's own prop, not `aria-invalid` directly: `Input` applies
           // its version AFTER spreading props, so passing the attribute here
           // is silently overwritten. It emits the attribute only when true,
@@ -72,7 +74,9 @@ export const UrlField = ({ onSubmit, disabled = false }: UrlFieldProps): React.J
         </Button>
       </div>
 
-      <p id={errorId} role="alert">{problem}</p>
+      <p id={errorId} role="alert">
+        {problem}
+      </p>
     </form>
-  )
-}
+  );
+};

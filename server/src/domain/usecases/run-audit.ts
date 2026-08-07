@@ -1,15 +1,15 @@
 export type RunAuditParams = {
-  auditId: string
+  auditId: string;
   /** Aborted when the job exceeds its budget; the auditor must kill the browser. */
-  signal: AbortSignal
+  signal: AbortSignal;
   /**
    * Whether this is the queue's last attempt. Supplied by the worker adapter,
    * because how many times a job may be retried is a property of the queue,
    * not of the domain - the usecase must not import the queue to find out.
    */
-  isFinalAttempt: boolean
-}
+  isFinalAttempt: boolean;
+};
 
 export interface RunAudit {
-  run: (params: RunAuditParams) => Promise<void>
+  run: (params: RunAuditParams) => Promise<void>;
 }

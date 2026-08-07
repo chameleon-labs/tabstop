@@ -1,6 +1,4 @@
-import type {
-  PageConflictCode, PageLimitReachedBody
-} from '@tabstop/contract'
+import type {PageConflictCode, PageLimitReachedBody} from '@tabstop/contract';
 
 /**
  * The discriminants and the extra data of the two 409s `POST /api/pages`
@@ -16,8 +14,8 @@ import type {
  */
 export const PAGE_CONFLICT: Record<'limitReached' | 'alreadyTracked', PageConflictCode> = {
   limitReached: 'page_limit_reached',
-  alreadyTracked: 'page_already_tracked'
-}
+  alreadyTracked: 'page_already_tracked',
+};
 
 /** The one variant that carries data beyond the sentence. */
-export const pageLimitDetails = (limit: number): Pick<PageLimitReachedBody, 'limit'> => ({ limit })
+export const pageLimitDetails = (limit: number): Pick<PageLimitReachedBody, 'limit'> => ({limit});

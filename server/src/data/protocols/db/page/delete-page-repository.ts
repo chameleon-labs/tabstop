@@ -6,5 +6,5 @@ export interface DeletePageRepository {
    *
    * False when this account has no such page, including a malformed id.
    */
-  deleteForUser: (pageId: string, userId: string) => Promise<boolean>
+  deleteForUser: (pageId: string, userId: string) => Promise<boolean>;
 }

@@ -1,39 +1,33 @@
-import type { Kysely } from 'kysely'
-import type { AuditModel } from '../../../../domain/models/audit.js'
-import type { PageModel, PageScorePoint, PageSummary } from '../../../../domain/models/page.js'
+import type {Kysely} from 'kysely';
+import type {AuditModel} from '../../../../domain/models/audit.js';
+import type {PageModel, PageScorePoint, PageSummary} from '../../../../domain/models/page.js';
 import type {
   AddPageRepository,
   AddPageRepositoryParams,
-  AddPageRepositoryResult
-} from '../../../../data/protocols/db/page/add-page-repository.js'
+  AddPageRepositoryResult,
+} from '../../../../data/protocols/db/page/add-page-repository.js';
+import type {LoadPageSummariesRepository} from '../../../../data/protocols/db/page/load-page-summaries-repository.js';
+import type {SetPageMonitoringRepository} from '../../../../data/protocols/db/page/set-page-monitoring-repository.js';
+import type {DeletePageRepository} from '../../../../data/protocols/db/page/delete-page-repository.js';
 import type {
-  LoadPageSummariesRepository
-} from '../../../../data/protocols/db/page/load-page-summaries-repository.js'
-import type {
-  SetPageMonitoringRepository
-} from '../../../../data/protocols/db/page/set-page-monitoring-repository.js'
-import type {
-  DeletePageRepository
-} from '../../../../data/protocols/db/page/delete-page-repository.js'
-import type {
-  DuePage, DuePageQuery, LoadDueReauditsRepository
-} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js'
-import type {
-  LoadPageHistoryRepository
-} from '../../../../data/protocols/db/page/load-page-history-repository.js'
-import type { PageHistory } from '../../../../domain/usecases/load-page-history.js'
-import type { Database } from '../database.js'
-import { toAuditModel } from '../audit/audit-mapper.js'
-import { toPageModel } from './page-mapper.js'
+  DuePage,
+  DuePageQuery,
+  LoadDueReauditsRepository,
+} from '../../../../data/protocols/db/page/load-due-reaudits-repository.js';
+import type {LoadPageHistoryRepository} from '../../../../data/protocols/db/page/load-page-history-repository.js';
+import type {PageHistory} from '../../../../domain/usecases/load-page-history.js';
+import type {Database} from '../database.js';
+import {toAuditModel} from '../audit/audit-mapper.js';
+import {toPageModel} from './page-mapper.js';
 
 /**
  * How many recent scores the dashboard sparkline (#20) draws. Bounded in SQL
  * rather than sliced in code: history is never pruned, so "fetch all, keep
  * thirty" costs more for as long as the account exists.
  */
-export const HISTORY_POINTS = 30
+export const HISTORY_POINTS = 30;
 
-const MAX_BIGINT = 9223372036854775807n
+const MAX_BIGINT = 9223372036854775807n;
 
 /**
  * Postgres rejects a non-`bigint` (SQLSTATE 22P03, or 22003 on overflow)
@@ -42,17 +36,18 @@ const MAX_BIGINT = 9223372036854775807n
  * `Promise<PageModel | null>` honest and the database's type checking from
  * becoming a 500.
  */
-const isStorableId = (value: string): boolean =>
-  /^\d{1,19}$/.test(value) && BigInt(value) <= MAX_BIGINT
+const isStorableId = (value: string): boolean => /^\d{1,19}$/.test(value) && BigInt(value) <= MAX_BIGINT;
 
-export class PostgresPageRepository implements
-  AddPageRepository,
-  LoadDueReauditsRepository,
-  LoadPageSummariesRepository,
-  LoadPageHistoryRepository,
-  SetPageMonitoringRepository,
-  DeletePageRepository {
-  constructor (private readonly db: Kysely<Database>) {}
+export class PostgresPageRepository
+  implements
+    AddPageRepository,
+    LoadDueReauditsRepository,
+    LoadPageSummariesRepository,
+    LoadPageHistoryRepository,
+    SetPageMonitoringRepository,
+    DeletePageRepository
+{
+  constructor(private readonly db: Kysely<Database>) {}
 
   /**
    * One transaction, because the four things it does are only correct
@@ -67,60 +62,65 @@ export class PostgresPageRepository implements
    * `userId` comes from the resolved session, never the request body, so it
    * needs no id guard.
    */
-  async add (params: AddPageRepositoryParams): Promise<AddPageRepositoryResult> {
+  async add(params: AddPageRepositoryParams): Promise<AddPageRepositoryResult> {
     return await this.db.transaction().execute(async (trx) => {
-      await trx.selectFrom('users')
+      await trx
+        .selectFrom('users')
         .select('id')
         .where('id', '=', params.userId)
         .forUpdate()
         // Unreachable: sessions cascade from users, so a request that
         // authenticated has an account. Throwing rather than branching keeps
         // an impossible state from acquiring a code path nothing exercises.
-        .executeTakeFirstOrThrow()
+        .executeTakeFirstOrThrow();
 
       // Checked before the cap, so an account at exactly its limit re-adding a
       // page it already tracks is told the useful thing rather than being sold
       // an upgrade it does not need.
-      const existing = await trx.selectFrom('pages')
+      const existing = await trx
+        .selectFrom('pages')
         .innerJoin('sites', 'sites.id', 'pages.site_id')
         .select('pages.id')
         .where('sites.user_id', '=', params.userId)
         .where('pages.url', '=', params.url)
-        .executeTakeFirst()
+        .executeTakeFirst();
 
-      if (existing !== undefined) return { outcome: 'duplicate' }
+      if (existing !== undefined) return {outcome: 'duplicate'};
 
-      const counted = await trx.selectFrom('pages')
+      const counted = await trx
+        .selectFrom('pages')
         .innerJoin('sites', 'sites.id', 'pages.site_id')
         .select((eb) => eb.fn.countAll<string>().as('count'))
         .where('sites.user_id', '=', params.userId)
-        .executeTakeFirstOrThrow()
+        .executeTakeFirstOrThrow();
 
-      if (Number(counted.count) >= params.limit) return { outcome: 'limit-reached' }
+      if (Number(counted.count) >= params.limit) return {outcome: 'limit-reached'};
 
-      const siteId = await this.findOrCreateSite(trx, params.userId, params.domain)
+      const siteId = await this.findOrCreateSite(trx, params.userId, params.domain);
 
-      const page = await trx.insertInto('pages')
-        .values({ site_id: siteId, url: params.url })
+      const page = await trx
+        .insertInto('pages')
+        .values({site_id: siteId, url: params.url})
         // `do nothing` rather than catching 23505: an error inside a
         // transaction ABORTS it, so everything after would fail with 25P02.
         // This returns zero rows and leaves the transaction usable.
         .onConflict((oc) => oc.constraint('pages_site_id_url_unique').doNothing())
         .returningAll()
-        .executeTakeFirst()
+        .executeTakeFirst();
 
-      if (page === undefined) return { outcome: 'duplicate' }
+      if (page === undefined) return {outcome: 'duplicate'};
 
       // Inside the transaction so a page cannot exist without a first audit.
       // Only the ENQUEUE has to wait for the commit - a job handed to Redis
       // inside a transaction that then rolls back points at nothing.
-      const audit = await trx.insertInto('audits')
-        .values({ url: params.url, page_id: page.id, status: 'queued' })
+      const audit = await trx
+        .insertInto('audits')
+        .values({url: params.url, page_id: page.id, status: 'queued'})
         .returningAll()
-        .executeTakeFirstOrThrow()
+        .executeTakeFirstOrThrow();
 
-      return { outcome: 'added', page: toPageModel(page), firstAudit: toAuditModel(audit) }
-    })
+      return {outcome: 'added', page: toPageModel(page), firstAudit: toAuditModel(audit)};
+    });
   }
 
   /**
@@ -141,44 +141,60 @@ export class PostgresPageRepository implements
    * manually an hour ago is not fetched again tonight. Ordered by `pages.id`
    * because the cursor is, so a run that stops early stops reproducibly.
    */
-  async loadDueForReaudit (query: DuePageQuery): Promise<DuePage[]> {
-    let statement = this.db.selectFrom('pages')
+  async loadDueForReaudit(query: DuePageQuery): Promise<DuePage[]> {
+    let statement = this.db
+      .selectFrom('pages')
       .innerJoin('sites', 'sites.id', 'pages.site_id')
       .select(['pages.id as page_id', 'pages.url', 'sites.domain'])
       .where('pages.monitoring_enabled', '=', true)
-      .where((eb) => eb.not(eb.exists(
-        eb.selectFrom('audits')
-          .select('audits.id')
-          .whereRef('audits.page_id', '=', 'pages.id')
-          .where('audits.status', 'in', ['queued', 'running'])
-      )))
-      .where((eb) => eb.not(eb.exists(
-        eb.selectFrom('audits')
-          .select('audits.id')
-          .whereRef('audits.page_id', '=', 'pages.id')
-          .where('audits.created_at', '>=', query.dayStart)
-      )))
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('audits')
+              .select('audits.id')
+              .whereRef('audits.page_id', '=', 'pages.id')
+              .where('audits.status', 'in', ['queued', 'running']),
+          ),
+        ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('audits')
+              .select('audits.id')
+              .whereRef('audits.page_id', '=', 'pages.id')
+              .where('audits.created_at', '>=', query.dayStart),
+          ),
+        ),
+      )
       .orderBy('pages.id')
-      .limit(query.limit)
+      .limit(query.limit);
 
     if (query.after !== null) {
       // Strictly greater, so the cursor cannot re-serve the page it points at.
       // The value is one this method returned, so it needs no id guard.
-      statement = statement.where('pages.id', '>', query.after)
+      statement = statement.where('pages.id', '>', query.after);
     }
 
-    const rows = await statement.execute()
+    const rows = await statement.execute();
 
-    return rows.map((row) => ({ pageId: row.page_id, url: row.url, domain: row.domain }))
+    return rows.map((row) => ({pageId: row.page_id, url: row.url, domain: row.domain}));
   }
 
-  async loadSummariesForUser (userId: string): Promise<PageSummary[]> {
-    const pageRows = await this.db.selectFrom('pages')
+  async loadSummariesForUser(userId: string): Promise<PageSummary[]> {
+    const pageRows = await this.db
+      .selectFrom('pages')
       .innerJoin('sites', 'sites.id', 'pages.site_id')
       .select([
-        'pages.id', 'pages.site_id', 'pages.url', 'pages.monitoring_enabled',
+        'pages.id',
+        'pages.site_id',
+        'pages.url',
+        'pages.monitoring_enabled',
         'pages.alerts_enabled',
-        'pages.created_at', 'sites.domain'
+        'pages.created_at',
+        'sites.domain',
       ])
       .where('sites.user_id', '=', userId)
       .orderBy('pages.created_at')
@@ -186,24 +202,21 @@ export class PostgresPageRepository implements
       // transaction share a created_at exactly. Without this tie-break their
       // order on the dashboard would be whatever the planner felt like.
       .orderBy('pages.id')
-      .execute()
+      .execute();
 
-    if (pageRows.length === 0) return []
+    if (pageRows.length === 0) return [];
 
-    const pageIds = pageRows.map((row) => row.id)
+    const pageIds = pageRows.map((row) => row.id);
     // Two more queries for the whole list rather than two per page. The naive
     // version is an N+1 that only shows up once somebody tracks ten pages.
-    const [latest, history] = await Promise.all([
-      this.loadLatestAudits(pageIds),
-      this.loadRecentScores(pageIds)
-    ])
+    const [latest, history] = await Promise.all([this.loadLatestAudits(pageIds), this.loadRecentScores(pageIds)]);
 
     return pageRows.map((row) => ({
       page: toPageModel(row),
       domain: row.domain,
       latestAudit: latest.get(row.id) ?? null,
-      history: history.get(row.id) ?? []
-    }))
+      history: history.get(row.id) ?? [],
+    }));
   }
 
   /**
@@ -218,64 +231,63 @@ export class PostgresPageRepository implements
    *
    * No status filter. Every audit in the window is a point, `failed` included.
    */
-  async loadHistoryForUser (
-    pageId: string, userId: string, since: Date
-  ): Promise<PageHistory | null> {
-    if (!isStorableId(pageId)) return null
+  async loadHistoryForUser(pageId: string, userId: string, since: Date): Promise<PageHistory | null> {
+    if (!isStorableId(pageId)) return null;
 
-    const page = await this.db.selectFrom('pages')
+    const page = await this.db
+      .selectFrom('pages')
       .selectAll('pages')
       .where('pages.id', '=', pageId)
       .where('pages.site_id', 'in', (eb) =>
-        eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
-      .executeTakeFirst()
+        eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId),
+      )
+      .executeTakeFirst();
 
-    if (page === undefined) return null
+    if (page === undefined) return null;
 
-    const audits = await this.db.selectFrom('audits')
+    const audits = await this.db
+      .selectFrom('audits')
       .selectAll()
       .where('page_id', '=', pageId)
       .where('created_at', '>=', since)
       .orderBy('created_at')
-      .execute()
+      .execute();
 
-    return { page: toPageModel(page), audits: audits.map(toAuditModel) }
+    return {page: toPageModel(page), audits: audits.map(toAuditModel)};
   }
 
-  async setMonitoringForUser (
-    pageId: string, userId: string, monitoringEnabled: boolean
-  ): Promise<PageModel | null> {
-    if (!isStorableId(pageId)) return null
+  async setMonitoringForUser(pageId: string, userId: string, monitoringEnabled: boolean): Promise<PageModel | null> {
+    if (!isStorableId(pageId)) return null;
 
-    const updated = await this.db.updateTable('pages')
-      .set({ monitoring_enabled: monitoringEnabled })
+    const updated = await this.db
+      .updateTable('pages')
+      .set({monitoring_enabled: monitoringEnabled})
       .where('id', '=', pageId)
       // The ownership check is part of the statement, not a separate load the
       // caller could skip. A page belonging to somebody else matches nothing,
       // so it is indistinguishable from one that does not exist - which is
       // what stops the response confirming that the row is real.
-      .where('site_id', 'in', (eb) =>
-        eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
+      .where('site_id', 'in', (eb) => eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
       .returningAll()
-      .executeTakeFirst()
+      .executeTakeFirst();
 
-    return updated === undefined ? null : toPageModel(updated)
+    return updated === undefined ? null : toPageModel(updated);
   }
 
-  async deleteForUser (pageId: string, userId: string): Promise<boolean> {
-    if (!isStorableId(pageId)) return false
+  async deleteForUser(pageId: string, userId: string): Promise<boolean> {
+    if (!isStorableId(pageId)) return false;
 
     // Cascades to the page's audits, their violations and their alert events,
     // by the foreign keys #4 declared. Every public share link for those
     // audits stops resolving, which is the intended privacy behaviour.
-    const deleted = await this.db.deleteFrom('pages')
+    const deleted = await this.db
+      .deleteFrom('pages')
       .where('id', '=', pageId)
-      .where('site_id', 'in', (eb) =>
-        eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
+      .where('site_id', 'in', (eb) => eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
       .returning('id')
-      .executeTakeFirst()
+      .executeTakeFirst();
 
-    return deleted !== undefined
+    return deleted !== undefined;
   }
 
   /**
@@ -284,32 +296,33 @@ export class PostgresPageRepository implements
    * resolve to the row that won, never to a 500. The lock in `add` makes that
    * race unreachable today; this keeps it correct if that changes.
    */
-  private async findOrCreateSite (
-    trx: Kysely<Database>, userId: string, domain: string
-  ): Promise<string> {
-    const existing = await trx.selectFrom('sites')
+  private async findOrCreateSite(trx: Kysely<Database>, userId: string, domain: string): Promise<string> {
+    const existing = await trx
+      .selectFrom('sites')
       .select('id')
       .where('user_id', '=', userId)
       .where('domain', '=', domain)
-      .executeTakeFirst()
+      .executeTakeFirst();
 
-    if (existing !== undefined) return existing.id
+    if (existing !== undefined) return existing.id;
 
-    const inserted = await trx.insertInto('sites')
-      .values({ user_id: userId, domain })
+    const inserted = await trx
+      .insertInto('sites')
+      .values({user_id: userId, domain})
       .onConflict((oc) => oc.constraint('sites_user_domain_unique').doNothing())
       .returning('id')
-      .executeTakeFirst()
+      .executeTakeFirst();
 
-    if (inserted !== undefined) return inserted.id
+    if (inserted !== undefined) return inserted.id;
 
-    const won = await trx.selectFrom('sites')
+    const won = await trx
+      .selectFrom('sites')
       .select('id')
       .where('user_id', '=', userId)
       .where('domain', '=', domain)
-      .executeTakeFirstOrThrow()
+      .executeTakeFirstOrThrow();
 
-    return won.id
+    return won.id;
   }
 
   /**
@@ -319,21 +332,22 @@ export class PostgresPageRepository implements
    * order is exactly this. Status as well as score, because a failed run has
    * to look different from a bad one.
    */
-  private async loadLatestAudits (pageIds: string[]): Promise<Map<string, AuditModel>> {
-    const rows = await this.db.selectFrom('audits')
+  private async loadLatestAudits(pageIds: string[]): Promise<Map<string, AuditModel>> {
+    const rows = await this.db
+      .selectFrom('audits')
       .distinctOn('page_id')
       .selectAll()
       .where('page_id', 'in', pageIds)
       .orderBy('page_id')
       .orderBy('created_at', 'desc')
-      .execute()
+      .execute();
 
-    const byPage = new Map<string, AuditModel>()
+    const byPage = new Map<string, AuditModel>();
     for (const row of rows) {
-      if (row.page_id === null) continue
-      byPage.set(row.page_id, toAuditModel(row))
+      if (row.page_id === null) continue;
+      byPage.set(row.page_id, toAuditModel(row));
     }
-    return byPage
+    return byPage;
   }
 
   /**
@@ -350,36 +364,39 @@ export class PostgresPageRepository implements
    * The dashboard is the polled endpoint, so its cost must not track how long
    * the account has been a customer.
    */
-  private async loadRecentScores (pageIds: string[]): Promise<Map<string, PageScorePoint[]>> {
-    const rows = await this.db.selectFrom('pages')
+  private async loadRecentScores(pageIds: string[]): Promise<Map<string, PageScorePoint[]>> {
+    const rows = await this.db
+      .selectFrom('pages')
       .where('pages.id', 'in', pageIds)
       .innerJoinLateral(
-        (eb) => eb.selectFrom('audits')
-          .select(['audits.page_id', 'audits.score', 'audits.created_at'])
-          .whereRef('audits.page_id', '=', 'pages.id')
-          // Only a finished audit has a score. A failed one carries null, and
-          // a running one carries whatever it had before - neither is a point.
-          .where('audits.status', '=', 'done')
-          .where('audits.score', 'is not', null)
-          // Reads straight off audits_page_created_idx, whose column order -
-          // (page_id, created_at desc) - is exactly this.
-          .orderBy('audits.created_at', 'desc')
-          .limit(HISTORY_POINTS)
-          .as('recent'),
-        (join) => join.onTrue()
+        (eb) =>
+          eb
+            .selectFrom('audits')
+            .select(['audits.page_id', 'audits.score', 'audits.created_at'])
+            .whereRef('audits.page_id', '=', 'pages.id')
+            // Only a finished audit has a score. A failed one carries null, and
+            // a running one carries whatever it had before - neither is a point.
+            .where('audits.status', '=', 'done')
+            .where('audits.score', 'is not', null)
+            // Reads straight off audits_page_created_idx, whose column order -
+            // (page_id, created_at desc) - is exactly this.
+            .orderBy('audits.created_at', 'desc')
+            .limit(HISTORY_POINTS)
+            .as('recent'),
+        (join) => join.onTrue(),
       )
       .select(['recent.page_id', 'recent.score', 'recent.created_at'])
       .orderBy('recent.page_id')
       .orderBy('recent.created_at')
-      .execute()
+      .execute();
 
-    const byPage = new Map<string, PageScorePoint[]>()
+    const byPage = new Map<string, PageScorePoint[]>();
     for (const row of rows) {
-      if (row.page_id === null || row.score === null) continue
-      const points = byPage.get(row.page_id) ?? []
-      points.push({ score: row.score, at: row.created_at })
-      byPage.set(row.page_id, points)
+      if (row.page_id === null || row.score === null) continue;
+      const points = byPage.get(row.page_id) ?? [];
+      points.push({score: row.score, at: row.created_at});
+      byPage.set(row.page_id, points);
     }
-    return byPage
+    return byPage;
   }
 }

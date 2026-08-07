@@ -1,12 +1,12 @@
-import type { Express } from 'express'
-import type { Server } from 'node:http'
+import type {Express} from 'express';
+import type {Server} from 'node:http';
 
 export type ListenHandlers = {
   /** Said once, and only about a socket that exists. */
-  info: (message: string) => void
+  info: (message: string) => void;
   /** The server cannot serve. Expected to end the process. */
-  fatal: (message: string) => void
-}
+  fatal: (message: string) => void;
+};
 
 /**
  * The address a server is actually on, or null if it never bound.
@@ -15,10 +15,10 @@ export type ListenHandlers = {
  * object carries a port - which is the case this codebase has.
  */
 const boundPort = (server: Server): number | null => {
-  const address = server.address()
-  if (address === null || typeof address === 'string') return null
-  return address.port
-}
+  const address = server.address();
+  if (address === null || typeof address === 'string') return null;
+  return address.port;
+};
 
 /**
  * Listens, and says so only if it did.
@@ -47,16 +47,14 @@ const boundPort = (server: Server): number | null => {
  * why the failure was invisible: the process stayed alive holding no socket,
  * and a supervisor - or `concurrently --kill-others` - saw no exit to react to.
  */
-export const startListening = (
-  app: Express, port: number, handlers: ListenHandlers
-): Server => {
+export const startListening = (app: Express, port: number, handlers: ListenHandlers): Server => {
   const server = app.listen(port, () => {
-    const bound = boundPort(server)
+    const bound = boundPort(server);
     // Not `else`: the failure is reported by the error handler below, which
     // carries the reason. Saying anything here would either duplicate it or
     // guess at it.
-    if (bound !== null) handlers.info(`Server running at http://localhost:${bound}`)
-  })
+    if (bound !== null) handlers.info(`Server running at http://localhost:${bound}`);
+  });
 
   // `once`, because one listen attempt has one outcome. Node emits a single
   // error for a failed bind and none from `close`, so this states the intent
@@ -65,9 +63,9 @@ export const startListening = (
     handlers.fatal(
       error.code === 'EADDRINUSE'
         ? `Port ${port} is already in use (EADDRINUSE) - stop whatever holds it, or set PORT`
-        : `Server failed to listen on port ${port}: ${error.message}`
-    )
-  })
+        : `Server failed to listen on port ${port}: ${error.message}`,
+    );
+  });
 
-  return server
-}
+  return server;
+};

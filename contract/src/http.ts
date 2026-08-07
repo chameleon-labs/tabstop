@@ -7,8 +7,8 @@
  * kind of thing from the rest and break any generic handler.
  */
 export type ApiErrorBody = {
-  error: string
-}
+  error: string;
+};
 
 /**
  * `429`, from the rate-limit middleware.
@@ -18,9 +18,9 @@ export type ApiErrorBody = {
  * and never zero.
  */
 export type RateLimitedBody = ApiErrorBody & {
-  retryAfter: number
-  resetAt: string
-}
+  retryAfter: number;
+  resetAt: string;
+};
 
 /**
  * A `409` the client branches on - "you are at your limit" wants an upgrade
@@ -28,5 +28,5 @@ export type RateLimitedBody = ApiErrorBody & {
  * machine-readable `code` plus whatever the branch needs to render.
  */
 export type CodedConflictBody = ApiErrorBody & {
-  code: string
-}
+  code: string;
+};

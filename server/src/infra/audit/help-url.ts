@@ -7,7 +7,7 @@
  * `https://dequeuniversity.com:8443/` shares the host and is a different
  * origin, and "the exact origin" is what the rule is supposed to be.
  */
-export const HELP_ORIGIN = 'https://dequeuniversity.com'
+export const HELP_ORIGIN = 'https://dequeuniversity.com';
 
 /**
  * A rule's documentation link, or '' if the audited page did not hand back one.
@@ -36,12 +36,12 @@ export const HELP_ORIGIN = 'https://dequeuniversity.com'
  * not the only guard.
  */
 export const safeHelpUrl = (helpUrl: unknown): string => {
-  if (typeof helpUrl !== 'string') return ''
+  if (typeof helpUrl !== 'string') return '';
 
   try {
-    const parsed = new URL(helpUrl)
-    return parsed.origin === HELP_ORIGIN ? parsed.href : ''
+    const parsed = new URL(helpUrl);
+    return parsed.origin === HELP_ORIGIN ? parsed.href : '';
   } catch {
-    return ''
+    return '';
   }
-}
+};

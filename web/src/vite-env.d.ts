@@ -7,9 +7,9 @@ interface ImportMetaEnv {
    * deployed build, which is what makes the request cross-origin and
    * `credentials: 'include'` load-bearing.
    */
-  readonly VITE_API_URL?: string
+  readonly VITE_API_URL?: string;
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv
+  readonly env: ImportMetaEnv;
 }

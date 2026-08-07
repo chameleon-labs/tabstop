@@ -1,4 +1,4 @@
-import type { UrlRejection } from '../../domain/services/url-safety.js'
+import type {UrlRejection} from '../../domain/services/url-safety.js';
 
 /**
  * One table, shared by every endpoint that accepts a url from a user.
@@ -14,5 +14,5 @@ export const REJECTION_MESSAGES: Readonly<Record<UrlRejection, string>> = {
   'blocked-scheme': 'Only http and https addresses can be audited',
   'blocked-port': 'Only standard web ports can be audited',
   'blocked-address': "That address can't be audited",
-  'blocked-credentials': 'Remove the username and password from that URL'
-}
+  'blocked-credentials': 'Remove the username and password from that URL',
+};

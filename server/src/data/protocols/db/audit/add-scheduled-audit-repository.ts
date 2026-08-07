@@ -1,11 +1,11 @@
-import type { AuditModel } from '../../../../domain/models/audit.js'
+import type {AuditModel} from '../../../../domain/models/audit.js';
 
 export type AddScheduledAuditParams = {
-  pageId: string
-  url: string
+  pageId: string;
+  url: string;
   /** The run's UTC day as `YYYY-MM-DD`. Stamped on the row, not derived from it. */
-  scheduledFor: string
-}
+  scheduledFor: string;
+};
 
 export interface AddScheduledAuditRepository {
   /**
@@ -17,5 +17,5 @@ export interface AddScheduledAuditRepository {
    * one created is the one that should exist. Separate from `add` because the
    * conflict is meaningful here and impossible there.
    */
-  addScheduled: (params: AddScheduledAuditParams) => Promise<AuditModel | null>
+  addScheduled: (params: AddScheduledAuditParams) => Promise<AuditModel | null>;
 }

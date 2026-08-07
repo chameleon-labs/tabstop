@@ -1,12 +1,12 @@
 export type AuditFailure = {
-  permanent: boolean
-  message: string
-}
+  permanent: boolean;
+  message: string;
+};
 
 const TRANSIENT: AuditFailure = {
   permanent: false,
-  message: 'Something went wrong running this audit'
-}
+  message: 'Something went wrong running this audit',
+};
 
 /**
  * Checked BEFORE anything else, because a crash or a teardown surfaces through
@@ -21,8 +21,8 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
   /crashed/i,
   /Protocol error/,
   // A launch failure is a property of this host, never of the audited page.
-  /browserType\.launch/
-]
+  /browserType\.launch/,
+];
 
 /**
  * Ordered most specific first. Matching is on the message text because
@@ -42,14 +42,14 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/net::ERR_CERT_/, "That site's security certificate could not be verified"],
   [
     /addScriptTag|page\.evaluate|Content Security Policy|axe is not defined/,
-    'Could not run the accessibility engine on this page'
-  ]
-]
+    'Could not run the accessibility engine on this page',
+  ],
+];
 
 export const classifyAuditError = (error: unknown): AuditFailure => {
-  if (!(error instanceof Error)) return TRANSIENT
+  if (!(error instanceof Error)) return TRANSIENT;
 
-  if (TRANSIENT_PATTERNS.some((pattern) => pattern.test(error.message))) return TRANSIENT
+  if (TRANSIENT_PATTERNS.some((pattern) => pattern.test(error.message))) return TRANSIENT;
 
   // Scoped to page.goto deliberately. `chromium.launch()` times out with the
   // same error NAME, and a slow or unhealthy worker host is not a property of
@@ -63,16 +63,16 @@ export const classifyAuditError = (error: unknown): AuditFailure => {
     // Deliberately duration-neutral: the navigation budget is configurable, so
     // naming a number here would be a lie under any non-default setting, and
     // the classifier has no business knowing the configuration.
-    return { permanent: true, message: 'The page took too long to load' }
+    return {permanent: true, message: 'The page took too long to load'};
   }
 
   for (const [pattern, message] of PERMANENT_PATTERNS) {
-    if (pattern.test(error.message)) return { permanent: true, message }
+    if (pattern.test(error.message)) return {permanent: true, message};
   }
 
   // Unrecognised failures are transient on purpose: a new failure mode is more
   // likely to be infrastructure than a permanent property of someone's page,
   // and the cost of being wrong is three attempts rather than a
   // wrongly-permanent failure the user cannot retry.
-  return TRANSIENT
-}
+  return TRANSIENT;
+};

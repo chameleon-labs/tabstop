@@ -13,7 +13,7 @@ export interface MarkRunningRepository {
    * worker died and left it here", and those need opposite answers - so the
    * claim carries a lease, and a live one excludes every other delivery.
    */
-  claimForRun: (auditId: string) => Promise<Date | null>
+  claimForRun: (auditId: string) => Promise<Date | null>;
 
   /**
    * Hands a claimed audit back so the next attempt can take it, without
@@ -28,5 +28,5 @@ export interface MarkRunningRepository {
    * Fenced on the claim token so an attempt that has already been superseded
    * cannot release a claim it no longer owns.
    */
-  releaseClaim: (auditId: string, claimedAt: Date) => Promise<void>
+  releaseClaim: (auditId: string, claimedAt: Date) => Promise<void>;
 }

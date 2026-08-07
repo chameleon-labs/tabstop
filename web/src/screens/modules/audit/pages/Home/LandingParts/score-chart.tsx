@@ -1,17 +1,17 @@
-import { useLayoutEffect, useRef, useState } from 'react'
-import { monotoneLinePath } from './monotone-path'
+import {useLayoutEffect, useRef, useState} from 'react';
+import {monotoneLinePath} from './monotone-path';
 
 export interface ScoreChartPoint {
-  date: string
-  score: number
+  date: string;
+  score: number;
 }
 
 export interface ScoreChartProps {
   /** Nine (date, score) points, oldest first — `ScoreHistory`'s own data,
    *  the same array the hidden `Table` renders. */
-  data: readonly ScoreChartPoint[]
+  data: readonly ScoreChartPoint[];
   /** Must match one of `data`'s `date` values, or no line is drawn. */
-  referenceDate: string
+  referenceDate: string;
 }
 
 // The container height is fixed — the source's `ResponsiveContainer
@@ -26,8 +26,8 @@ export interface ScoreChartProps {
 // the browser's default letterboxing rather than introducing any stretch
 // of its own. Geometry (stroke widths, dot radii) is computed in these same
 // real pixel units throughout, so it is never scaled non-uniformly.
-const HEIGHT = 180
-const MARGIN = { top: 8, right: 8, bottom: 0, left: -24 }
+const HEIGHT = 180;
+const MARGIN = {top: 8, right: 8, bottom: 0, left: -24};
 
 // Recharts' `XAxis`/`YAxis` auto-reserve room for their own tick labels
 // beyond whatever `margin` says — a column sized from the Y tick text's
@@ -41,11 +41,11 @@ const MARGIN = { top: 8, right: 8, bottom: 0, left: -24 }
 // container-bottom-to-plot-bottom gap measured the same way gives 30. Both
 // are pixel constants independent of container width, so copying the
 // measured values reproduces the source's layout at any width.
-const Y_AXIS_WIDTH = 60
-const X_AXIS_HEIGHT = 30
-const TICK_GAP = 8
+const Y_AXIS_WIDTH = 60;
+const X_AXIS_HEIGHT = 30;
+const TICK_GAP = 8;
 
-const DOMAIN: readonly [number, number] = [50, 100]
+const DOMAIN: readonly [number, number] = [50, 100];
 
 // Recharts' own tick values for this exact domain and default tickCount,
 // via `recharts-scale`'s `getNiceTickValues` — not an evenly-stepped 50-60
@@ -54,14 +54,14 @@ const DOMAIN: readonly [number, number] = [50, 100]
 // Read directly off `.recharts-yAxis .recharts-cartesian-axis-tick` in the
 // source rather than reverse-engineered, for the same reason as the two
 // constants above.
-const Y_TICKS = [50, 65, 80, 100]
+const Y_TICKS = [50, 65, 80, 100];
 
 // The dot-fill threshold from the source's inline `dot` render prop —
 // primary at 80+, the serious severity colour at 60+, critical below that.
 function dotToneClass(score: number): 'good' | 'warn' | 'bad' {
-  if (score >= 80) return 'good'
-  if (score >= 60) return 'warn'
-  return 'bad'
+  if (score >= 80) return 'good';
+  if (score >= 60) return 'warn';
+  return 'bad';
 }
 
 /**
@@ -96,38 +96,38 @@ function dotToneClass(score: number): 'good' | 'warn' | 'bad' {
  * alongside it in a `VisuallyHidden` wrapper by this component's caller
  * (`ScoreHistory`, in `landing.tsx`) rather than removed.
  */
-export function ScoreChart({ data, referenceDate }: ScoreChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(0)
+export function ScoreChart({data, referenceDate}: ScoreChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
 
   useLayoutEffect(() => {
-    const el = containerRef.current
-    if (el === null) return undefined
+    const el = containerRef.current;
+    if (el === null) return undefined;
 
     const observer = new ResizeObserver((entries) => {
-      const measured = entries[0]?.contentRect.width
-      if (measured !== undefined) setWidth(measured)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+      const measured = entries[0]?.contentRect.width;
+      if (measured !== undefined) setWidth(measured);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
-  const plotLeft = MARGIN.left + Y_AXIS_WIDTH
-  const plotRight = width - MARGIN.right
-  const plotTop = MARGIN.top
-  const plotBottom = HEIGHT - MARGIN.bottom - X_AXIS_HEIGHT
-  const ready = width > 0 && plotRight > plotLeft
+  const plotLeft = MARGIN.left + Y_AXIS_WIDTH;
+  const plotRight = width - MARGIN.right;
+  const plotTop = MARGIN.top;
+  const plotBottom = HEIGHT - MARGIN.bottom - X_AXIS_HEIGHT;
+  const ready = width > 0 && plotRight > plotLeft;
 
   const xFor = (index: number): number =>
-    data.length <= 1 ? plotLeft : plotLeft + (index / (data.length - 1)) * (plotRight - plotLeft)
+    data.length <= 1 ? plotLeft : plotLeft + (index / (data.length - 1)) * (plotRight - plotLeft);
   const yFor = (score: number): number =>
-    plotBottom - ((score - DOMAIN[0]) / (DOMAIN[1] - DOMAIN[0])) * (plotBottom - plotTop)
+    plotBottom - ((score - DOMAIN[0]) / (DOMAIN[1] - DOMAIN[0])) * (plotBottom - plotTop);
 
-  const plotted = data.map((point, index) => ({ point, x: xFor(index), y: yFor(point.score) }))
-  const linePath = ready ? monotoneLinePath(plotted.map(({ x, y }) => ({ x, y }))) : ''
+  const plotted = data.map((point, index) => ({point, x: xFor(index), y: yFor(point.score)}));
+  const linePath = ready ? monotoneLinePath(plotted.map(({x, y}) => ({x, y}))) : '';
   const referenceX = data.some((point) => point.date === referenceDate)
     ? xFor(data.findIndex((point) => point.date === referenceDate))
-    : null
+    : null;
 
   return (
     <div ref={containerRef} className="landing-page__chart">
@@ -154,7 +154,7 @@ export function ScoreChart({ data, referenceDate }: ScoreChartProps) {
               </text>
             ))}
 
-            {plotted.map(({ point, x }) => (
+            {plotted.map(({point, x}) => (
               <text
                 key={point.date}
                 x={x}
@@ -178,7 +178,7 @@ export function ScoreChart({ data, referenceDate }: ScoreChartProps) {
 
             <path d={linePath} className="landing-page__chart-line" />
 
-            {plotted.map(({ point, x, y }) => (
+            {plotted.map(({point, x, y}) => (
               <circle
                 key={point.date}
                 cx={x}
@@ -191,5 +191,5 @@ export function ScoreChart({ data, referenceDate }: ScoreChartProps) {
         )}
       </svg>
     </div>
-  )
+  );
 }

@@ -6,5 +6,5 @@ export interface DnsResolver {
    * private address is a rebinding attempt, and checking only the first would
    * wave it through.
    */
-  resolve: (hostname: string) => Promise<string[]>
+  resolve: (hostname: string) => Promise<string[]>;
 }

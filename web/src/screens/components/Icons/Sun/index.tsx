@@ -1,4 +1,4 @@
-import { SvgIcon, type IconProps } from '../SvgIcon'
+import {SvgIcon, type IconProps} from '../SvgIcon';
 
 export const Sun = (props: IconProps): React.JSX.Element => (
   <SvgIcon {...props}>
@@ -12,4 +12,4 @@ export const Sun = (props: IconProps): React.JSX.Element => (
     <path d="m6.34 17.66-1.41 1.41" />
     <path d="m19.07 4.93-1.41 1.41" />
   </SvgIcon>
-)
+);

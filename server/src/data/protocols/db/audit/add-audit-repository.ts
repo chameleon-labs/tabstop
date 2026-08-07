@@ -1,11 +1,11 @@
-import type { AuditModel } from '../../../../domain/models/audit.js'
+import type {AuditModel} from '../../../../domain/models/audit.js';
 
 export type AddAuditParams = {
-  url: string
+  url: string;
   /** Null for a one-off anonymous audit. */
-  pageId: string | null
-}
+  pageId: string | null;
+};
 
 export interface AddAuditRepository {
-  add: (params: AddAuditParams) => Promise<AuditModel>
+  add: (params: AddAuditParams) => Promise<AuditModel>;
 }

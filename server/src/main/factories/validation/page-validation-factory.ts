@@ -1,20 +1,16 @@
-import { z } from 'zod'
-import { ZodValidationAdapter } from '../../../infra/validation/zod-validation-adapter.js'
-import type { AddPageBody } from '../../../presentation/controllers/page/add-page-controller.js'
-import type {
-  LoadPageHistoryQuery
-} from '../../../presentation/controllers/page/load-page-history-controller.js'
-import type {
-  UpdatePageBody
-} from '../../../presentation/controllers/page/update-page-controller.js'
-import type { Validation } from '../../../presentation/protocols/validation.js'
+import {z} from 'zod';
+import {ZodValidationAdapter} from '../../../infra/validation/zod-validation-adapter.js';
+import type {AddPageBody} from '../../../presentation/controllers/page/add-page-controller.js';
+import type {LoadPageHistoryQuery} from '../../../presentation/controllers/page/load-page-history-controller.js';
+import type {UpdatePageBody} from '../../../presentation/controllers/page/update-page-controller.js';
+import type {Validation} from '../../../presentation/protocols/validation.js';
 
 /**
  * Long enough for any real page, short enough that a body cannot become a
  * megabyte stored on every row and re-fetched nightly. Browsers and proxies
  * stop being reliable well below this.
  */
-const MAX_URL_LENGTH = 2048
+const MAX_URL_LENGTH = 2048;
 
 /**
  * Shape only. Whether the url is SAFE - scheme, port, credentials, and where
@@ -22,8 +18,8 @@ const MAX_URL_LENGTH = 2048
  * infra/ where they can be exercised without a schema in the way.
  */
 const addPageSchema = z.object({
-  url: z.string().trim().min(1).max(MAX_URL_LENGTH)
-})
+  url: z.string().trim().min(1).max(MAX_URL_LENGTH),
+});
 
 /**
  * A strict boolean, not a coerced one. `z.coerce.boolean()` maps the string
@@ -31,16 +27,16 @@ const addPageSchema = z.object({
  * silently resume monitoring it asked to pause.
  */
 const updatePageSchema = z.object({
-  monitoringEnabled: z.boolean()
-})
+  monitoringEnabled: z.boolean(),
+});
 
 /** Roughly a quarter, which is the window the trend chart (#21) opens on. */
-const DEFAULT_HISTORY_DAYS = 90
+const DEFAULT_HISTORY_DAYS = 90;
 /**
  * A year. Not a guess about what anyone wants - it is the point past which the
  * request stops being a chart and becomes a free table scan for whoever asks.
  */
-const MAX_HISTORY_DAYS = 365
+const MAX_HISTORY_DAYS = 365;
 
 /**
  * `days` is CLAMPED at the ceiling, but a non-integer is still a 400.
@@ -56,16 +52,19 @@ const MAX_HISTORY_DAYS = 365
  * the integer check then rejects.
  */
 const historyQuerySchema = z.object({
-  days: z.coerce.number().int().min(1)
+  days: z.coerce
+    .number()
+    .int()
+    .min(1)
     .transform((value) => Math.min(value, MAX_HISTORY_DAYS))
-    .default(DEFAULT_HISTORY_DAYS)
-})
+    .default(DEFAULT_HISTORY_DAYS),
+});
 
 export const makeAddPageValidation = (): Validation<AddPageBody> =>
-  new ZodValidationAdapter<AddPageBody>(addPageSchema)
+  new ZodValidationAdapter<AddPageBody>(addPageSchema);
 
 export const makeUpdatePageValidation = (): Validation<UpdatePageBody> =>
-  new ZodValidationAdapter<UpdatePageBody>(updatePageSchema)
+  new ZodValidationAdapter<UpdatePageBody>(updatePageSchema);
 
 export const makeLoadPageHistoryValidation = (): Validation<LoadPageHistoryQuery> =>
-  new ZodValidationAdapter<LoadPageHistoryQuery>(historyQuerySchema)
+  new ZodValidationAdapter<LoadPageHistoryQuery>(historyQuerySchema);

@@ -1,27 +1,23 @@
-import type {
-  UnsubscribePageAlerts
-} from '../../../domain/usecases/unsubscribe-page-alerts.js'
-import { badRequest, notFound, okHtml } from '../../helpers/http/http-helper.js'
-import type { Controller } from '../../protocols/controller.js'
-import type { HttpResponse } from '../../protocols/http.js'
+import type {UnsubscribePageAlerts} from '../../../domain/usecases/unsubscribe-page-alerts.js';
+import {badRequest, notFound, okHtml} from '../../helpers/http/http-helper.js';
+import type {Controller} from '../../protocols/controller.js';
+import type {HttpResponse} from '../../protocols/http.js';
 
 export type UnsubscribePageAlertsRequest = {
-  token?: unknown
-  'List-Unsubscribe'?: unknown
-}
+  token?: unknown;
+  'List-Unsubscribe'?: unknown;
+};
 
-export class UnsubscribePageAlertsController implements
-Controller<UnsubscribePageAlertsRequest> {
-  constructor (private readonly unsubscribePageAlerts: UnsubscribePageAlerts) {}
+export class UnsubscribePageAlertsController implements Controller<UnsubscribePageAlertsRequest> {
+  constructor(private readonly unsubscribePageAlerts: UnsubscribePageAlerts) {}
 
-  async handle (request: UnsubscribePageAlertsRequest): Promise<HttpResponse> {
-    if (typeof request.token !== 'string' ||
-        request['List-Unsubscribe'] !== 'One-Click') {
-      return badRequest(new Error('Invalid one-click unsubscribe request'))
+  async handle(request: UnsubscribePageAlertsRequest): Promise<HttpResponse> {
+    if (typeof request.token !== 'string' || request['List-Unsubscribe'] !== 'One-Click') {
+      return badRequest(new Error('Invalid one-click unsubscribe request'));
     }
 
-    if (!await this.unsubscribePageAlerts.unsubscribe(request.token)) {
-      return notFound(new Error('Unsubscribe link not found'))
+    if (!(await this.unsubscribePageAlerts.unsubscribe(request.token))) {
+      return notFound(new Error('Unsubscribe link not found'));
     }
 
     return okHtml(`<!doctype html>
@@ -37,6 +33,6 @@ Controller<UnsubscribePageAlertsRequest> {
     <p>Daily accessibility monitoring and history will continue for this page.</p>
   </main>
 </body>
-</html>`)
+</html>`);
   }
 }

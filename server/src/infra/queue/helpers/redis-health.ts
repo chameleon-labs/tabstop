@@ -1,13 +1,13 @@
-import { Redis } from 'ioredis'
+import {Redis} from 'ioredis';
 
 export type RedisWatcher = {
-  close: () => Promise<void>
-}
+  close: () => Promise<void>;
+};
 
-export type ReportLine = (message: string) => void
+export type ReportLine = (message: string) => void;
 
 /** Said when the URL names no host, so no line ever ends in a blank. */
-const UNNAMED = 'the configured address'
+const UNNAMED = 'the configured address';
 
 /**
  * The address, without whatever credentials the URL carries.
@@ -23,12 +23,12 @@ const UNNAMED = 'the configured address'
  */
 const addressOf = (url: string): string => {
   try {
-    const { host } = new URL(url)
-    return host === '' ? UNNAMED : host
+    const {host} = new URL(url);
+    return host === '' ? UNNAMED : host;
   } catch {
-    return UNNAMED
+    return UNNAMED;
   }
-}
+};
 
 /**
  * Says whether the worker can reach Redis.
@@ -49,7 +49,7 @@ const addressOf = (url: string): string => {
  * down-to-up, never the attempts in between.
  */
 export const watchRedis = (url: string, report: ReportLine): RedisWatcher => {
-  const address = addressOf(url)
+  const address = addressOf(url);
   const client = new Redis(url, {
     // BullMQ's own setting, kept so this connection retries the same way the
     // ones it is reporting on do.
@@ -57,23 +57,27 @@ export const watchRedis = (url: string, report: ReportLine): RedisWatcher => {
     // This helper issues no commands of its own - ioredis still runs its own
     // AUTH/SELECT/ready check - so nothing may sit buffered holding the process
     // open, waiting for a connection that is not coming.
-    enableOfflineQueue: false
-  })
+    enableOfflineQueue: false,
+  });
 
-  let reachable: boolean | null = null
+  let reachable: boolean | null = null;
 
   const transition = (next: boolean, message: string): void => {
-    if (reachable === next) return
-    reachable = next
-    report(message)
-  }
+    if (reachable === next) return;
+    reachable = next;
+    report(message);
+  };
 
   const down = (reason: string): void => {
-    transition(false, `Redis unreachable at ${address} - retrying (${reason})`)
-  }
+    transition(false, `Redis unreachable at ${address} - retrying (${reason})`);
+  };
 
-  client.on('ready', () => { transition(true, `Redis connected at ${address}`) })
-  client.on('error', (error: Error) => { down(error.message) })
+  client.on('ready', () => {
+    transition(true, `Redis connected at ${address}`);
+  });
+  client.on('error', (error: Error) => {
+    down(error.message);
+  });
   /*
    * A DROPPED connection does not have to be an error. Redis closing cleanly -
    * a restart, a deploy, `CLIENT KILL` - sends a FIN, and ioredis reports that
@@ -85,14 +89,16 @@ export const watchRedis = (url: string, report: ReportLine): RedisWatcher => {
    * `close` also fires on every failed retry, which is why the transition guard
    * above is what keeps an hour of outage to one line.
    */
-  client.on('close', () => { down('connection closed') })
+  client.on('close', () => {
+    down('connection closed');
+  });
 
   return {
     close: async () => {
-      client.removeAllListeners()
+      client.removeAllListeners();
       // `disconnect` rather than `quit`: quit writes a command, and a client
       // that never connected has nowhere to write it.
-      client.disconnect()
-    }
-  }
-}
+      client.disconnect();
+    },
+  };
+};

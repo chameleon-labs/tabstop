@@ -1,4 +1,4 @@
-import type { PageSummary } from '../../../../domain/models/page.js'
+import type {PageSummary} from '../../../../domain/models/page.js';
 
 export interface LoadPageSummariesRepository {
   /**
@@ -8,5 +8,5 @@ export interface LoadPageSummariesRepository {
    * Scoped by user rather than by site or page id, so there is no argument
    * shape here that could return somebody else's row.
    */
-  loadSummariesForUser: (userId: string) => Promise<PageSummary[]>
+  loadSummariesForUser: (userId: string) => Promise<PageSummary[]>;
 }

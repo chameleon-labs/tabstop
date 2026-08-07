@@ -1,5 +1,5 @@
-import type { AuthenticatedSession } from '../../domain/models/session.js'
-import type { CookieDirective } from '../protocols/http.js'
+import type {AuthenticatedSession} from '../../domain/models/session.js';
+import type {CookieDirective} from '../protocols/http.js';
 
 /**
  * The cookie's NAME is injected rather than fixed here, because the name is a
@@ -9,20 +9,15 @@ import type { CookieDirective } from '../protocols/http.js'
  * replacing the victim's session ("cookie tossing"). The prefix cannot be used
  * over plain http, so the composition root picks the name per environment.
  */
-export const setSessionCookie = (
-  name: string,
-  session: AuthenticatedSession
-): CookieDirective[] => [
+export const setSessionCookie = (name: string, session: AuthenticatedSession): CookieDirective[] => [
   {
     action: 'set',
     name,
     value: session.sessionId,
     // Taken from the persisted session, not a duration recomputed here, so the
     // cookie and the row cannot disagree about when it dies.
-    expiresAt: session.expiresAt
-  }
-]
+    expiresAt: session.expiresAt,
+  },
+];
 
-export const clearSessionCookie = (name: string): CookieDirective[] => [
-  { action: 'clear', name }
-]
+export const clearSessionCookie = (name: string): CookieDirective[] => [{action: 'clear', name}];

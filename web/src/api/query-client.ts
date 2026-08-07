@@ -1,5 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
-import { ApiError } from './client'
+import {QueryClient} from '@tanstack/react-query';
+import {ApiError} from './client';
 
 /**
  * Retry the failures that might succeed, and only those.
@@ -11,19 +11,20 @@ import { ApiError } from './client'
  * all and does get retried, because it may genuinely be transient.
  */
 const retry = (failureCount: number, error: unknown): boolean => {
-  if (error instanceof ApiError && error.status < 500) return false
-  return failureCount < 2
-}
+  if (error instanceof ApiError && error.status < 500) return false;
+  return failureCount < 2;
+};
 
-export const makeQueryClient = (): QueryClient => new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry,
-      // Audit data changes only when a re-audit lands, and the screens that
-      // want fresher data than this poll for it explicitly.
-      staleTime: 30_000,
-      refetchOnWindowFocus: false
+export const makeQueryClient = (): QueryClient =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry,
+        // Audit data changes only when a re-audit lands, and the screens that
+        // want fresher data than this poll for it explicitly.
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
+      },
+      mutations: {retry: false},
     },
-    mutations: { retry: false }
-  }
-})
+  });

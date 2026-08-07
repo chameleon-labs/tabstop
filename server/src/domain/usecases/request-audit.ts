@@ -1,9 +1,9 @@
-import type { AuditModel } from '../models/audit.js'
-import type { UrlRejection } from '../services/url-safety.js'
+import type {AuditModel} from '../models/audit.js';
+import type {UrlRejection} from '../services/url-safety.js';
 
 export type RequestAuditParams = {
-  url: string
-}
+  url: string;
+};
 
 /**
  * Three expected outcomes rather than exceptions for two of them: a rejected
@@ -11,10 +11,10 @@ export type RequestAuditParams = {
  * maps them to 400 and 503.
  */
 export type RequestAuditResult =
-  | { outcome: 'queued', audit: AuditModel }
-  | { outcome: 'rejected', reason: UrlRejection }
-  | { outcome: 'unavailable' }
+  | {outcome: 'queued'; audit: AuditModel}
+  | {outcome: 'rejected'; reason: UrlRejection}
+  | {outcome: 'unavailable'};
 
 export interface RequestAudit {
-  request: (params: RequestAuditParams) => Promise<RequestAuditResult>
+  request: (params: RequestAuditParams) => Promise<RequestAuditResult>;
 }

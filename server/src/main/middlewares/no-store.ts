@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express'
+import type {NextFunction, Request, Response} from 'express';
 
 /**
  * Nothing this API returns is safe for a shared cache to reuse. `GET /api/me`
@@ -8,6 +8,6 @@ import type { NextFunction, Request, Response } from 'express'
  * could serve one user's identity to another.
  */
 export const noStore = (_req: Request, res: Response, next: NextFunction): void => {
-  res.set('cache-control', 'no-store')
-  next()
-}
+  res.set('cache-control', 'no-store');
+  next();
+};

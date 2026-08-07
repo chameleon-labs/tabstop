@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express'
+import type {NextFunction, Request, Response} from 'express';
 
 /**
  * Responses declare their type explicitly (JSON by default, HTML only for the
@@ -12,6 +12,6 @@ import type { NextFunction, Request, Response } from 'express'
  * a body-parser failure or an unmatched route never reaches the route adapter.
  */
 export const securityHeaders = (_req: Request, res: Response, next: NextFunction): void => {
-  res.set('x-content-type-options', 'nosniff')
-  next()
-}
+  res.set('x-content-type-options', 'nosniff');
+  next();
+};

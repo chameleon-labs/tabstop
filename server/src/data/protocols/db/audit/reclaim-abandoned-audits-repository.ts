@@ -1,5 +1,5 @@
 export type StaleAudit = {
-  auditId: string
+  auditId: string;
   /**
    * The row's `created_at` as the DATABASE renders it, carried only so the
    * caller can resume from it.
@@ -15,8 +15,8 @@ export type StaleAudit = {
    * Opaque to everything above this protocol. Nothing reads it, orders by it,
    * or parses it; it goes back to `loadStaleInFlight` exactly as it came out.
    */
-  createdAt: string
-}
+  createdAt: string;
+};
 
 export interface ReclaimAbandonedAuditsRepository {
   /**
@@ -41,9 +41,7 @@ export interface ReclaimAbandonedAuditsRepository {
    * `created_at` is not unique, and a cursor that cannot distinguish two rows
    * sharing a timestamp either repeats them or steps over one.
    */
-  loadStaleInFlight: (
-    olderThan: Date, limit: number, after: StaleAudit | null
-  ) => Promise<StaleAudit[]>
+  loadStaleInFlight: (olderThan: Date, limit: number, after: StaleAudit | null) => Promise<StaleAudit[]>;
 
   /**
    * Marks an unfinished audit as failed, and reports whether it did.
@@ -57,5 +55,5 @@ export interface ReclaimAbandonedAuditsRepository {
    * False when the row had already moved on, so a race cannot be counted as a
    * reclaim.
    */
-  markAbandoned: (auditId: string, error: string) => Promise<boolean>
+  markAbandoned: (auditId: string, error: string) => Promise<boolean>;
 }

@@ -1,7 +1,7 @@
-import type { NextFunction, Request, Response } from 'express'
-import { env } from '../config/env.js'
+import type {NextFunction, Request, Response} from 'express';
+import {env} from '../config/env.js';
 
-const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
  * CSRF protection for state-changing requests.
@@ -19,20 +19,18 @@ const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
  */
 export const sameOrigin = (req: Request, res: Response, next: NextFunction): void => {
   if (!STATE_CHANGING_METHODS.has(req.method)) {
-    next()
-    return
+    next();
+    return;
   }
 
-  const origin = req.get('origin')
+  const origin = req.get('origin');
   // The API also serves the unsubscribe confirmation form. Its browser POST
   // carries PUBLIC_API_ORIGIN, not FRONTEND_ORIGIN; both are application
   // origins under our control and neither admits a sibling subdomain.
-  if (origin === undefined ||
-      origin === env.frontendOrigin ||
-      origin === env.publicApiOrigin) {
-    next()
-    return
+  if (origin === undefined || origin === env.frontendOrigin || origin === env.publicApiOrigin) {
+    next();
+    return;
   }
 
-  res.status(403).json({ error: 'Cross-origin request rejected' })
-}
+  res.status(403).json({error: 'Cross-origin request rejected'});
+};

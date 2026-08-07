@@ -1,6 +1,6 @@
-import { CompiledQuery, Kysely, PostgresDialect } from 'kysely'
-import pg from 'pg'
-import type { Database } from '../database.js'
+import {CompiledQuery, Kysely, PostgresDialect} from 'kysely';
+import pg from 'pg';
+import type {Database} from '../database.js';
 
 /**
  * Tools for asserting on how a query RUNS, not only on what it returns.
@@ -13,13 +13,13 @@ import type { Database } from '../database.js'
  * log hook - a copy pasted into a spec stops testing anything the moment the
  * real query changes.
  */
-export type IssuedQuery = { sql: string, parameters: readonly unknown[] }
+export type IssuedQuery = {sql: string; parameters: readonly unknown[]};
 
 const connectionUrl = (): string => {
-  const url = process.env.DATABASE_URL
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
-  return url
-}
+  const url = process.env.DATABASE_URL;
+  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  return url;
+};
 
 /**
  * A connection that records every query it issues.
@@ -30,13 +30,13 @@ const connectionUrl = (): string => {
  */
 export const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> =>
   new Kysely<Database>({
-    dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: connectionUrl() }) }),
+    dialect: new PostgresDialect({pool: new pg.Pool({connectionString: connectionUrl()})}),
     log: (event) => {
       if (event.level === 'query') {
-        sink.push({ sql: event.query.sql, parameters: event.query.parameters })
+        sink.push({sql: event.query.sql, parameters: event.query.parameters});
       }
-    }
-  })
+    },
+  });
 
 /**
  * The first recorded query whose SQL matches, so a spec can name what it means.
@@ -50,11 +50,8 @@ export const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> =>
  * lookup fail rather than the measurement disagree, and a guard that fails
  * first is not a measurement.
  */
-export const queryMatching = (
-  issued: IssuedQuery[], pattern: RegExp
-): IssuedQuery | undefined => issued.find(
-  (query) => !/^\s*explain\b/i.test(query.sql) && pattern.test(query.sql)
-)
+export const queryMatching = (issued: IssuedQuery[], pattern: RegExp): IssuedQuery | undefined =>
+  issued.find((query) => !/^\s*explain\b/i.test(query.sql) && pattern.test(query.sql));
 
 /**
  * Rows read from one relation, across every node of an
@@ -81,19 +78,19 @@ export const queryMatching = (
  * against a change that leaves the query FINDABLE.
  */
 const numberAt = (fields: Record<string, unknown>, key: string, fallback = 0): number =>
-  typeof fields[key] === 'number' ? fields[key] : fallback
+  typeof fields[key] === 'number' ? fields[key] : fallback;
 
 const rowsReadFrom = (relation: string, node: unknown): number => {
   if (Array.isArray(node)) {
-    return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0)
+    return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0);
   }
-  if (typeof node !== 'object' || node === null) return 0
+  if (typeof node !== 'object' || node === null) return 0;
 
-  const fields: Record<string, unknown> = { ...node }
+  const fields: Record<string, unknown> = {...node};
   // Only scan nodes carry `Relation Name`, so descending everywhere cannot
   // double-count - a Sort above an Index Scan contributes nothing of its own.
-  const scanned = fields['Relation Name'] === relation
-  const rows = numberAt(fields, 'Actual Rows')
+  const scanned = fields['Relation Name'] === relation;
+  const rows = numberAt(fields, 'Actual Rows');
   // Rows the node touched and threw away. Without these the count measures
   // OUTPUT rather than work, and the two differ by exactly the amount that
   // matters: an `exists` check answered by scanning a page's whole audit
@@ -101,30 +98,26 @@ const rowsReadFrom = (relation: string, node: unknown): number => {
   // a count that stopped at `Actual Rows` would report 0 for the plan it is
   // meant to catch. Both discard counters are included because which one
   // Postgres uses depends on the scan it picked, not on the query.
-  const discarded = numberAt(fields, 'Rows Removed by Filter') +
-    numberAt(fields, 'Rows Removed by Index Recheck')
+  const discarded = numberAt(fields, 'Rows Removed by Filter') + numberAt(fields, 'Rows Removed by Index Recheck');
   // `Actual Rows` is per loop, so an inner scan has to be multiplied by its
   // loop count - which is the point, since a lateral or an anti-join runs one
   // bounded scan per outer row and the total is what costs.
-  const loops = numberAt(fields, 'Actual Loops', 1)
-  const here = scanned ? (rows + discarded) * loops : 0
+  const loops = numberAt(fields, 'Actual Loops', 1);
+  const here = scanned ? (rows + discarded) * loops : 0;
 
-  return here + Object.values(fields)
-    .reduce<number>((total, value) => total + rowsReadFrom(relation, value), 0)
-}
+  return here + Object.values(fields).reduce<number>((total, value) => total + rowsReadFrom(relation, value), 0);
+};
 
-export const explainRowsRead = async (
-  db: Kysely<Database>, query: IssuedQuery, relation: string
-): Promise<number> => {
-  const explained = await db.executeQuery(CompiledQuery.raw(
-    `explain (analyze, format json) ${query.sql}`, [...query.parameters]
-  ))
+export const explainRowsRead = async (db: Kysely<Database>, query: IssuedQuery, relation: string): Promise<number> => {
+  const explained = await db.executeQuery(
+    CompiledQuery.raw(`explain (analyze, format json) ${query.sql}`, [...query.parameters]),
+  );
 
-  if (explained.rows.length === 0) throw new Error('EXPLAIN returned no plan')
+  if (explained.rows.length === 0) throw new Error('EXPLAIN returned no plan');
   // Fed the whole result rather than reached into by key: the walk narrows as
   // it goes, so it does not need a type for the planner's document.
-  return rowsReadFrom(relation, explained.rows)
-}
+  return rowsReadFrom(relation, explained.rows);
+};
 
 /**
  * The plan as text, for asserting that a particular index is the one chosen.
@@ -134,17 +127,13 @@ export const explainRowsRead = async (
  * handful it correctly scans sequentially, so an unseeded spec asserts the
  * opposite of what it means.
  */
-export const explainPlanText = async (
-  db: Kysely<Database>, query: IssuedQuery
-): Promise<string> => {
-  const explained = await db.executeQuery(CompiledQuery.raw(
-    `explain (analyze) ${query.sql}`, [...query.parameters]
-  ))
+export const explainPlanText = async (db: Kysely<Database>, query: IssuedQuery): Promise<string> => {
+  const explained = await db.executeQuery(CompiledQuery.raw(`explain (analyze) ${query.sql}`, [...query.parameters]));
 
   // One column, `QUERY PLAN`, one row per plan line. Read by narrowing rather
   // than by name, so a driver that types the row as `{}` does not need a cast.
   return explained.rows
     .flatMap((row) => (typeof row === 'object' && row !== null ? Object.values(row) : []))
     .filter((value) => typeof value === 'string')
-    .join('\n')
-}
+    .join('\n');
+};

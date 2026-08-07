@@ -1,4 +1,4 @@
-import type { PageHistory } from '../../../../domain/usecases/load-page-history.js'
+import type {PageHistory} from '../../../../domain/usecases/load-page-history.js';
 
 export interface LoadPageHistoryRepository {
   /**
@@ -12,7 +12,5 @@ export interface LoadPageHistoryRepository {
    * Both ids, as with every other page method - null is "this account has no
    * such page", which is deliberately the same answer as "no such page".
    */
-  loadHistoryForUser: (
-    pageId: string, userId: string, since: Date
-  ) => Promise<PageHistory | null>
+  loadHistoryForUser: (pageId: string, userId: string, since: Date) => Promise<PageHistory | null>;
 }

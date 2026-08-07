@@ -1,8 +1,8 @@
-import type { CookieOptions, Request, Response } from 'express'
-import type { Controller } from '../../presentation/protocols/controller.js'
-import type { CookieDirective } from '../../presentation/protocols/http.js'
-import { env } from '../config/env.js'
-import { parseCookies } from './cookies.js'
+import type {CookieOptions, Request, Response} from 'express';
+import type {Controller} from '../../presentation/protocols/controller.js';
+import type {CookieDirective} from '../../presentation/protocols/http.js';
+import {env} from '../config/env.js';
+import {parseCookies} from './cookies.js';
 
 /**
  * Security attributes live here, not in the directive a controller returns, so
@@ -16,28 +16,28 @@ const SESSION_COOKIE_ATTRIBUTES: CookieOptions = {
   httpOnly: true,
   sameSite: 'lax',
   secure: env.sessionCookieSecure,
-  path: '/'
-}
+  path: '/',
+};
 
 /**
  * The only response headers a controller may set. Anything else belongs to the
  * middleware stack or to this adapter, both of which a controller must not be
  * able to reach past.
  */
-const CONTROLLER_HEADERS = new Set(['cache-control', 'vary'])
+const CONTROLLER_HEADERS = new Set(['cache-control', 'vary']);
 
 export const applyCookies = (res: Response, cookies: CookieDirective[] | undefined): void => {
   for (const cookie of cookies ?? []) {
     if (cookie.action === 'set') {
       res.cookie(cookie.name, cookie.value, {
         ...SESSION_COOKIE_ATTRIBUTES,
-        expires: cookie.expiresAt
-      })
+        expires: cookie.expiresAt,
+      });
     } else {
-      res.clearCookie(cookie.name, SESSION_COOKIE_ATTRIBUTES)
+      res.clearCookie(cookie.name, SESSION_COOKIE_ATTRIBUTES);
     }
   }
-}
+};
 
 /**
  * Generic, so a controller can declare the request shape it expects without
@@ -73,12 +73,12 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       ...req.query,
       ...req.params,
       cookies: parseCookies(req.headers.cookie),
-      ...res.locals
-    } as TRequest
+      ...res.locals,
+    } as TRequest;
 
-    const httpResponse = await controller.handle(httpRequest)
+    const httpResponse = await controller.handle(httpRequest);
 
-    applyCookies(res, httpResponse.cookies)
+    applyCookies(res, httpResponse.cookies);
 
     // After the middleware stack, so a controller opting into caching wins
     // over the global no-store rather than being silently overridden by it.
@@ -89,8 +89,8 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
     // middleware just set. Caching is the only thing a controller legitimately
     // owns here.
     for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
-      const header = name.toLowerCase()
-      if (!CONTROLLER_HEADERS.has(header)) continue
+      const header = name.toLowerCase();
+      if (!CONTROLLER_HEADERS.has(header)) continue;
 
       // `vary` is a LIST, and the middleware stack has already contributed to
       // it - cors.ts appends `origin`, with a comment saying overwriting would
@@ -99,8 +99,8 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       // silently removed Origin from the cache key. `cache-control` is the
       // opposite case - a single directive set that a controller opting into
       // caching has to be able to replace outright.
-      if (header === 'vary') res.append(header, value)
-      else res.set(header, value)
+      if (header === 'vary') res.append(header, value);
+      else res.set(header, value);
     }
 
     if (httpResponse.bodyType === 'html') {
@@ -108,14 +108,13 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       // capabilities down here where a controller cannot weaken them. The
       // unsubscribe page needs only a same-origin form submission.
       res.set({
-        'content-security-policy':
-          "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        'content-security-policy': "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         'referrer-policy': 'no-referrer',
-        'x-frame-options': 'DENY'
-      })
-      res.status(httpResponse.statusCode).type('html').send(httpResponse.body)
+        'x-frame-options': 'DENY',
+      });
+      res.status(httpResponse.statusCode).type('html').send(httpResponse.body);
     } else {
-      res.status(httpResponse.statusCode).json(httpResponse.body)
+      res.status(httpResponse.statusCode).json(httpResponse.body);
     }
-  }
-}
+  };
+};

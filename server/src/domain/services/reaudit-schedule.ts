@@ -13,7 +13,7 @@
  */
 
 /** Six hours. Long enough to flatten the spike, short enough to be "nightly". */
-export const JITTER_WINDOW_MS = 6 * 60 * 60 * 1000
+export const JITTER_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Pages on one domain share a base offset, so without this they would all
@@ -21,10 +21,10 @@ export const JITTER_WINDOW_MS = 6 * 60 * 60 * 1000
  * account's pages within one browsing session of each other. It also sets how
  * many slots a domain can occupy: 360 in a six-hour window.
  */
-export const SAME_DOMAIN_STAGGER_MS = 60_000
+export const SAME_DOMAIN_STAGGER_MS = 60_000;
 
-const FNV_OFFSET_BASIS = 2166136261
-const FNV_PRIME = 16777619
+const FNV_OFFSET_BASIS = 2166136261;
+const FNV_PRIME = 16777619;
 
 /**
  * FNV-1a, 32-bit, rather than the sha256 #13 sketched.
@@ -40,15 +40,15 @@ const FNV_PRIME = 16777619
  * already punycoded.
  */
 const fnv1a = (value: string): number => {
-  let hash = FNV_OFFSET_BASIS
+  let hash = FNV_OFFSET_BASIS;
   for (let index = 0; index < value.length; index++) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, FNV_PRIME)
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, FNV_PRIME);
   }
   // Unsigned: `Math.imul` is signed, and a negative offset is a delay in the
   // past, which BullMQ runs immediately - collapsing the spread entirely.
-  return hash >>> 0
-}
+  return hash >>> 0;
+};
 
 /**
  * How long after the run starts this page should be fetched.
@@ -73,15 +73,15 @@ export const reauditDelayMs = (
   domain: string,
   pageId: string,
   windowMs: number = JITTER_WINDOW_MS,
-  staggerMs: number = SAME_DOMAIN_STAGGER_MS
+  staggerMs: number = SAME_DOMAIN_STAGGER_MS,
 ): number => {
   // At least one, so a window shorter than a single stagger step still yields a
   // usable slot instead of dividing by zero.
-  const slots = Math.max(1, Math.floor(windowMs / staggerMs))
-  const slot = fnv1a(pageId) % slots
-  return (fnv1a(domain) + slot * staggerMs) % windowMs
-}
+  const slots = Math.max(1, Math.floor(windowMs / staggerMs));
+  const slot = fnv1a(pageId) % slots;
+  return (fnv1a(domain) + slot * staggerMs) % windowMs;
+};
 
-export const utcDay = (at: Date): string => at.toISOString().slice(0, 10)
+export const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
 
-export const utcDayStart = (at: Date): Date => new Date(`${utcDay(at)}T00:00:00.000Z`)
+export const utcDayStart = (at: Date): Date => new Date(`${utcDay(at)}T00:00:00.000Z`);

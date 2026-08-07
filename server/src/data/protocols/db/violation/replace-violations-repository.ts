@@ -1,4 +1,4 @@
-import type { AddViolationParams } from './violation-params.js'
+import type {AddViolationParams} from './violation-params.js';
 
 export interface ReplaceViolationsRepository {
   /**
@@ -13,7 +13,5 @@ export interface ReplaceViolationsRepository {
    * This deliberately replaces the earlier append-only `addMany`: a second
    * write path that is not safe to repeat is a trap, not a convenience.
    */
-  replaceAll: (
-    auditId: string, claimedAt: Date, violations: AddViolationParams[]
-  ) => Promise<void>
+  replaceAll: (auditId: string, claimedAt: Date, violations: AddViolationParams[]) => Promise<void>;
 }

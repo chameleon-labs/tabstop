@@ -1,5 +1,5 @@
-import { env } from './env.js'
-import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.js'
+import {env} from './env.js';
+import type {BucketConfig} from '../../data/protocols/rate-limit/rate-limiter.js';
 
 /**
  * Constants rather than environment variables. Twelve variables to express six
@@ -12,14 +12,14 @@ import type { BucketConfig } from '../../data/protocols/rate-limit/rate-limiter.
  */
 export const RATE_LIMITS = {
   /** ~30s of Chromium per accepted request. Refill, not burst, sets the ceiling. */
-  audit: { capacity: env.auditRateCapacity, refillPerHour: env.auditRatePerHour },
+  audit: {capacity: env.auditRateCapacity, refillPerHour: env.auditRatePerHour},
   /** Public and cache-fronted, but cold reads still hit Postgres. */
-  auditRead: { capacity: 60, refillPerHour: 600 },
+  auditRead: {capacity: 60, refillPerHour: 600},
   /** ~89ms of scrypt per attempt, on a four-thread pool. */
-  login: { capacity: 10, refillPerHour: 30 },
+  login: {capacity: 10, refillPerHour: 30},
   /** Keyed on the submitted address: per-IP alone misses credential stuffing. */
-  loginEmail: { capacity: 5, refillPerHour: 10 },
-  signup: { capacity: 3, refillPerHour: 5 },
+  loginEmail: {capacity: 5, refillPerHour: 10},
+  signup: {capacity: 3, refillPerHour: 5},
   /**
    * Deliberately the loosest bucket here, because logout must not become a
    * thing a real client can fail at: signing out is idempotent and a person
@@ -28,9 +28,9 @@ export const RATE_LIMITS = {
    * an anonymous caller can drive them as fast as it can open sockets. 30 is
    * far past any genuine client and far below a useful amount of traffic.
    */
-  logout: { capacity: 30, refillPerHour: 120 },
+  logout: {capacity: 30, refillPerHour: 120},
   /** The auth middleware looks the session up before rejecting it. */
-  me: { capacity: 60, refillPerHour: 600 },
+  me: {capacity: 60, refillPerHour: 600},
   /**
    * Adding a page is ~30s of Chromium, the same cost the anonymous audit
    * bucket is sized for - so this is the tightest bucket on the pages router
@@ -42,7 +42,7 @@ export const RATE_LIMITS = {
    * traffic. A signed-in account's tenth page should not be refused because a
    * deploy widened the anonymous allowance, or vice versa.
    */
-  pageAdd: { capacity: 10, refillPerHour: 20 },
+  pageAdd: {capacity: 10, refillPerHour: 20},
   /**
    * Pause/resume and delete: one indexed statement each.
    *
@@ -52,10 +52,10 @@ export const RATE_LIMITS = {
    * counters are also the friendlier behaviour: a client that has been
    * removing pages has not thereby spent its budget for pausing them.
    */
-  pageUpdate: { capacity: 30, refillPerHour: 120 },
-  pageDelete: { capacity: 30, refillPerHour: 120 },
+  pageUpdate: {capacity: 30, refillPerHour: 120},
+  pageDelete: {capacity: 30, refillPerHour: 120},
   /** The dashboard's only call, and it is polled rather than fetched once. */
-  pageRead: { capacity: 60, refillPerHour: 600 },
+  pageRead: {capacity: 60, refillPerHour: 600},
   /**
    * The trend chart (#21). Sized like pageRead - it is a read of the same
    * order, bounded by the same 365-day ceiling - but named separately, because
@@ -63,9 +63,9 @@ export const RATE_LIMITS = {
    * stays strict. Its own counter also means opening a chart cannot spend the
    * budget the dashboard behind it needs.
    */
-  pageHistory: { capacity: 60, refillPerHour: 600 },
+  pageHistory: {capacity: 60, refillPerHour: 600},
   /** Public, token-authenticated, and one indexed update at most. */
-  alertUnsubscribe: { capacity: 10, refillPerHour: 30 },
+  alertUnsubscribe: {capacity: 10, refillPerHour: 30},
   /** Static confirmation page, separate so viewing it cannot spend the POST budget. */
-  alertUnsubscribeRead: { capacity: 30, refillPerHour: 120 }
-} as const satisfies Record<string, BucketConfig>
+  alertUnsubscribeRead: {capacity: 30, refillPerHour: 120},
+} as const satisfies Record<string, BucketConfig>;

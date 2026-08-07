@@ -8,15 +8,15 @@
  * every global is replaceable.
  */
 export type EvaluatedResult = {
-  axeVersion: string
+  axeVersion: string;
   violations: Array<{
-    ruleId: string
-    impact: string | null
-    description: string
-    helpUrl: string
-    nodes: Array<{ target: string[], html: string }>
-  }>
-}
+    ruleId: string;
+    impact: string | null;
+    description: string;
+    helpUrl: string;
+    nodes: Array<{target: string[]; html: string}>;
+  }>;
+};
 
 /**
  * The engine, injected by `page.addScriptTag` before this runs.
@@ -26,7 +26,7 @@ export type EvaluatedResult = {
  * for its types only; a real import would fail at runtime in the page and
  * break the serialisation this function depends on.
  */
-declare const axe: typeof import('axe-core') | undefined
+declare const axe: typeof import('axe-core') | undefined;
 
 /**
  * Runs in the BROWSER.
@@ -53,13 +53,13 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
     // Wording matters: the classifier matches this as a permanent engine
     // failure, so the user is told the engine could not run rather than
     // seeing three retries of an unrecognised error.
-    throw new Error('axe is not defined on the page')
+    throw new Error('axe is not defined on the page');
   }
 
-  const run = await axe.run(document, { resultTypes: ['violations'] })
+  const run = await axe.run(document, {resultTypes: ['violations']});
 
   if (typeof run?.testEngine?.version !== 'string' || !Array.isArray(run.violations)) {
-    throw new Error('axe returned an unrecognised result shape')
+    throw new Error('axe returned an unrecognised result shape');
   }
 
   return {
@@ -78,9 +78,9 @@ export const runAxeInPage = async (): Promise<EvaluatedResult> => {
         // [["#host","img"]]. Flattening here keeps `string[]` true all the way
         // down, and ' >>> ' is Playwright's own shadow-piercing notation so
         // the result still reads as a selector path.
-        target: node.target.map((entry) => Array.isArray(entry) ? entry.join(' >>> ') : entry),
-        html: node.html
-      }))
-    }))
-  }
-}
+        target: node.target.map((entry) => (Array.isArray(entry) ? entry.join(' >>> ') : entry)),
+        html: node.html,
+      })),
+    })),
+  };
+};

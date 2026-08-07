@@ -1,10 +1,10 @@
-import type { AccountResponse } from '@tabstop/contract'
-import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { ApiError, request } from '@/api/client'
+import type {AccountResponse} from '@tabstop/contract';
+import {useQuery, type UseQueryResult} from '@tanstack/react-query';
+import {ApiError, request} from '@/api/client';
 
 export const sessionKeys = {
-  me: ['session', 'me'] as const
-}
+  me: ['session', 'me'] as const,
+};
 
 /**
  * Who is signed in, or `null`.
@@ -23,10 +23,10 @@ export const useSession = (): UseQueryResult<AccountResponse | null, Error> =>
     queryKey: sessionKeys.me,
     queryFn: async () => {
       try {
-        return await request<AccountResponse>('/api/me')
+        return await request<AccountResponse>('/api/me');
       } catch (error) {
-        if (error instanceof ApiError && error.status === 401) return null
-        throw error
+        if (error instanceof ApiError && error.status === 401) return null;
+        throw error;
       }
-    }
-  })
+    },
+  });

@@ -1,4 +1,4 @@
-import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
+import type {DnsResolver} from '../../data/protocols/net/dns-resolver.js';
 
 /**
  * Coalesces lookups that are in flight together, and nothing more.
@@ -16,23 +16,23 @@ import type { DnsResolver } from '../../data/protocols/net/dns-resolver.js'
  * five lookups rather than issuing twenty.
  */
 export class CoalescingDnsResolver implements DnsResolver {
-  private readonly inFlight = new Map<string, Promise<string[]>>()
+  private readonly inFlight = new Map<string, Promise<string[]>>();
 
-  constructor (private readonly inner: DnsResolver) {}
+  constructor(private readonly inner: DnsResolver) {}
 
-  async resolve (hostname: string): Promise<string[]> {
-    const pending = this.inFlight.get(hostname)
-    if (pending !== undefined) return await pending
+  async resolve(hostname: string): Promise<string[]> {
+    const pending = this.inFlight.get(hostname);
+    if (pending !== undefined) return await pending;
 
-    const lookup = this.inner.resolve(hostname)
-    this.inFlight.set(hostname, lookup)
+    const lookup = this.inner.resolve(hostname);
+    this.inFlight.set(hostname, lookup);
 
     try {
-      return await lookup
+      return await lookup;
     } finally {
       // On success as well as failure: a resolved answer must not outlive the
       // request that needed it.
-      this.inFlight.delete(hostname)
+      this.inFlight.delete(hostname);
     }
   }
 }

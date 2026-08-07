@@ -1,10 +1,10 @@
-import { Link } from 'react-router'
-import type { DescribedFailure, FailureSource } from '../../failure'
+import {Link} from 'react-router';
+import type {DescribedFailure, FailureSource} from '../../failure';
 
 export type AuditFailureProps = {
-  failure: DescribedFailure
-  onRetry: () => void
-}
+  failure: DescribedFailure;
+  onRetry: () => void;
+};
 
 /**
  * One heading per source, because "That audit did not finish" is false for two
@@ -20,11 +20,11 @@ export type AuditFailureProps = {
 const HEADINGS: Readonly<Record<FailureSource, string>> = {
   request: 'That audit could not be started',
   poll: 'Lost track of that audit',
-  audit: 'That audit did not finish'
-}
+  audit: 'That audit did not finish',
+};
 
 /** The rate limit is not a failure, so it does not take a failure's heading. */
-const SIGNUP_HEADING = 'You have used your free audits'
+const SIGNUP_HEADING = 'You have used your free audits';
 
 /**
  * A failure, and the one thing worth doing about it.
@@ -37,25 +37,23 @@ const SIGNUP_HEADING = 'You have used your free audits'
  * is the one place in this flow where interrupting is correct: they asked a
  * question thirty seconds ago and the answer is that it failed.
  */
-export const AuditFailure = ({ failure, onRetry }: AuditFailureProps): React.JSX.Element => (
+export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.Element => (
   <section role="alert" aria-labelledby="audit-failure-heading">
-    <h2 id="audit-failure-heading">
-      {failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}
-    </h2>
+    <h2 id="audit-failure-heading">{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
 
     <p>{failure.message}</p>
 
     {failure.action === 'retry' && (
-      <button type="button" onClick={onRetry}>Try again</button>
+      <button type="button" onClick={onRetry}>
+        Try again
+      </button>
     )}
 
-    {failure.action === 'check-url' && (
-      <p>Check the address and try a different one.</p>
-    )}
+    {failure.action === 'check-url' && <p>Check the address and try a different one.</p>}
 
     {failure.action === 'signup' && <RateLimitOffer failure={failure} />}
   </section>
-)
+);
 
 /**
  * The conversion moment, and it is deliberately not styled as an error above.
@@ -68,12 +66,12 @@ export const AuditFailure = ({ failure, onRetry }: AuditFailureProps): React.JSX
  * The wait is still shown. An offer that hides when they could simply try again
  * is a dark pattern, and this product cannot afford one.
  */
-const RateLimitOffer = ({ failure }: { failure: DescribedFailure }): React.JSX.Element => (
+const RateLimitOffer = ({failure}: {failure: DescribedFailure}): React.JSX.Element => (
   <>
     <p>Create an account to keep auditing, and to track pages over time.</p>
-    <p><Link to="/signup">Create an account</Link></p>
-    {failure.rateLimit === undefined
-      ? null
-      : <p>Or wait {failure.rateLimit.retryAfter} seconds and try again.</p>}
+    <p>
+      <Link to="/signup">Create an account</Link>
+    </p>
+    {failure.rateLimit === undefined ? null : <p>Or wait {failure.rateLimit.retryAfter} seconds and try again.</p>}
   </>
-)
+);
