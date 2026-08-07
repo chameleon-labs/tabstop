@@ -5,16 +5,13 @@ import type { Database } from '../database.js'
 /**
  * Tools for asserting on how a query RUNS, not only on what it returns.
  *
- * Two things here have already caught real defects. Row counts caught a
- * history query whose output was bounded while its scan was not - the plan
- * looked right and the results were right, and it read every audit a page had
- * ever had. Plan text catches the other direction: an index that stops being
- * used because a predicate changed shape, which nothing else notices until the
- * table is large enough to hurt.
+ * Both have caught real defects: row counts found a history query whose output
+ * was bounded while its scan was not, and plan text catches an index quietly
+ * dropped because a predicate changed shape.
  *
  * Both read the query the repository ACTUALLY issued, captured off Kysely's
- * log hook, rather than a copy pasted into a spec - a copy silently stops
- * testing anything the moment the real query changes.
+ * log hook - a copy pasted into a spec stops testing anything the moment the
+ * real query changes.
  */
 export type IssuedQuery = { sql: string, parameters: readonly unknown[] }
 
@@ -44,15 +41,14 @@ export const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> =>
 /**
  * The first recorded query whose SQL matches, so a spec can name what it means.
  *
- * EXPLAIN runs are skipped because the helpers below issue theirs through the
- * same recording connection, so they land in the sink too - and a spec that
- * looked one up a second time would end up asking the database to explain an
- * explain, which is a syntax error rather than a useful failure.
+ * EXPLAIN runs are skipped: the helpers below issue theirs through the same
+ * recording connection, so looking one up again asks the database to explain
+ * an explain.
  *
- * Prefer counting across every recorded query where a spec can: a search
+ * Prefer counting across every recorded query where a spec can - a search
  * pattern couples the assertion to the query's SHAPE, so a rewrite makes the
- * lookup fail rather than making the measurement disagree - and a lookup that
- * fails first is a guard, not a measurement.
+ * lookup fail rather than the measurement disagree, and a guard that fails
+ * first is not a measurement.
  */
 export const queryMatching = (
   issued: IssuedQuery[], pattern: RegExp
@@ -67,34 +63,22 @@ export const queryMatching = (
  * Narrowed as it walks rather than typed: the plan tree is the planner's to
  * change, and a type describing it would be a claim this cannot check.
  *
- * Rows READ, which is not the same as rows returned: a node's discarded rows
- * count too. That distinction is the whole measurement for an `exists` check,
- * which returns nothing whether it examined one row or a million.
+ * Rows READ, not rows returned - a node's discarded rows count too, which is
+ * the whole measurement for an `exists` check that returns nothing whether it
+ * examined one row or a million.
  *
- * Three earlier versions of this were wrong, and the last two are instructive.
+ * Three constraints, each from a version that was wrong. Attribute rows only
+ * where a node NAMES the relation, or a Sort over a Nested Loop over a Limit
+ * counts the same thirty rows four times. Descend through every value, not
+ * just `Plan`/`Plans`: the document is `[{ "QUERY PLAN": [...] }]`, so a
+ * narrower walk stops at the first key and returns 0 for everything. And count
+ * `Rows Removed by Filter` as well as `Actual Rows`, or a scan of a page's
+ * whole history that emits nothing measures as zero.
  *
- * Summing every node's rows regardless of relation multiplies the answer by
- * the depth of the plan: a Sort over a Nested Loop over a Limit counts the
- * same thirty rows four times.
- *
- * Fixing that by descending only through `Plan` and `Plans` reached nothing at
- * all. The document is `[{ "QUERY PLAN": [{ "Plan": ... }] }]`, so the walk
- * stopped at the very first key and every caller got 0 - turning "this query
- * reads fewer than N rows" into an assertion that holds for any query
- * whatsoever. It survived a mutation check because the mutation changed the
- * query's SHAPE as well, so the spec's "did we find the query" guard went red
- * first and the count never proved anything. A count-based assertion has to be
- * mutation-checked against a change that leaves the query FINDABLE.
- *
- * Counting only `Actual Rows` then read zero for a plan doing real work. #13's
- * eligibility query asks whether a page has an audit in flight; answered by
- * scanning that page's entire history and filtering on status, the node emits
- * no rows and reads every one of them, all of which land in `Rows Removed by
- * Filter`. The assertion "this reads fewer than 2000 rows" was true of both
- * the good plan and the bad one.
- *
- * Hence: descend through every value, attribute rows only where a node names
- * the relation, and count what it discarded as well as what it returned.
+ * The 0-for-everything version survived a mutation check, which is worth
+ * knowing: the mutation changed the query's shape too, so the "did we find the
+ * query" guard went red first. A count assertion has to be mutation-checked
+ * against a change that leaves the query FINDABLE.
  */
 const numberAt = (fields: Record<string, unknown>, key: string, fallback = 0): number =>
   typeof fields[key] === 'number' ? fields[key] : fallback
@@ -145,11 +129,10 @@ export const explainRowsRead = async (
 /**
  * The plan as text, for asserting that a particular index is the one chosen.
  *
- * Text rather than JSON because that is what the assertion reads like - a spec
- * saying `toContain('audits_page_created_idx')` needs no explanation. Note
- * that a plan assertion is only meaningful with enough rows for the planner to
- * prefer an index: on a handful it will sequentially scan, correctly, and a
- * spec that did not seed data would be asserting the opposite of what it means.
+ * Text because `toContain('audits_page_created_idx')` needs no explanation.
+ * Only meaningful with enough rows for the planner to prefer an index: on a
+ * handful it correctly scans sequentially, so an unseeded spec asserts the
+ * opposite of what it means.
  */
 export const explainPlanText = async (
   db: Kysely<Database>, query: IssuedQuery
