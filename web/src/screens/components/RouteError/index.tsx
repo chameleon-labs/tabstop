@@ -1,12 +1,12 @@
-import { Link, isRouteErrorResponse, useRouteError } from 'react-router'
-import { ApiError } from '@/api/client'
-import { useDocumentTitle } from '@/screens/hooks/use-document-title'
-import { NotFound } from '../NotFound'
-import { useOwnChrome } from '../Layout'
+import {Link, isRouteErrorResponse, useRouteError} from 'react-router';
+import {ApiError} from '@/api/client';
+import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import {NotFound} from '../NotFound';
+import {useOwnChrome} from '../Layout';
 
 export type ErrorPageProps = {
-  error: unknown
-}
+  error: unknown;
+};
 
 /**
  * What a route renders when it throws.
@@ -21,17 +21,21 @@ export type ErrorPageProps = {
  * person holding the link they are the same event.
  */
 export const RouteError = (): React.JSX.Element => {
-  const error = useRouteError()
+  const error = useRouteError();
 
   // Two shapes, because a 404 arrives by two routes: `ApiError` when a query
   // threw one, and a router `ErrorResponse` when a loader or the router itself
   // produced it. Checking only the first would render "something went wrong"
   // for half of the cases this exists to handle.
-  if (error instanceof ApiError && error.status === 404) return <NotFound />
-  if (isRouteErrorResponse(error) && error.status === 404) return <NotFound />
+  if (error instanceof ApiError && error.status === 404) {
+    return <NotFound />;
+  }
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <NotFound />;
+  }
 
-  return <ErrorPage error={error} />
-}
+  return <ErrorPage error={error} />;
+};
 
 /**
  * Null when there is nothing worth showing a person.
@@ -42,18 +46,22 @@ export const RouteError = (): React.JSX.Element => {
  * Only errors that carry a message meant for a person are shown.
  */
 const messageOf = (error: unknown): string | null => {
-  if (error instanceof ApiError) return error.message
+  if (error instanceof ApiError) {
+    return error.message;
+  }
   // Empty is not a message. `new Response(null, { status: 503 })` has no status
   // text at all, and HTTP/2 carries no reason phrase, so this is the common
   // case rather than a corner of it - returning `''` here passes the null check
   // below and renders an empty paragraph where the explanation should be.
-  if (isRouteErrorResponse(error)) return error.statusText === '' ? null : error.statusText
-  return null
-}
+  if (isRouteErrorResponse(error)) {
+    return error.statusText === '' ? null : error.statusText;
+  }
+  return null;
+};
 
-const ErrorPage = ({ error }: ErrorPageProps): React.JSX.Element => {
-  useDocumentTitle('Something went wrong')
-  const detail = messageOf(error)
+const ErrorPage = ({error}: ErrorPageProps): React.JSX.Element => {
+  useDocumentTitle('Something went wrong');
+  const detail = messageOf(error);
   /**
    * The screen this replaced may have owned the chrome, in which case the shell
    * stepped back and rendered no `<main>` - and it cannot know the screen threw,
@@ -61,19 +69,29 @@ const ErrorPage = ({ error }: ErrorPageProps): React.JSX.Element => {
    * the error page supplies what the shell withheld, or the skip link points at
    * a `#main` that does not exist.
    */
-  const ownChrome = useOwnChrome()
+  const ownChrome = useOwnChrome();
 
   const body = (
     <section>
       {/* The only h1 on the page: the error IS the page now, so the heading
           outline has to say so rather than leaving the previous screen's. */}
       <h1>Something went wrong</h1>
-      {detail === null
-        ? <p>That did not work, and we do not have a useful explanation. Try again.</p>
-        : <p>{detail}</p>}
-      <p><Link to="/">Back to the start</Link></p>
+      {detail === null ? (
+        <p>That did not work, and we do not have a useful explanation. Try again.</p>
+      ) : (
+        <p>{detail}</p>
+      )}
+      <p>
+        <Link to="/">Back to the start</Link>
+      </p>
     </section>
-  )
+  );
 
-  return ownChrome ? <main id="main" tabIndex={-1}>{body}</main> : body
-}
+  return ownChrome ? (
+    <main id="main" tabIndex={-1}>
+      {body}
+    </main>
+  ) : (
+    body
+  );
+};

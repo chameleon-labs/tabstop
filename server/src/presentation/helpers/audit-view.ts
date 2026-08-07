@@ -3,13 +3,13 @@ import type {
   AuditStatus as WireStatus,
   Impact as WireImpact,
   RequestAuditResponse,
-  ViolationNode as WireViolationNode
-} from '@tabstop/contract'
-import type { AuditModel, AuditStatus } from '../../domain/models/audit.js'
-import type { Impact } from '../../domain/models/impact.js'
-import type { ViolationNode } from '../../domain/models/violation.js'
-import type { AuditResult } from '../../domain/usecases/load-audit-result.js'
-import type { Exact, MustHold } from './contract-proof.js'
+  ViolationNode as WireViolationNode,
+} from '@tabstop/contract';
+import type {AuditModel, AuditStatus} from '../../domain/models/audit.js';
+import type {Impact} from '../../domain/models/impact.js';
+import type {ViolationNode} from '../../domain/models/violation.js';
+import type {AuditResult} from '../../domain/usecases/load-audit-result.js';
+import type {Exact, MustHold} from './contract-proof.js';
 
 /**
  * Widen either side of any of these without the other and `pnpm typecheck`
@@ -17,16 +17,16 @@ import type { Exact, MustHold } from './contract-proof.js'
  * quietly become wrong about the payload. See `contract-proof.ts` for why the
  * return-type annotation below is not sufficient on its own.
  */
-type StatusMatches = MustHold<Exact<AuditStatus, WireStatus>>
-type ImpactMatches = MustHold<Exact<Impact, WireImpact>>
-type NodeMatches = MustHold<Exact<ViolationNode, WireViolationNode>>
+type StatusMatches = MustHold<Exact<AuditStatus, WireStatus>>;
+type ImpactMatches = MustHold<Exact<Impact, WireImpact>>;
+type NodeMatches = MustHold<Exact<ViolationNode, WireViolationNode>>;
 
 /**
  * Exported so the assertions above are instantiated rather than merely
  * declared, and so deleting one is a visible change to this file's surface
  * rather than the removal of something that looked unused.
  */
-export type ContractProof = [StatusMatches, ImpactMatches, NodeMatches]
+export type ContractProof = [StatusMatches, ImpactMatches, NodeMatches];
 
 /**
  * Every field is named deliberately.
@@ -59,9 +59,9 @@ export const toAuditResultResponse = (result: AuditResult): AuditResultResponse 
     impact: violation.impact,
     description: violation.description,
     helpUrl: violation.helpUrl,
-    nodes: violation.nodes
-  }))
-})
+    nodes: violation.nodes,
+  })),
+});
 
 /**
  * The 202 from `POST /api/audits`.
@@ -76,11 +76,9 @@ export const toAuditResultResponse = (result: AuditResult): AuditResultResponse 
  * `status` is the domain's, which `StatusMatches` above already pins to the
  * wire union, so widening `AuditStatus` fails here too.
  */
-export const toRequestAuditResponse = (
-  audit: AuditModel, pollAfterMs: number
-): RequestAuditResponse => ({
+export const toRequestAuditResponse = (audit: AuditModel, pollAfterMs: number): RequestAuditResponse => ({
   // The public uuid only. The internal id is never exposed.
   auditId: audit.publicUuid,
   status: audit.status,
-  pollAfterMs
-})
+  pollAfterMs,
+});

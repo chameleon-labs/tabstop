@@ -1,45 +1,43 @@
-import type { RequestAudit } from '../../../domain/usecases/request-audit.js'
-import { toRequestAuditResponse } from '../../helpers/audit-view.js'
-import {
-  accepted, badRequest, serverError, serviceUnavailable
-} from '../../helpers/http/http-helper.js'
-import { REJECTION_MESSAGES } from '../../helpers/url-rejection-message.js'
-import type { Controller } from '../../protocols/controller.js'
-import type { HttpResponse } from '../../protocols/http.js'
+import type {RequestAudit} from '../../../domain/usecases/request-audit.js';
+import {toRequestAuditResponse} from '../../helpers/audit-view.js';
+import {accepted, badRequest, serverError, serviceUnavailable} from '../../helpers/http/http-helper.js';
+import {REJECTION_MESSAGES} from '../../helpers/url-rejection-message.js';
+import type {Controller} from '../../protocols/controller.js';
+import type {HttpResponse} from '../../protocols/http.js';
 
 export type RequestAuditRequest = {
-  url?: unknown
-}
+  url?: unknown;
+};
 
 /** How long a client should wait before polling. Widening it needs no frontend deploy. */
-const POLL_AFTER_MS = 2000
+const POLL_AFTER_MS = 2000;
 
 export class RequestAuditController implements Controller<RequestAuditRequest> {
-  constructor (private readonly requestAudit: RequestAudit) {}
+  constructor(private readonly requestAudit: RequestAudit) {}
 
-  async handle (request: RequestAuditRequest): Promise<HttpResponse> {
+  async handle(request: RequestAuditRequest): Promise<HttpResponse> {
     try {
       if (typeof request.url !== 'string' || request.url === '') {
-        return badRequest(new Error('A url is required'))
+        return badRequest(new Error('A url is required'));
       }
 
-      const result = await this.requestAudit.request({ url: request.url })
+      const result = await this.requestAudit.request({url: request.url});
 
       if (result.outcome === 'rejected') {
-        return badRequest(new Error(REJECTION_MESSAGES[result.reason]))
+        return badRequest(new Error(REJECTION_MESSAGES[result.reason]));
       }
 
       if (result.outcome === 'unavailable') {
         // The row has been removed, so this is a clean "try again" rather than
         // a half-created audit the client would have to reason about.
-        return serviceUnavailable({ error: 'Could not queue that audit, please try again' })
+        return serviceUnavailable({error: 'Could not queue that audit, please try again'});
       }
 
       // Through the view helper, so this payload is checked against the type
       // the frontend compiles from rather than merely resembling it.
-      return accepted(toRequestAuditResponse(result.audit, POLL_AFTER_MS))
+      return accepted(toRequestAuditResponse(result.audit, POLL_AFTER_MS));
     } catch (error) {
-      return serverError(error as Error)
+      return serverError(error as Error);
     }
   }
 }

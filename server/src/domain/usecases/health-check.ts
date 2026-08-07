@@ -1,5 +1,5 @@
-import type { HealthCheckModel } from '../models/health-check.js'
+import type {HealthCheckModel} from '../models/health-check.js';
 
 export interface HealthCheck {
-  check: () => Promise<HealthCheckModel>
+  check: () => Promise<HealthCheckModel>;
 }

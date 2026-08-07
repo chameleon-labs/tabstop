@@ -1,11 +1,11 @@
-import type { AuthenticatedSession } from '../models/session.js'
+import type {AuthenticatedSession} from '../models/session.js';
 
 export type AddAccountParams = {
-  email: string
-  password: string
-}
+  email: string;
+  password: string;
+};
 
 export interface AddAccount {
   /** Null when the email is already registered. */
-  add: (params: AddAccountParams) => Promise<AuthenticatedSession | null>
+  add: (params: AddAccountParams) => Promise<AuthenticatedSession | null>;
 }

@@ -1,8 +1,7 @@
-import type { AuditModel, AuditStatus } from '../../domain/models/audit.js'
-import type { CountsByImpact } from '../../domain/models/impact.js'
-import type { PageSummary } from '../../domain/models/page.js'
-import type { PageHistory } from '../../domain/usecases/load-page-history.js'
-import type { PageModel } from '../../domain/models/page.js'
+import type {AuditModel, AuditStatus} from '../../domain/models/audit.js';
+import type {CountsByImpact} from '../../domain/models/impact.js';
+import type {PageSummary, PageModel} from '../../domain/models/page.js';
+import type {PageHistory} from '../../domain/usecases/load-page-history.js';
 
 /**
  * A page as the API reports it.
@@ -13,18 +12,18 @@ import type { PageModel } from '../../domain/models/page.js'
  * put on the wire.
  */
 export type PageView = {
-  id: string
-  url: string
-  monitoringEnabled: boolean
-  createdAt: string
-}
+  id: string;
+  url: string;
+  monitoringEnabled: boolean;
+  createdAt: string;
+};
 
 export const toPageView = (page: PageModel): PageView => ({
   id: page.id,
   url: page.url,
   monitoringEnabled: page.monitoringEnabled,
-  createdAt: page.createdAt.toISOString()
-})
+  createdAt: page.createdAt.toISOString(),
+});
 
 /**
  * The last run, whatever became of it - `queued` and `running` included, since
@@ -37,18 +36,18 @@ export const toPageView = (page: PageModel): PageView => ({
  */
 export type LatestAuditView = {
   /** The public uuid, never the internal id. */
-  auditId: string
-  status: AuditStatus
-  score: number | null
-  countsByImpact: CountsByImpact
-  createdAt: string
-  completedAt: string | null
-  error: string | null
-}
+  auditId: string;
+  status: AuditStatus;
+  score: number | null;
+  countsByImpact: CountsByImpact;
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
+};
 
 export type PageSummaryView = PageView & {
-  domain: string
-  latestAudit: LatestAuditView | null
+  domain: string;
+  latestAudit: LatestAuditView | null;
   /**
    * The most recent finished score, and the one before it.
    *
@@ -56,11 +55,11 @@ export type PageSummaryView = PageView & {
    * failed or is still going. The delta badge has to survive that: "-12 since
    * yesterday" must not disappear the moment one audit errors.
    */
-  score: number | null
-  previousScore: number | null
+  score: number | null;
+  previousScore: number | null;
   /** Oldest first, bounded, finished audits only. The sparkline (#20). */
-  history: Array<{ score: number, at: string }>
-}
+  history: {score: number; at: string}[];
+};
 
 const toLatestAuditView = (audit: AuditModel): LatestAuditView => ({
   auditId: audit.publicUuid,
@@ -69,8 +68,8 @@ const toLatestAuditView = (audit: AuditModel): LatestAuditView => ({
   countsByImpact: audit.countsByImpact,
   createdAt: audit.createdAt.toISOString(),
   completedAt: audit.completedAt?.toISOString() ?? null,
-  error: audit.error
-})
+  error: audit.error,
+});
 
 export const toPageSummaryView = (summary: PageSummary): PageSummaryView => ({
   ...toPageView(summary.page),
@@ -79,8 +78,8 @@ export const toPageSummaryView = (summary: PageSummary): PageSummaryView => ({
   // History is oldest first, so the two most recent scores are at the end.
   score: summary.history.at(-1)?.score ?? null,
   previousScore: summary.history.at(-2)?.score ?? null,
-  history: summary.history.map((point) => ({ score: point.score, at: point.at.toISOString() }))
-})
+  history: summary.history.map((point) => ({score: point.score, at: point.at.toISOString()})),
+});
 
 /**
  * One point on the trend chart (#21).
@@ -92,22 +91,22 @@ export const toPageSummaryView = (summary: PageSummary): PageSummaryView => ({
  */
 export type PageHistoryPointView = {
   /** The public uuid, so a point can link to its own result (#23). */
-  auditId: string
-  createdAt: string
-  status: AuditStatus
+  auditId: string;
+  createdAt: string;
+  status: AuditStatus;
   /** Null whenever the run did not finish. Never coerced to zero. */
-  score: number | null
-  countsByImpact: CountsByImpact
-  axeVersion: string | null
-}
+  score: number | null;
+  countsByImpact: CountsByImpact;
+  axeVersion: string | null;
+};
 
 export type PageHistoryView = {
-  pageId: string
-  url: string
+  pageId: string;
+  url: string;
   /** What the server actually used, which is not always what was asked for. */
-  days: number
-  points: PageHistoryPointView[]
-}
+  days: number;
+  points: PageHistoryPointView[];
+};
 
 export const toPageHistoryView = (history: PageHistory, days: number): PageHistoryView => ({
   pageId: history.page.id,
@@ -121,6 +120,6 @@ export const toPageHistoryView = (history: PageHistory, days: number): PageHisto
     // entry. Both alternatives lie about what happened.
     score: audit.score,
     countsByImpact: audit.countsByImpact,
-    axeVersion: audit.axeVersion
-  }))
-})
+    axeVersion: audit.axeVersion,
+  })),
+});

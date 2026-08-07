@@ -1,4 +1,4 @@
-export type AlertDispatchMode = 'preview' | 'delivery'
+export type AlertDispatchMode = 'preview' | 'delivery';
 
 export interface LoadPendingAlertEventsRepository {
   /**
@@ -6,9 +6,5 @@ export interface LoadPendingAlertEventsRepository {
    * dispatcher walks every page so an old provider failure cannot hold newer
    * alerts behind a fixed LIMIT.
    */
-  loadPendingAlertEventIds: (
-    afterId: string | null,
-    limit: number,
-    mode: AlertDispatchMode
-  ) => Promise<string[]>
+  loadPendingAlertEventIds: (afterId: string | null, limit: number, mode: AlertDispatchMode) => Promise<string[]>;
 }

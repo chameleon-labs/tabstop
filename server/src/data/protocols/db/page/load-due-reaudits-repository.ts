@@ -7,15 +7,15 @@
  * to collide.
  */
 export type DuePage = {
-  pageId: string
-  url: string
-  domain: string
-}
+  pageId: string;
+  url: string;
+  domain: string;
+};
 
 export type DuePageQuery = {
   /** Midnight UTC of the run's day. A page audited since is not due again. */
-  dayStart: Date
-  limit: number
+  dayStart: Date;
+  limit: number;
   /**
    * Keyset cursor - the last page id of the previous batch, or null to start.
    *
@@ -24,8 +24,8 @@ export type DuePageQuery = {
    * the predicate, so an offset would skip as many pages as the previous batch
    * scheduled.
    */
-  after: string | null
-}
+  after: string | null;
+};
 
 export interface LoadDueReauditsRepository {
   /**
@@ -44,5 +44,5 @@ export interface LoadDueReauditsRepository {
    * caller pages until the batches run out, so the bound is on memory rather
    * than on how many pages get monitored.
    */
-  loadDueForReaudit: (query: DuePageQuery) => Promise<DuePage[]>
+  loadDueForReaudit: (query: DuePageQuery) => Promise<DuePage[]>;
 }

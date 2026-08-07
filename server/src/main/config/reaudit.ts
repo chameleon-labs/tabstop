@@ -1,5 +1,5 @@
 /** The scheduler's identity in Redis. Upserting on it updates in place. */
-export const REAUDIT_SCHEDULER_ID = 'daily-reaudit'
+export const REAUDIT_SCHEDULER_ID = 'daily-reaudit';
 
 /**
  * 02:00 UTC. Quiet for most of the world, and far enough from midnight that a
@@ -8,15 +8,15 @@ export const REAUDIT_SCHEDULER_ID = 'daily-reaudit'
  * UTC deliberately: "daily in the user's timezone" is a per-user schedule, out
  * of scope for v1 (#13), and the day-boundary dedupe already assumes this.
  */
-export const REAUDIT_CRON = '0 2 * * *'
-export const REAUDIT_TIMEZONE = 'UTC'
+export const REAUDIT_CRON = '0 2 * * *';
+export const REAUDIT_TIMEZONE = 'UTC';
 
 /**
  * How many pages one query of the worklist returns. A memory bound only - the
  * run pages until the batches run out, so this never limits how many pages get
  * monitored.
  */
-export const REAUDIT_BATCH_SIZE = 500
+export const REAUDIT_BATCH_SIZE = 500;
 
 /**
  * A circuit breaker on one run, not a cap on the product.
@@ -25,7 +25,7 @@ export const REAUDIT_BATCH_SIZE = 500
  * unbounded loop over the pages table. A run that reaches it reports
  * `truncated`, which is an alert rather than a routine outcome.
  */
-export const MAX_PAGES_PER_RUN = 50_000
+export const MAX_PAGES_PER_RUN = 50_000;
 
 /**
  * How old an unfinished audit must be before the run asks whether it has been
@@ -38,7 +38,7 @@ export const MAX_PAGES_PER_RUN = 50_000
  * generous costs only a slower reclaim, whereas being aggressive costs a Redis
  * round trip per healthy pending audit.
  */
-export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
+export const STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 
 /**
  * A ceiling on the fan-out itself, distinct from the shutdown grace.
@@ -47,7 +47,7 @@ export const STALE_AFTER_MS = 12 * 60 * 60 * 1000
  * and a queue throughout. Retrying is safe: the eligibility query excludes
  * every page the attempt did schedule.
  */
-export const REAUDIT_RUN_TIMEOUT_MS = 30 * 60 * 1000
+export const REAUDIT_RUN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * How long after its own deadline the run gets before it is stopped outright.
@@ -58,7 +58,7 @@ export const REAUDIT_RUN_TIMEOUT_MS = 30 * 60 * 1000
  * somebody most wants one. This margin is the room the cooperative stop needs
  * to win.
  */
-export const REAUDIT_HARD_STOP_MARGIN_MS = 60 * 1000
+export const REAUDIT_HARD_STOP_MARGIN_MS = 60 * 1000;
 
 /**
  * A minute, then two, rather than the queue-wide one second: these failures are
@@ -66,5 +66,5 @@ export const REAUDIT_HARD_STOP_MARGIN_MS = 60 * 1000
  * either to pass. Safe to retry, since the eligibility query excludes every
  * page the first attempt scheduled.
  */
-export const REAUDIT_RETRY_BACKOFF_MS = 60_000
-export const REAUDIT_ATTEMPTS = 3
+export const REAUDIT_RETRY_BACKOFF_MS = 60_000;
+export const REAUDIT_ATTEMPTS = 3;

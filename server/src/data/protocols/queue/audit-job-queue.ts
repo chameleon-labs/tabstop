@@ -1,4 +1,4 @@
-export type AuditJob = { auditId: string }
+export type AuditJob = {auditId: string};
 
 /**
  * How long the queue should hold the job before a worker may take it.
@@ -8,7 +8,7 @@ export type AuditJob = { auditId: string }
  * that wants a delay, and it wants a large one: the night's work spread over
  * hours so tabstop does not arrive at one origin all at once.
  */
-export type EnqueueOptions = { delayMs: number }
+export type EnqueueOptions = {delayMs: number};
 
 /**
  * The audit queue as submission needs it: not fire-and-forget, but a queue a
@@ -19,7 +19,7 @@ export interface AuditJobQueue {
    * Enqueues the audit under an id derived from the audit itself, so calling
    * it twice - a retry after a lost reply - still enqueues one job.
    */
-  enqueueOnce: (job: AuditJob, options?: EnqueueOptions) => Promise<void>
+  enqueueOnce: (job: AuditJob, options?: EnqueueOptions) => Promise<void>;
   /**
    * Whether the queue holds a record for this audit at all, in any state.
    *
@@ -27,7 +27,7 @@ export interface AuditJobQueue {
    * my add land? A job that has already run answers yes, and must - the audit
    * happened, so the row it points at has to stay.
    */
-  has: (auditId: string) => Promise<boolean>
+  has: (auditId: string) => Promise<boolean>;
   /**
    * Whether the queue still INTENDS to run this audit - waiting, delayed or
    * active, rather than a terminal record kept around for inspection.
@@ -39,7 +39,7 @@ export interface AuditJobQueue {
    * without ever writing a terminal status would keep its page out of the
    * worklist for as long as the record survived.
    */
-  isPending: (auditId: string) => Promise<boolean>
+  isPending: (auditId: string) => Promise<boolean>;
   /**
    * How much RUNNABLE accepted work the queue holds. Submission needs it
    * because a per-requester rate limit bounds one source and the queue is
@@ -51,5 +51,5 @@ export interface AuditJobQueue {
    * hours into the future does not count against it. The implementation
    * records why that distinction had to be drawn.
    */
-  backlogCount: () => Promise<number>
+  backlogCount: () => Promise<number>;
 }

@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
-import { documentTitleSet } from '@/a11y/announce'
+import {useEffect} from 'react';
+import {documentTitleSet} from '@/a11y/announce';
 
 /** What every title is suffixed with, and what an empty title falls back to. */
-export const SITE_NAME = 'tabstop'
+export const SITE_NAME = 'tabstop';
 
 /**
  * Names the document for the tab, the history entry and - through
@@ -24,7 +24,7 @@ export const useDocumentTitle = (title: string): void => {
   // `document.title` is idempotent, and the announcer takes only the first
   // signal after each navigation.
   useEffect(() => {
-    document.title = title === '' ? SITE_NAME : `${title} · ${SITE_NAME}`
-    documentTitleSet()
-  })
-}
+    document.title = title === '' ? SITE_NAME : `${title} · ${SITE_NAME}`;
+    documentTitleSet();
+  });
+};

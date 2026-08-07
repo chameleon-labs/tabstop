@@ -1,26 +1,20 @@
-import { parseAuditUrl, type UrlPolicy } from '../../../domain/services/url-safety.js'
-import {
-  ENQUEUE_TIMEOUT_MS, enqueueAudit, resolvesSafely, withTimeout
-} from '../../helpers/audit-submission.js'
-import type { DnsResolver } from '../../protocols/net/dns-resolver.js'
-import type {
-  RequestAudit, RequestAuditParams, RequestAuditResult
-} from '../../../domain/usecases/request-audit.js'
-import type { AddAuditRepository } from '../../protocols/db/audit/add-audit-repository.js'
-import type {
-  DeleteQueuedAuditRepository
-} from '../../protocols/db/audit/delete-queued-audit-repository.js'
-import type { AuditJobQueue } from '../../protocols/queue/audit-job-queue.js'
+import {parseAuditUrl, type UrlPolicy} from '../../../domain/services/url-safety.js';
+import {ENQUEUE_TIMEOUT_MS, enqueueAudit, resolvesSafely, withTimeout} from '../../helpers/audit-submission.js';
+import type {DnsResolver} from '../../protocols/net/dns-resolver.js';
+import type {RequestAudit, RequestAuditParams, RequestAuditResult} from '../../../domain/usecases/request-audit.js';
+import type {AddAuditRepository} from '../../protocols/db/audit/add-audit-repository.js';
+import type {DeleteQueuedAuditRepository} from '../../protocols/db/audit/delete-queued-audit-repository.js';
+import type {AuditJobQueue} from '../../protocols/queue/audit-job-queue.js';
 
 /**
  * Roughly an hour of backlog at the default concurrency of one, so a client
  * that IS accepted still gets a result rather than a place in a line nobody
  * will reach. Overridable, because the right number depends on worker count.
  */
-const DEFAULT_MAX_QUEUE_DEPTH = 100
+const DEFAULT_MAX_QUEUE_DEPTH = 100;
 
 export class DbRequestAudit implements RequestAudit {
-  constructor (
+  constructor(
     private readonly addAuditRepository: AddAuditRepository,
     private readonly deleteQueuedAuditRepository: DeleteQueuedAuditRepository,
     private readonly auditQueue: AuditJobQueue,
@@ -29,13 +23,15 @@ export class DbRequestAudit implements RequestAudit {
     // concrete policy, because doing so meant importing node:net into a layer
     // that has to stay free of the runtime. The composition root injects it.
     private readonly urlPolicy: UrlPolicy,
-    private readonly maxQueueDepth: number = DEFAULT_MAX_QUEUE_DEPTH
+    private readonly maxQueueDepth: number = DEFAULT_MAX_QUEUE_DEPTH,
   ) {}
 
-  async request ({ url }: RequestAuditParams): Promise<RequestAuditResult> {
+  async request({url}: RequestAuditParams): Promise<RequestAuditResult> {
     // Gate 1, the half of #7 left open by the worker-side guard.
-    const parsed = parseAuditUrl(url, this.urlPolicy)
-    if (!parsed.safe) return { outcome: 'rejected', reason: parsed.reason }
+    const parsed = parseAuditUrl(url, this.urlPolicy);
+    if (!parsed.safe) {
+      return {outcome: 'rejected', reason: parsed.reason};
+    }
 
     // Resolved as well as parsed. A hostname that answers with a private
     // address is rejected here rather than becoming a queued job, a browser
@@ -46,8 +42,8 @@ export class DbRequestAudit implements RequestAudit {
     // often it runs. Gate 2 still re-resolves at fetch time: this answer
     // cannot be trusted by then, it merely rejects what is already known to
     // be wrong.
-    if (!await resolvesSafely(parsed.url, this.dnsResolver, this.urlPolicy)) {
-      return { outcome: 'rejected', reason: 'blocked-address' }
+    if (!(await resolvesSafely(parsed.url, this.dnsResolver, this.urlPolicy))) {
+      return {outcome: 'rejected', reason: 'blocked-address'};
     }
 
     // The gap a per-IP bucket cannot close. That bucket bounds ONE source,
@@ -61,31 +57,33 @@ export class DbRequestAudit implements RequestAudit {
     // Checked here, after the url has been accepted and before the insert:
     // a rejected url still gets its own specific message rather than a
     // generic "try again later", and a refusal strands no row.
-    if (await this.queueIsSaturated()) return { outcome: 'unavailable' }
+    if (await this.queueIsSaturated()) {
+      return {outcome: 'unavailable'};
+    }
 
     // Insert BEFORE enqueue. Reversed, the worker can dequeue an id whose row
     // does not exist yet.
     const audit = await this.addAuditRepository.add({
       url: parsed.url.toString(),
-      pageId: null
-    })
+      pageId: null,
+    });
 
     // `unknown` counts as queued: failing to confirm an enqueue is not the
     // same as it not happening - Redis may have committed the job and lost
     // the reply - and deleting the row then would leave a job pointing at an
     // audit that no longer exists.
-    const enqueued = await enqueueAudit(this.auditQueue, audit.id)
+    const enqueued = await enqueueAudit(this.auditQueue, audit.id);
 
     if (enqueued === 'failed') {
       // Genuinely not queued. The row was acknowledged to nobody, so removing
       // it strands nothing and the client retries for a fresh id. If the
       // delete fails too this degrades to a queued row nothing runs, which is
       // the only residual.
-      await this.deleteQueuedAuditRepository.deleteIfQueued(audit.id).catch(() => undefined)
-      return { outcome: 'unavailable' }
+      await this.deleteQueuedAuditRepository.deleteIfQueued(audit.id).catch(() => undefined);
+      return {outcome: 'unavailable'};
     }
 
-    return { outcome: 'queued', audit }
+    return {outcome: 'queued', audit};
   }
 
   /**
@@ -115,12 +113,12 @@ export class DbRequestAudit implements RequestAudit {
    * queue indistinguishable from a saturated one, and turn a Redis blip into
    * a blanket 503 on the endpoint that is the product's hook.
    */
-  private async queueIsSaturated (): Promise<boolean> {
+  private async queueIsSaturated(): Promise<boolean> {
     try {
-      const backlog = await withTimeout(this.auditQueue.backlogCount(), ENQUEUE_TIMEOUT_MS)
-      return backlog >= this.maxQueueDepth
+      const backlog = await withTimeout(this.auditQueue.backlogCount(), ENQUEUE_TIMEOUT_MS);
+      return backlog >= this.maxQueueDepth;
     } catch {
-      return false
+      return false;
     }
   }
 }

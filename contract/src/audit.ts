@@ -15,15 +15,15 @@
  * `CountsByImpact` is written in. Nothing depends on it; consistency just saves
  * the reader a check.
  */
-export type Impact = 'minor' | 'moderate' | 'serious' | 'critical'
+export type Impact = 'minor' | 'moderate' | 'serious' | 'critical';
 
-export type CountsByImpact = Record<Impact, number>
+export type CountsByImpact = Record<Impact, number>;
 
-export type AuditStatus = 'queued' | 'running' | 'done' | 'failed'
+export type AuditStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export type ViolationNode = {
   /** The axe selector chain that locates the element. */
-  target: string[]
+  target: string[];
   /**
    * A markup snippet captured from an arbitrary third-party page.
    *
@@ -31,8 +31,8 @@ export type ViolationNode = {
    * that `dangerouslySetInnerHTML` never touches this field. The same exposure
    * is why the session is an httpOnly cookie rather than a JS-readable token.
    */
-  html: string
-}
+  html: string;
+};
 
 /**
  * Named rather than inlined into the response: three surfaces consume it -
@@ -40,16 +40,16 @@ export type ViolationNode = {
  * types a component against a single violation.
  */
 export type Violation = {
-  ruleId: string
+  ruleId: string;
   /**
    * Null when axe reports no severity. Load-bearing: those are real findings,
    * and reading the null as "no problem" hides them.
    */
-  impact: Impact | null
-  description: string
-  helpUrl: string
-  nodes: ViolationNode[]
-}
+  impact: Impact | null;
+  description: string;
+  helpUrl: string;
+  nodes: ViolationNode[];
+};
 
 /**
  * One shape for all four states, so a client narrows on `status` rather than
@@ -57,30 +57,30 @@ export type Violation = {
  */
 export type AuditResultResponse = {
   /** The public uuid. The server's internal id is never on the wire. */
-  auditId: string
-  url: string
-  status: AuditStatus
-  createdAt: string
-  completedAt: string | null
-  score: number | null
-  countsByImpact: CountsByImpact
-  axeVersion: string | null
+  auditId: string;
+  url: string;
+  status: AuditStatus;
+  createdAt: string;
+  completedAt: string | null;
+  score: number | null;
+  countsByImpact: CountsByImpact;
+  axeVersion: string | null;
   /**
    * False means the page never finished loading, so a clean score here is
    * provisional rather than a fact. Surfaced, not swallowed.
    */
-  settled: boolean
-  error: string | null
-  violations: Violation[]
-}
+  settled: boolean;
+  error: string | null;
+  violations: Violation[];
+};
 
 /** `POST /api/audits`, 202. */
 export type RequestAuditResponse = {
-  auditId: string
-  status: AuditStatus
+  auditId: string;
+  status: AuditStatus;
   /**
    * How long to wait before polling. From the server so the interval can be
    * widened without a frontend deploy.
    */
-  pollAfterMs: number
-}
+  pollAfterMs: number;
+};

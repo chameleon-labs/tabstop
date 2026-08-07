@@ -1,3 +1,3 @@
 export interface UptimeProvider {
-  getUptimeInSeconds: () => number
+  getUptimeInSeconds: () => number;
 }

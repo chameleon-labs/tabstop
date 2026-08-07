@@ -1,4 +1,4 @@
-import { SvgIcon, type IconProps } from '../SvgIcon'
+import {SvgIcon, type IconProps} from '../SvgIcon';
 
 export const AlertTriangle = (props: IconProps): React.JSX.Element => (
   <SvgIcon {...props}>
@@ -6,4 +6,4 @@ export const AlertTriangle = (props: IconProps): React.JSX.Element => (
     <path d="M12 9v4" />
     <path d="M12 17h.01" />
   </SvgIcon>
-)
+);

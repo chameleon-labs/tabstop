@@ -5,8 +5,8 @@
  * why the queue's type never has to reach the usecase.
  */
 export class PermanentAuditError extends Error {
-  constructor (message: string) {
-    super(message)
-    this.name = 'PermanentAuditError'
+  constructor(message: string) {
+    super(message);
+    this.name = 'PermanentAuditError';
   }
 }

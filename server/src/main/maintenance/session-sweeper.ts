@@ -1,6 +1,4 @@
-import type {
-  DeleteExpiredSessionsRepository
-} from '../../data/protocols/db/session/delete-expired-sessions-repository.js'
+import type {DeleteExpiredSessionsRepository} from '../../data/protocols/db/session/delete-expired-sessions-repository.js';
 
 /**
  * Hourly. Sessions live for 30 days by default, so nothing here is urgent -
@@ -8,9 +6,9 @@ import type {
  * disappears the instant it expires. A long interval also keeps the sweep off
  * the critical path of anything a user is waiting for.
  */
-export const SWEEP_INTERVAL_MS = 3_600_000
+export const SWEEP_INTERVAL_MS = 3_600_000;
 
-export type Sweeper = { stop: () => void }
+export type Sweeper = {stop: () => void};
 
 /**
  * Runs in the WORKER, not the API.
@@ -27,23 +25,23 @@ export type Sweeper = { stop: () => void }
  */
 export const startSessionSweeper = (
   sessions: DeleteExpiredSessionsRepository,
-  intervalMs: number = SWEEP_INTERVAL_MS
+  intervalMs: number = SWEEP_INTERVAL_MS,
 ): Sweeper => {
   const sweep = async (): Promise<void> => {
     try {
-      const removed = await sessions.deleteExpired()
+      const removed = await sessions.deleteExpired();
       // Logged even at zero. A maintenance task that only speaks up when it
       // finds something is one nobody notices has stopped running.
-      console.log(`Session sweep removed ${removed} expired session(s)`)
+      console.log(`Session sweep removed ${removed} expired session(s)`);
     } catch (error) {
       // Never fatal. Failing to tidy up is not a reason to take the worker
       // down, and the next pass will find the same rows still waiting.
-      console.error('Session sweep failed:', error)
+      console.error('Session sweep failed:', error);
     }
-  }
+  };
 
-  let timer: NodeJS.Timeout | null = null
-  let stopped = false
+  let timer: NodeJS.Timeout | null = null;
+  let stopped = false;
 
   // setTimeout re-armed after the sweep SETTLES, not setInterval.
   //
@@ -57,29 +55,35 @@ export const startSessionSweeper = (
   // becomes "an hour after the last one finished" rather than "on the hour" -
   // which for a cleanup task is the more useful of the two.
   const schedule = (): void => {
-    if (stopped) return
-    timer = setTimeout(() => { void run() }, intervalMs)
+    if (stopped) {
+      return;
+    }
+    timer = setTimeout(() => {
+      void run();
+    }, intervalMs);
     // So a pending sweep can never hold the process open during shutdown.
-    timer.unref()
-  }
+    timer.unref();
+  };
 
   const run = async (): Promise<void> => {
     try {
-      await sweep()
+      await sweep();
     } finally {
-      schedule()
+      schedule();
     }
-  }
+  };
 
   // Not on boot: a worker restarting in a crash loop would otherwise issue a
   // table-wide delete on every start, which is exactly when the database is
   // least likely to want one.
-  schedule()
+  schedule();
 
   return {
     stop: () => {
-      stopped = true
-      if (timer !== null) clearTimeout(timer)
-    }
-  }
-}
+      stopped = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+    },
+  };
+};

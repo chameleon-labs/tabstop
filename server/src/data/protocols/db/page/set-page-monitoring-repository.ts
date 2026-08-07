@@ -1,4 +1,4 @@
-import type { PageModel } from '../../../../domain/models/page.js'
+import type {PageModel} from '../../../../domain/models/page.js';
 
 export interface SetPageMonitoringRepository {
   /**
@@ -8,7 +8,5 @@ export interface SetPageMonitoringRepository {
    *
    * Null when this account has no such page, including a malformed id.
    */
-  setMonitoringForUser: (
-    pageId: string, userId: string, monitoringEnabled: boolean
-  ) => Promise<PageModel | null>
+  setMonitoringForUser: (pageId: string, userId: string, monitoringEnabled: boolean) => Promise<PageModel | null>;
 }

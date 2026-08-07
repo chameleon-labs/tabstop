@@ -1,10 +1,10 @@
-import type { AuditResultResponse, RequestAuditResponse } from '@tabstop/contract'
-import { useMutation, useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query'
-import { post, request } from '@/api/client'
+import type {AuditResultResponse, RequestAuditResponse} from '@tabstop/contract';
+import {useMutation, useQuery, type UseMutationResult, type UseQueryResult} from '@tanstack/react-query';
+import {post, request} from '@/api/client';
 
 export const auditKeys = {
-  detail: (auditId: string) => ['audits', auditId] as const
-}
+  detail: (auditId: string) => ['audits', auditId] as const,
+};
 
 /**
  * Used only when nothing better is known - a share link opened cold never saw
@@ -12,17 +12,16 @@ export const auditKeys = {
  * precisely so the interval can be widened without a frontend deploy, so
  * anywhere the response is available, pass it.
  */
-export const FALLBACK_POLL_AFTER_MS = 2000
+export const FALLBACK_POLL_AFTER_MS = 2000;
 
-const isSettled = (status: AuditResultResponse['status']): boolean =>
-  status === 'done' || status === 'failed'
+const isSettled = (status: AuditResultResponse['status']): boolean => status === 'done' || status === 'failed';
 
 export type UseAuditOptions = {
   /** From `POST /api/audits`. Falls back to `FALLBACK_POLL_AFTER_MS`. */
-  pollAfterMs?: number
+  pollAfterMs?: number;
   /** Skip the query entirely, e.g. before an audit has been requested. */
-  enabled?: boolean
-}
+  enabled?: boolean;
+};
 
 /**
  * One audit, polled until it reaches a terminal state and then left alone.
@@ -34,9 +33,10 @@ export type UseAuditOptions = {
  * whole stop condition.
  */
 export const useAudit = (
-  auditId: string | undefined, options: UseAuditOptions = {}
+  auditId: string | undefined,
+  options: UseAuditOptions = {},
 ): UseQueryResult<AuditResultResponse, Error> => {
-  const pollAfterMs = options.pollAfterMs ?? FALLBACK_POLL_AFTER_MS
+  const pollAfterMs = options.pollAfterMs ?? FALLBACK_POLL_AFTER_MS;
 
   return useQuery({
     queryKey: auditKeys.detail(auditId ?? ''),
@@ -52,14 +52,18 @@ export const useAudit = (
       // audit" and offered a Try again button while silently retrying behind
       // it, several times a second, for as long as the tab stayed open. A
       // button that claims to be the way to retry must be the way to retry.
-      if (query.state.status === 'error') return false
+      if (query.state.status === 'error') {
+        return false;
+      }
 
-      const status = query.state.data?.status
-      if (status === undefined) return false
-      return isSettled(status) ? false : pollAfterMs
-    }
-  })
-}
+      const status = query.state.data?.status;
+      if (status === undefined) {
+        return false;
+      }
+      return isSettled(status) ? false : pollAfterMs;
+    },
+  });
+};
 
 /**
  * Anonymous by design - a one-off audit with no signup is the product's hook -
@@ -69,6 +73,5 @@ export const useAudit = (
  */
 export const useRequestAudit = (): UseMutationResult<RequestAuditResponse, Error, string> =>
   useMutation({
-    mutationFn: async (url: string) =>
-      await post<RequestAuditResponse>('/api/audits', { url })
-  })
+    mutationFn: async (url: string) => await post<RequestAuditResponse>('/api/audits', {url}),
+  });

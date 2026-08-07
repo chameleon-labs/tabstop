@@ -1,15 +1,15 @@
-import type { AuditModel } from '../models/audit.js'
-import type { PageModel } from '../models/page.js'
+import type {AuditModel} from '../models/audit.js';
+import type {PageModel} from '../models/page.js';
 
 export type LoadPageHistoryParams = {
-  pageId: string
-  userId: string
+  pageId: string;
+  userId: string;
   /** Already defaulted and clamped by the time it reaches here. */
-  days: number
-}
+  days: number;
+};
 
 export type PageHistory = {
-  page: PageModel
+  page: PageModel;
   /**
    * Every audit in the window, oldest first, whatever became of each.
    *
@@ -18,10 +18,10 @@ export type PageHistory = {
    * regression - a gap is the honest rendering, and "your site was unreachable
    * for three days" is exactly what a monitoring tool should be able to say.
    */
-  audits: AuditModel[]
-}
+  audits: AuditModel[];
+};
 
 export interface LoadPageHistory {
   /** Null when this account has no such page, including when somebody else does. */
-  load: (params: LoadPageHistoryParams) => Promise<PageHistory | null>
+  load: (params: LoadPageHistoryParams) => Promise<PageHistory | null>;
 }

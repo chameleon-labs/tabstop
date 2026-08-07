@@ -7,5 +7,5 @@ export interface DeleteQueuedAuditRepository {
    * strands nothing. Anything further along is somebody's real audit, and the
    * status predicate is what makes it untouchable through this path.
    */
-  deleteIfQueued: (auditId: string) => Promise<void>
+  deleteIfQueued: (auditId: string) => Promise<void>;
 }

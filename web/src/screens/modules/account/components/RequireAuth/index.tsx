@@ -1,17 +1,17 @@
-import { Navigate, useLocation } from 'react-router'
-import { useSession } from '../../session'
+import {Navigate, useLocation} from 'react-router';
+import {useSession} from '../../session';
 
 export type RequireAuthProps = {
-  children: React.ReactNode
-}
+  children: React.ReactNode;
+};
 
 /**
  * Where a signed-out visitor is sent, and the key their intended destination is
  * carried under. Exported so a login screen (#24) reads the same names this
  * writes, rather than a pair of string literals that have to match by luck.
  */
-export const SIGNED_OUT_REDIRECT = '/'
-export const RETURN_TO_KEY = 'from'
+export const SIGNED_OUT_REDIRECT = '/';
+export const RETURN_TO_KEY = 'from';
 
 /**
  * Gates a route on there being a session.
@@ -30,24 +30,22 @@ export const RETURN_TO_KEY = 'from'
  * broken backend must not look like being logged out; that would bounce every
  * signed-in user to a login page that cannot work either.
  */
-export const RequireAuth = ({ children }: RequireAuthProps): React.JSX.Element => {
-  const { data: account, isPending, error } = useSession()
-  const location = useLocation()
+export const RequireAuth = ({children}: RequireAuthProps): React.JSX.Element => {
+  const {data: account, isPending, error} = useSession();
+  const location = useLocation();
 
-  if (error !== null) throw error
-  if (isPending) return <></>
+  if (error !== null) {
+    throw error;
+  }
+  if (isPending) {
+    return <></>;
+  }
 
   if (account === null) {
     // `replace`, so Back does not land on the gate again and bounce; `state`
     // so a login screen can return the visitor where they were going.
-    return (
-      <Navigate
-        to={SIGNED_OUT_REDIRECT}
-        replace
-        state={{ [RETURN_TO_KEY]: location.pathname }}
-      />
-    )
+    return <Navigate to={SIGNED_OUT_REDIRECT} replace state={{[RETURN_TO_KEY]: location.pathname}} />;
   }
 
-  return <>{children}</>
-}
+  return <>{children}</>;
+};

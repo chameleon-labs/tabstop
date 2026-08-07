@@ -1,8 +1,8 @@
 export type AlertEmailDispatchSummary = {
   /** Candidates whose idempotent queue inspection completed successfully. */
-  processed: number
-}
+  processed: number;
+};
 
 export interface DispatchPendingAlertEmails {
-  dispatch: () => Promise<AlertEmailDispatchSummary>
+  dispatch: () => Promise<AlertEmailDispatchSummary>;
 }

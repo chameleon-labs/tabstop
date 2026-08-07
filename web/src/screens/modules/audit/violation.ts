@@ -6,13 +6,12 @@
  * descendant selector for a different element that does not exist. Shadow DOM
  * never reaches here - the server flattens it with axe's ` >>> ` notation.
  */
-export const FRAME_SEPARATOR = ' » '
+export const FRAME_SEPARATOR = ' » ';
 
-export const describeTarget = (target: readonly string[]): string =>
-  target.join(FRAME_SEPARATOR)
+export const describeTarget = (target: readonly string[]): string => target.join(FRAME_SEPARATOR);
 
 /** True when the element is inside at least one frame, so the path can say so. */
-export const crossesFrames = (target: readonly string[]): boolean => target.length > 1
+export const crossesFrames = (target: readonly string[]): boolean => target.length > 1;
 
 /**
  * The one host axe builds rule documentation links on.
@@ -20,7 +19,7 @@ export const crossesFrames = (target: readonly string[]): boolean => target.leng
  * Compared as an ORIGIN rather than a hostname: `https://dequeuniversity.com:8443`
  * shares the host and is a different origin.
  */
-export const HELP_ORIGIN = 'https://dequeuniversity.com'
+export const HELP_ORIGIN = 'https://dequeuniversity.com';
 
 /**
  * The help link, if its origin can be trusted.
@@ -35,12 +34,12 @@ export const HELP_ORIGIN = 'https://dequeuniversity.com'
  * as no link, with the rule id still shown.
  */
 export const safeHelpUrl = (helpUrl: string): string | null => {
-  let parsed: URL
+  let parsed: URL;
   try {
-    parsed = new URL(helpUrl)
+    parsed = new URL(helpUrl);
   } catch {
-    return null
+    return null;
   }
 
-  return parsed.origin === HELP_ORIGIN ? parsed.href : null
-}
+  return parsed.origin === HELP_ORIGIN ? parsed.href : null;
+};

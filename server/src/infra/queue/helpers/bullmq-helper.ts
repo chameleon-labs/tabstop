@@ -1,7 +1,4 @@
-import {
-  Queue, Worker,
-  type Job, type JobSchedulerTemplateOptions, type Processor, type WorkerOptions
-} from 'bullmq'
+import {Queue, Worker, type Job, type JobSchedulerTemplateOptions, type Processor, type WorkerOptions} from 'bullmq';
 
 /**
  * BullMQ's Queue and Worker generics are asymmetric.
@@ -11,25 +8,25 @@ import {
  * reject a plain string name. Passing Job<...> makes the conditional take its
  * true branch. Worker has plain generics and needs the opposite form.
  */
-export type PayloadQueue<TPayload> = Queue<Job<TPayload, void, string>>
-export type PayloadWorker<TPayload> = Worker<TPayload, void, string>
+export type PayloadQueue<TPayload> = Queue<Job<TPayload, void, string>>;
+export type PayloadWorker<TPayload> = Worker<TPayload, void, string>;
 
 const DEFAULT_JOB_OPTIONS = {
   attempts: 3,
-  backoff: { type: 'exponential', delay: 1000 },
-  removeOnComplete: { age: 3600, count: 100 },
-  removeOnFail: { age: 86_400 }
-}
+  backoff: {type: 'exponential', delay: 1000},
+  removeOnComplete: {age: 3600, count: 100},
+  removeOnFail: {age: 86_400},
+};
 
 export const makeQueue = <TPayload>(name: string, connectionUrl: string): PayloadQueue<TPayload> =>
   new Queue<Job<TPayload, void, string>>(name, {
-    connection: { url: connectionUrl },
-    defaultJobOptions: DEFAULT_JOB_OPTIONS
-  })
+    connection: {url: connectionUrl},
+    defaultJobOptions: DEFAULT_JOB_OPTIONS,
+  });
 
-const MANUAL_RATE_LIMIT_VALUE = String(Number.MAX_SAFE_INTEGER)
-const RATE_LIMIT_FOR_AT_LEAST_COMMAND = 'tabstopRateLimitForAtLeast'
-const clientsWithRateLimitCommand = new WeakSet<object>()
+const MANUAL_RATE_LIMIT_VALUE = String(Number.MAX_SAFE_INTEGER);
+const RATE_LIMIT_FOR_AT_LEAST_COMMAND = 'tabstopRateLimitForAtLeast';
+const clientsWithRateLimitCommand = new WeakSet<object>();
 
 const RATE_LIMIT_FOR_AT_LEAST_SCRIPT = `
 local ttl = redis.call('PTTL', KEYS[1])
@@ -40,25 +37,26 @@ if ttl == -1 or ttl >= requested then
 else
   redis.call('SET', KEYS[1], ARGV[2], 'PX', requested)
 end
-`
+`;
 
 export const rateLimitForAtLeast = async <TPayload>(
-  queue: PayloadQueue<TPayload>, durationMs: number
+  queue: PayloadQueue<TPayload>,
+  durationMs: number,
 ): Promise<void> => {
-  const client = await queue.client
+  const client = await queue.client;
   if (!clientsWithRateLimitCommand.has(client)) {
     client.defineCommand(RATE_LIMIT_FOR_AT_LEAST_COMMAND, {
       numberOfKeys: 1,
-      lua: RATE_LIMIT_FOR_AT_LEAST_SCRIPT
-    })
-    clientsWithRateLimitCommand.add(client)
+      lua: RATE_LIMIT_FOR_AT_LEAST_SCRIPT,
+    });
+    clientsWithRateLimitCommand.add(client);
   }
   await client.runCommand(RATE_LIMIT_FOR_AT_LEAST_COMMAND, [
     queue.toKey('limiter'),
     durationMs,
-    MANUAL_RATE_LIMIT_VALUE
-  ])
-}
+    MANUAL_RATE_LIMIT_VALUE,
+  ]);
+};
 
 /**
  * Caps how many of this queue's jobs run at once across EVERY worker process.
@@ -76,16 +74,14 @@ export const rateLimitForAtLeast = async <TPayload>(
  * still passed as well: that one bounds a single process even if this call
  * never happened.
  */
-export const setGlobalConcurrency = async (
-  name: string, connectionUrl: string, concurrency: number
-): Promise<void> => {
-  const queue = makeQueue(name, connectionUrl)
+export const setGlobalConcurrency = async (name: string, connectionUrl: string, concurrency: number): Promise<void> => {
+  const queue = makeQueue(name, connectionUrl);
   try {
-    await queue.setGlobalConcurrency(concurrency)
+    await queue.setGlobalConcurrency(concurrency);
   } finally {
-    await queue.close()
+    await queue.close();
   }
-}
+};
 
 /**
  * Registers a recurring job, or updates the one already registered under this
@@ -108,20 +104,18 @@ export const upsertDailySchedule = async <TPayload>(
   schedulerId: string,
   pattern: string,
   timezone: string,
-  jobOptions: JobSchedulerTemplateOptions = {}
+  jobOptions: JobSchedulerTemplateOptions = {},
 ): Promise<void> => {
-  await queue.upsertJobScheduler(
-    schedulerId, { pattern, tz: timezone }, { name: queue.name, opts: jobOptions }
-  )
-}
+  await queue.upsertJobScheduler(schedulerId, {pattern, tz: timezone}, {name: queue.name, opts: jobOptions});
+};
 
 export const makeWorker = <TPayload>(
   name: string,
   connectionUrl: string,
   processor: Processor<TPayload, void, string>,
-  options: Omit<WorkerOptions, 'connection'> = {}
+  options: Omit<WorkerOptions, 'connection'> = {},
 ): PayloadWorker<TPayload> =>
   new Worker<TPayload, void, string>(name, processor, {
     ...options,
-    connection: { url: connectionUrl }
-  })
+    connection: {url: connectionUrl},
+  });

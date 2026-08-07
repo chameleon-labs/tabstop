@@ -17,7 +17,7 @@
  * Not tuning: short enough to be imperceptible, long enough to be a separate
  * task from the render that created the region.
  */
-export const ANNOUNCE_DELAY_MS = 100
+export const ANNOUNCE_DELAY_MS = 100;
 
 /**
  * Signals that a screen has named the document.
@@ -32,13 +32,19 @@ export const ANNOUNCE_DELAY_MS = 100
  *
  * So the screen says so instead of the announcer guessing.
  */
-const listeners = new Set<() => void>()
+const listeners = new Set<() => void>();
 
 export const documentTitleSet = (): void => {
-  for (const listener of [...listeners]) listener()
-}
+  // A snapshot, so a listener that unsubscribes - or subscribes another -
+  // during dispatch cannot change who this pass notifies.
+  for (const listener of Array.from(listeners)) {
+    listener();
+  }
+};
 
 export const onDocumentTitleSet = (listener: () => void): (() => void) => {
-  listeners.add(listener)
-  return () => { listeners.delete(listener) }
-}
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};

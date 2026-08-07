@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express'
+import type {NextFunction, Request, Response} from 'express';
 
 /**
  * Body-parser rejects a request before any route runs, so `adaptRoute`'s
@@ -15,21 +15,29 @@ const BODY_PARSER_MESSAGES: Readonly<Record<string, string>> = {
   'entity.too.large': 'That request body is too large',
   'encoding.unsupported': 'That content encoding is not supported',
   'request.aborted': 'The request was aborted before it finished',
-  'request.size.invalid': 'That request body did not match its content-length'
-}
+  'request.size.invalid': 'That request body did not match its content-length',
+};
+
+// 4xx only. A library reporting 500 is reporting something unexpected, and
+// that must fall through to the generic answer below rather than be trusted.
+const asClientError = (status: unknown): number | null =>
+  typeof status === 'number' && status >= 400 && status < 500 ? status : null;
 
 const statusOf = (error: unknown): number | null => {
-  if (typeof error !== 'object' || error === null) return null
-  const status = 'status' in error ? error.status : 'statusCode' in error ? error.statusCode : null
-  // 4xx only. A library reporting 500 is reporting something unexpected, and
-  // that must fall through to the generic answer below rather than be trusted.
-  return typeof status === 'number' && status >= 400 && status < 500 ? status : null
-}
+  if (typeof error !== 'object' || error === null) {
+    return null;
+  }
+  if ('status' in error) {
+    return asClientError(error.status);
+  }
+  if ('statusCode' in error) {
+    return asClientError(error.statusCode);
+  }
+  return null;
+};
 
 const typeOf = (error: unknown): string | null =>
-  typeof error === 'object' && error !== null && 'type' in error && typeof error.type === 'string'
-    ? error.type
-    : null
+  typeof error === 'object' && error !== null && 'type' in error && typeof error.type === 'string' ? error.type : null;
 
 /**
  * The last thing in the stack, and the only reason this API cannot answer with
@@ -46,28 +54,26 @@ const typeOf = (error: unknown): string | null =>
  * the wording. An unrecognised error is a 500 with no detail at all, and the
  * detail goes to the log instead, where it is useful and not public.
  */
-export const errorHandler = (
-  error: unknown, _req: Request, res: Response, next: NextFunction
-): void => {
+export const errorHandler = (error: unknown, _req: Request, res: Response, next: NextFunction): void => {
   // Express's own contract: once headers are out, the response belongs to
   // whoever started it and the only correct move is to destroy the socket.
   if (res.headersSent) {
-    next(error)
-    return
+    next(error);
+    return;
   }
 
-  const type = typeOf(error)
-  const status = statusOf(error)
-  const known = type !== null ? BODY_PARSER_MESSAGES[type] : undefined
+  const type = typeOf(error);
+  const status = statusOf(error);
+  const known = type !== null ? BODY_PARSER_MESSAGES[type] : undefined;
 
   if (known !== undefined && status !== null) {
-    res.status(status).json({ error: known })
-    return
+    res.status(status).json({error: known});
+    return;
   }
 
-  console.error('Unhandled error:', error)
-  res.status(500).json({ error: 'Internal server error' })
-}
+  console.error('Unhandled error:', error);
+  res.status(500).json({error: 'Internal server error'});
+};
 
 /**
  * Matches after every route, so it only ever runs for a path or method nothing
@@ -76,5 +82,5 @@ export const errorHandler = (
  * the response it was least likely to have tested.
  */
 export const notFoundHandler = (_req: Request, res: Response): void => {
-  res.status(404).json({ error: 'Not found' })
-}
+  res.status(404).json({error: 'Not found'});
+};

@@ -1,46 +1,48 @@
-import type { AddPage } from '../../../domain/usecases/add-page.js'
-import { PageAlreadyTrackedError } from '../../errors/page-already-tracked-error.js'
-import { PageLimitReachedError } from '../../errors/page-limit-reached-error.js'
-import { badRequest, codedConflict, created, serverError } from '../../helpers/http/http-helper.js'
-import { PAGE_CONFLICT, pageLimitDetails } from '../../helpers/page-conflict-view.js'
-import { toPageView } from '../../helpers/page-view.js'
-import { REJECTION_MESSAGES } from '../../helpers/url-rejection-message.js'
-import type { Controller } from '../../protocols/controller.js'
-import type { HttpResponse } from '../../protocols/http.js'
-import type { Validation } from '../../protocols/validation.js'
+import type {AddPage} from '../../../domain/usecases/add-page.js';
+import {PageAlreadyTrackedError} from '../../errors/page-already-tracked-error.js';
+import {PageLimitReachedError} from '../../errors/page-limit-reached-error.js';
+import {badRequest, codedConflict, created, serverError} from '../../helpers/http/http-helper.js';
+import {PAGE_CONFLICT, pageLimitDetails} from '../../helpers/page-conflict-view.js';
+import {toPageView} from '../../helpers/page-view.js';
+import {REJECTION_MESSAGES} from '../../helpers/url-rejection-message.js';
+import type {Controller} from '../../protocols/controller.js';
+import type {HttpResponse} from '../../protocols/http.js';
+import type {Validation} from '../../protocols/validation.js';
 
 export type AddPageRequest = {
   /** Supplied by the request body and narrowed by validation before use. */
-  url?: unknown
+  url?: unknown;
   /**
    * Written by the auth middleware into res.locals, which adaptRoute merges
    * LAST - after body, query and params - so a client cannot post its own.
    */
-  userId: string
-}
+  userId: string;
+};
 
 export type AddPageBody = {
-  url: string
-}
+  url: string;
+};
 
 export class AddPageController implements Controller<AddPageRequest> {
-  constructor (
+  constructor(
     private readonly validation: Validation<AddPageBody>,
-    private readonly addPage: AddPage
+    private readonly addPage: AddPage,
   ) {}
 
-  async handle (request: AddPageRequest): Promise<HttpResponse> {
+  async handle(request: AddPageRequest): Promise<HttpResponse> {
     try {
-      const validated = this.validation.validate(request)
-      if ('error' in validated) return badRequest(validated.error)
+      const validated = this.validation.validate(request);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
       const result = await this.addPage.add({
         userId: request.userId,
-        url: validated.data.url
-      })
+        url: validated.data.url,
+      });
 
       if (result.outcome === 'rejected') {
-        return badRequest(new Error(REJECTION_MESSAGES[result.reason]))
+        return badRequest(new Error(REJECTION_MESSAGES[result.reason]));
       }
 
       // Both are 409s a client has to tell apart to render the right thing, so
@@ -49,12 +51,12 @@ export class AddPageController implements Controller<AddPageRequest> {
         return codedConflict(
           PAGE_CONFLICT.limitReached,
           new PageLimitReachedError(result.limit),
-          pageLimitDetails(result.limit)
-        )
+          pageLimitDetails(result.limit),
+        );
       }
 
       if (result.outcome === 'duplicate') {
-        return codedConflict(PAGE_CONFLICT.alreadyTracked, new PageAlreadyTrackedError())
+        return codedConflict(PAGE_CONFLICT.alreadyTracked, new PageAlreadyTrackedError());
       }
 
       return created({
@@ -62,10 +64,10 @@ export class AddPageController implements Controller<AddPageRequest> {
         // Null when the queue would not take the job. The page is tracked
         // either way; this is what the client polls, so it must not name an
         // audit that will never run.
-        firstAuditId: result.firstAuditId
-      })
+        firstAuditId: result.firstAuditId,
+      });
     } catch (error) {
-      return serverError(error as Error)
+      return serverError(error as Error);
     }
   }
 }

@@ -1,12 +1,17 @@
-import type { ReactNode, SVGProps } from 'react'
+import type {ReactNode, SVGProps} from 'react';
 
-export type IconSize = 'sm' | 'md' | 'lg'
+export type IconSize = 'sm' | 'md' | 'lg';
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'viewBox' | 'fill' | 'stroke' | 'width' | 'height'> {
-  size?: IconSize
+  size?: IconSize;
 }
 
-export const SvgIcon = ({ size = 'md', className, children, ...props }: IconProps & { children: ReactNode }): React.JSX.Element => (
+export const SvgIcon = ({
+  size = 'md',
+  className,
+  children,
+  ...props
+}: IconProps & {children: ReactNode}): React.JSX.Element => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
@@ -20,4 +25,4 @@ export const SvgIcon = ({ size = 'md', className, children, ...props }: IconProp
   >
     {children}
   </svg>
-)
+);

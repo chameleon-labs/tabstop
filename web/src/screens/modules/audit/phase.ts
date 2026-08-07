@@ -1,4 +1,4 @@
-import type { AuditStatus } from '@tabstop/contract'
+import type {AuditStatus} from '@tabstop/contract';
 
 /**
  * What to say during the thirty seconds an audit takes.
@@ -14,9 +14,9 @@ import type { AuditStatus } from '@tabstop/contract'
  */
 export type Phase = {
   /** Elapsed milliseconds at which this phase starts. */
-  readonly fromMs: number
-  readonly label: string
-}
+  readonly fromMs: number;
+  readonly label: string;
+};
 
 /**
  * Boundaries taken from the worker's own budgets. The last phase is the longest
@@ -24,16 +24,16 @@ export type Phase = {
  * overrunning into "Fetching the page" looks like a stuck one.
  */
 export const PHASES: readonly Phase[] = [
-  { fromMs: 0, label: 'Fetching the page' },
-  { fromMs: 8_000, label: 'Running the accessibility engine' },
-  { fromMs: 20_000, label: 'Scoring' }
-]
+  {fromMs: 0, label: 'Fetching the page'},
+  {fromMs: 8_000, label: 'Running the accessibility engine'},
+  {fromMs: 20_000, label: 'Scoring'},
+];
 
 /** Said up front, so thirty seconds is an expectation rather than a surprise. */
-export const EXPECTED_DURATION = 'this usually takes about 30 seconds'
+export const EXPECTED_DURATION = 'this usually takes about 30 seconds';
 
-const QUEUED_LABEL = 'Waiting for a free worker'
-const SUBMITTING_LABEL = 'Requesting the audit'
+const QUEUED_LABEL = 'Waiting for a free worker';
+const SUBMITTING_LABEL = 'Requesting the audit';
 
 /**
  * The audit's status, plus the moment before it has one.
@@ -46,7 +46,7 @@ const SUBMITTING_LABEL = 'Requesting the audit'
  * element across the whole wait: swapping elements replaces the region, and a
  * region's first content is initial content, which is announced by nothing.
  */
-export type ProgressStatus = AuditStatus | 'submitting'
+export type ProgressStatus = AuditStatus | 'submitting';
 
 /**
  * The phase label for an audit, or null once there is nothing to announce.
@@ -56,17 +56,21 @@ export type ProgressStatus = AuditStatus | 'submitting'
  * progress indicator untrustworthy.
  */
 export const phaseFor = (status: ProgressStatus, elapsedMs: number): string | null => {
-  if (status === 'submitting') return SUBMITTING_LABEL
-  if (status === 'queued') return QUEUED_LABEL
-  if (status !== 'running') return null
-
-  // Last match wins, so the array reads in the order the phases happen.
-  let label = PHASES[0]?.label ?? null
-  for (const phase of PHASES) {
-    if (elapsedMs >= phase.fromMs) label = phase.label
+  if (status === 'submitting') {
+    return SUBMITTING_LABEL;
   }
-  return label
-}
+  if (status === 'queued') {
+    return QUEUED_LABEL;
+  }
+  if (status !== 'running') {
+    return null;
+  }
+
+  // Last match wins, so the array reads in the order the phases happen. The
+  // first phase doubles as the fallback before its own threshold.
+  const phase = PHASES.findLast((candidate) => elapsedMs >= candidate.fromMs) ?? PHASES[0];
+  return phase?.label ?? null;
+};
 
 /**
  * What a live region should be told, given what it was told last.
@@ -77,7 +81,7 @@ export const phaseFor = (status: ProgressStatus, elapsedMs: number): string | nu
  * Announcing only on CHANGE keeps it to three.
  */
 export const announcementFor = (phase: string | null, announced: string | null): string | null =>
-  phase === null || phase === announced ? null : `${phase}… ${EXPECTED_DURATION}`
+  phase === null || phase === announced ? null : `${phase}… ${EXPECTED_DURATION}`;
 
 /**
  * What to announce when the audit lands.
@@ -88,11 +92,7 @@ export const announcementFor = (phase: string | null, announced: string | null):
  * Short, and NOT a summary of the findings: the result is on screen to be read,
  * and reciting it would talk over someone already reading it.
  */
-export const completionAnnouncement = (
-  score: number | null, violationCount: number
-): string => {
-  const found = violationCount === 1 ? '1 issue found' : `${violationCount} issues found`
-  return score === null
-    ? `Audit complete. ${found}.`
-    : `Audit complete. Score ${score}. ${found}.`
-}
+export const completionAnnouncement = (score: number | null, violationCount: number): string => {
+  const found = violationCount === 1 ? '1 issue found' : `${violationCount} issues found`;
+  return score === null ? `Audit complete. ${found}.` : `Audit complete. Score ${score}. ${found}.`;
+};

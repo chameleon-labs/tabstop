@@ -6,5 +6,5 @@ export interface MarkFailedRepository {
    * attempt could resume after another worker had already completed the audit
    * and turn that successful row into a failure.
    */
-  markFailed: (auditId: string, claimedAt: Date, error: string) => Promise<void>
+  markFailed: (auditId: string, claimedAt: Date, error: string) => Promise<void>;
 }

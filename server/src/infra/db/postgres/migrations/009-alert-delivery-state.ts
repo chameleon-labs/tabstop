@@ -1,4 +1,4 @@
-import { sql, type Kysely } from 'kysely'
+import {sql, type Kysely} from 'kysely';
 
 export const up = async (db: Kysely<unknown>): Promise<void> => {
   await sql`
@@ -18,8 +18,8 @@ export const up = async (db: Kysely<unknown>): Promise<void> => {
     create index alert_events_unpreviewed_idx
       on alert_events (id)
       where emailed_at is null and failed_at is null and previewed_at is null;
-  `.execute(db)
-}
+  `.execute(db);
+};
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
   await sql`
@@ -36,7 +36,7 @@ export const down = async (db: Kysely<unknown>): Promise<void> => {
           'cannot downgrade 009-alert-delivery-state while delivery state data exists';
       end if;
     end $$;
-  `.execute(db)
+  `.execute(db);
 
   await sql`
     drop index alert_events_unpreviewed_idx;
@@ -50,5 +50,5 @@ export const down = async (db: Kysely<unknown>): Promise<void> => {
       drop column previewed_at,
       drop column failed_at,
       drop column failure_reason;
-  `.execute(db)
-}
+  `.execute(db);
+};

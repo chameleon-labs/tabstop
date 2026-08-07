@@ -7,11 +7,9 @@
  * server, which owns those rules and the sentences explaining them; a second
  * copy here would drift from the one table those answers must come from.
  */
-export type UrlProblem = 'empty' | 'unparseable'
+export type UrlProblem = 'empty' | 'unparseable';
 
-export type UrlInput =
-  | { ok: true, url: string }
-  | { ok: false, problem: UrlProblem }
+export type UrlInput = {ok: true; url: string} | {ok: false; problem: UrlProblem};
 
 /**
  * Messages for the two cases the server never sees, so they are ours to write.
@@ -19,8 +17,8 @@ export type UrlInput =
  */
 export const URL_PROBLEMS: Readonly<Record<UrlProblem, string>> = {
   empty: 'Enter a URL to audit',
-  unparseable: 'That does not look like a URL'
-}
+  unparseable: 'That does not look like a URL',
+};
 
 /**
  * `example.com:8080` and `mailto:someone@example.com` are THE SAME SYNTAX: a
@@ -37,15 +35,19 @@ export const URL_PROBLEMS: Readonly<Record<UrlProblem, string>> = {
  * does not look like a URL" beats auditing a different site than the one asked
  * for.
  */
-const HIERARCHICAL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
-const HOST_AND_PORT = /^(?:localhost|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+):\d/i
-const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:/i
+const HIERARCHICAL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+const HOST_AND_PORT = /^(?:localhost|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+):\d/i;
+const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 const hasScheme = (input: string): boolean => {
-  if (HIERARCHICAL_SCHEME.test(input)) return true
-  if (HOST_AND_PORT.test(input)) return false
-  return OPAQUE_SCHEME.test(input)
-}
+  if (HIERARCHICAL_SCHEME.test(input)) {
+    return true;
+  }
+  if (HOST_AND_PORT.test(input)) {
+    return false;
+  }
+  return OPAQUE_SCHEME.test(input);
+};
 
 /**
  * `example.com` becomes `https://example.com/`.
@@ -58,21 +60,25 @@ const hasScheme = (input: string): boolean => {
  * string and submitting another is its own class of confusion.
  */
 export const normaliseUrl = (raw: string): UrlInput => {
-  const trimmed = raw.trim()
-  if (trimmed === '') return { ok: false, problem: 'empty' }
+  const trimmed = raw.trim();
+  if (trimmed === '') {
+    return {ok: false, problem: 'empty'};
+  }
 
-  const candidate = hasScheme(trimmed) ? trimmed : `https://${trimmed}`
+  const candidate = hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
 
-  let parsed: URL
+  let parsed: URL;
   try {
-    parsed = new URL(candidate)
+    parsed = new URL(candidate);
   } catch {
-    return { ok: false, problem: 'unparseable' }
+    return {ok: false, problem: 'unparseable'};
   }
 
   // `javascript:alert(1)` and `mailto:a@b.com` parse fine and have no host.
   // Rejecting on the host keeps scheme policy in one place - the server's.
-  if (parsed.hostname === '') return { ok: false, problem: 'unparseable' }
+  if (parsed.hostname === '') {
+    return {ok: false, problem: 'unparseable'};
+  }
 
-  return { ok: true, url: parsed.href }
-}
+  return {ok: true, url: parsed.href};
+};

@@ -1,11 +1,11 @@
-import type { AccountModel } from './account.js'
+import type {AccountModel} from './account.js';
 
 export type SessionModel = {
-  id: string
-  userId: string
-  createdAt: Date
-  expiresAt: Date
-}
+  id: string;
+  userId: string;
+  createdAt: Date;
+  expiresAt: Date;
+};
 
 /**
  * What signup and login both produce. They differ in how they establish trust,
@@ -13,7 +13,7 @@ export type SessionModel = {
  * cookie's expiry comes from the session row rather than being recomputed.
  */
 export type AuthenticatedSession = {
-  account: AccountModel
-  sessionId: string
-  expiresAt: Date
-}
+  account: AccountModel;
+  sessionId: string;
+  expiresAt: Date;
+};

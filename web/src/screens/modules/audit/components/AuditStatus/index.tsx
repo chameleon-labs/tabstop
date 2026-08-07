@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
-import { ANNOUNCE_DELAY_MS } from '@/a11y/announce'
+import {useEffect, useState} from 'react';
+import {ANNOUNCE_DELAY_MS} from '@/a11y/announce';
 
 export type AuditStatusProps = {
   /** Null while there is nothing to say. */
-  message: string | null
-}
+  message: string | null;
+};
 
 /**
  * The single status line for an audit, from before it starts until after it
@@ -31,8 +31,8 @@ export type AuditStatusProps = {
  * `polite`, because none of this should interrupt. Only a failure is urgent,
  * and `AuditFailure` is a `role="alert"` of its own.
  */
-export const AuditStatus = ({ message }: AuditStatusProps): React.JSX.Element => {
-  const [shown, setShown] = useState('')
+export const AuditStatus = ({message}: AuditStatusProps): React.JSX.Element => {
+  const [shown, setShown] = useState('');
 
   useEffect(() => {
     /**
@@ -55,23 +55,31 @@ export const AuditStatus = ({ message }: AuditStatusProps): React.JSX.Element =>
      * initial content; emptying one announces nothing and needs no such care.
      */
     if (message === null) {
-      setShown('')
-      return
+      setShown('');
+      return;
     }
 
     // Only on change, so the region mutates once per thing worth saying rather
     // than once per render - the screen re-renders every second while an audit
     // runs, and thirty announcements for one audit is unusable.
-    if (message === shown) return
+    if (message === shown) {
+      return;
+    }
 
     // Deferred rather than written here. A passive effect can run before the
     // browser has painted or exposed the node, so an immediate write can still
     // arrive as initial content.
-    const timer = setTimeout(() => { setShown(message) }, ANNOUNCE_DELAY_MS)
-    return () => { clearTimeout(timer) }
-  }, [message, shown])
+    const timer = setTimeout(() => {
+      setShown(message);
+    }, ANNOUNCE_DELAY_MS);
+    return (): void => {
+      clearTimeout(timer);
+    };
+  }, [message, shown]);
 
   return (
-    <p role="status" aria-live="polite" aria-atomic="true">{shown}</p>
-  )
-}
+    <p role="status" aria-live="polite" aria-atomic="true">
+      {shown}
+    </p>
+  );
+};

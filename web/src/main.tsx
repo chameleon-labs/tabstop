@@ -1,18 +1,20 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { createBrowserRouter } from 'react-router'
-import { App } from './app'
-import { makeQueryClient } from './api/query-client'
-import { routes } from './routes'
+import {StrictMode} from 'react';
+import {createRoot} from 'react-dom/client';
+import {createBrowserRouter} from 'react-router';
+import {App} from './app';
+import {makeQueryClient} from './api/query-client';
+import {routes} from './routes';
 // Tokens before components, and both before the app's own sheet. `lattice.css`
 // declares the custom properties `styles.css` reads, so the reverse order
 // leaves every colour and spacing value resolving to nothing.
-import '@chameleon-labs/lattice-tokens/lattice.css'
-import '@chameleon-labs/lattice-react/styles.css'
-import './styles.css'
+import '@chameleon-labs/lattice-tokens/lattice.css';
+import '@chameleon-labs/lattice-react/styles.css';
+import './styles.css';
 
-const container = document.getElementById('root')
-if (container === null) throw new Error('#root is missing from index.html')
+const container = document.getElementById('root');
+if (container === null) {
+  throw new Error('#root is missing from index.html');
+}
 
 /**
  * Built OUT HERE, above the render, and that placement is load-bearing.
@@ -23,10 +25,10 @@ if (container === null) throw new Error('#root is missing from index.html')
  * listening and one abandoned. Constructed once at the entry point, there is
  * exactly one for the life of the page.
  */
-const router = createBrowserRouter(routes)
+const router = createBrowserRouter(routes);
 
 createRoot(container).render(
   <StrictMode>
     <App queryClient={makeQueryClient()} router={router} />
-  </StrictMode>
-)
+  </StrictMode>,
+);

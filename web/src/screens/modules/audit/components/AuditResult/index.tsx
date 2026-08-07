@@ -1,13 +1,13 @@
-import type { AuditResultResponse, Impact } from '@tabstop/contract'
-import { IMPACT_LABELS } from '../../grouping'
-import { ViolationList } from '../ViolationList'
+import type {AuditResultResponse, Impact} from '@tabstop/contract';
+import {IMPACT_LABELS} from '../../grouping';
+import {ViolationList} from '../ViolationList';
 
 export type AuditResultProps = {
-  audit: AuditResultResponse
-}
+  audit: AuditResultResponse;
+};
 
 /** Most severe first, matching the violation list below it. */
-const COUNT_ORDER: readonly Impact[] = ['critical', 'serious', 'moderate', 'minor']
+const COUNT_ORDER: readonly Impact[] = ['critical', 'serious', 'moderate', 'minor'];
 
 /**
  * A finished audit. Standalone on purpose - the home screen (#19), the share
@@ -22,7 +22,7 @@ const COUNT_ORDER: readonly Impact[] = ['critical', 'serious', 'moderate', 'mino
  * what makes that visible. They are rendered together, in one element, so
  * there is no layout in which one survives without the other.
  */
-export const AuditResult = ({ audit }: AuditResultProps): React.JSX.Element => (
+export const AuditResult = ({audit}: AuditResultProps): React.JSX.Element => (
   <section aria-labelledby="audit-result-heading">
     <h2 id="audit-result-heading">Result for {audit.url}</h2>
 
@@ -42,7 +42,7 @@ export const AuditResult = ({ audit }: AuditResultProps): React.JSX.Element => (
 
     <ViolationList violations={audit.violations} />
   </section>
-)
+);
 
 /**
  * `settled: false` means the page never finished loading, so everything above
@@ -55,7 +55,7 @@ export const AuditResult = ({ audit }: AuditResultProps): React.JSX.Element => (
  */
 const ProvisionalNotice = (): React.JSX.Element => (
   <p role="note">
-    This page had not finished loading when it was audited, so these results are
-    provisional — some content may not have been checked.
+    This page had not finished loading when it was audited, so these results are provisional — some content may not have
+    been checked.
   </p>
-)
+);

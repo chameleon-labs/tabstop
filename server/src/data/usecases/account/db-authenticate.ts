@@ -1,22 +1,20 @@
-import type { AuthenticatedSession } from '../../../domain/models/session.js'
-import type { Authenticate, AuthenticateParams } from '../../../domain/usecases/authenticate.js'
-import type { StartSession } from '../../../domain/usecases/start-session.js'
-import type { Hasher } from '../../protocols/cryptography/hasher.js'
-import type { HashComparer } from '../../protocols/cryptography/hash-comparer.js'
-import type {
-  LoadAccountByEmailRepository
-} from '../../protocols/db/account/load-account-by-email-repository.js'
+import type {AuthenticatedSession} from '../../../domain/models/session.js';
+import type {Authenticate, AuthenticateParams} from '../../../domain/usecases/authenticate.js';
+import type {StartSession} from '../../../domain/usecases/start-session.js';
+import type {Hasher} from '../../protocols/cryptography/hasher.js';
+import type {HashComparer} from '../../protocols/cryptography/hash-comparer.js';
+import type {LoadAccountByEmailRepository} from '../../protocols/db/account/load-account-by-email-repository.js';
 
-const DUMMY_PASSWORD = 'a password that is never anyone\'s'
+const DUMMY_PASSWORD = "a password that is never anyone's";
 
 export class DbAuthenticate implements Authenticate {
-  private dummyDigest: Promise<string> | null = null
+  private dummyDigest: Promise<string> | null = null;
 
-  constructor (
+  constructor(
     private readonly loadAccountByEmailRepository: LoadAccountByEmailRepository,
     private readonly hasher: Hasher,
     private readonly hashComparer: HashComparer,
-    private readonly startSession: StartSession
+    private readonly startSession: StartSession,
   ) {}
 
   /**
@@ -34,12 +32,12 @@ export class DbAuthenticate implements Authenticate {
    * exists to close. Verified: with `??=` alone, three attempts all reject
    * while the hasher is invoked once.
    */
-  private getDummyDigest (): Promise<string> {
+  private getDummyDigest(): Promise<string> {
     this.dummyDigest ??= this.hasher.hash(DUMMY_PASSWORD).catch((error: unknown) => {
-      this.dummyDigest = null
-      throw error
-    })
-    return this.dummyDigest
+      this.dummyDigest = null;
+      throw error;
+    });
+    return this.dummyDigest;
   }
 
   /**
@@ -47,25 +45,27 @@ export class DbAuthenticate implements Authenticate {
    * swallowed on purpose: being unable to waste time is not a reason to answer
    * 500 where a real account would have received 401.
    */
-  private async burnComparableWork (password: string): Promise<void> {
+  private async burnComparableWork(password: string): Promise<void> {
     try {
-      await this.hashComparer.compare(password, await this.getDummyDigest())
+      await this.hashComparer.compare(password, await this.getDummyDigest());
     } catch {
       // Deliberately ignored - see above.
     }
   }
 
-  async auth (params: AuthenticateParams): Promise<AuthenticatedSession | null> {
-    const found = await this.loadAccountByEmailRepository.loadByEmail(params.email)
+  async auth(params: AuthenticateParams): Promise<AuthenticatedSession | null> {
+    const found = await this.loadAccountByEmailRepository.loadByEmail(params.email);
 
     if (found === null) {
-      await this.burnComparableWork(params.password)
-      return null
+      await this.burnComparableWork(params.password);
+      return null;
     }
 
-    const matches = await this.hashComparer.compare(params.password, found.passwordDigest)
-    if (!matches) return null
+    const matches = await this.hashComparer.compare(params.password, found.passwordDigest);
+    if (!matches) {
+      return null;
+    }
 
-    return await this.startSession.start(found.account)
+    return await this.startSession.start(found.account);
   }
 }

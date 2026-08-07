@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { phaseFor, type ProgressStatus } from '../phase'
+import {useEffect, useState} from 'react';
+import {phaseFor, type ProgressStatus} from '../phase';
 
 /** How often the phase is recomputed. Cheap, and unrelated to the poll interval. */
-export const TICK_MS = 1_000
+export const TICK_MS = 1_000;
 
 /**
  * The phase label for an audit in flight, ticking as time passes.
@@ -25,27 +25,27 @@ export const TICK_MS = 1_000
  * adjust-state-during-render pattern re-renders before anything is committed,
  * so the intermediate value never reaches the DOM at all.
  */
-export const useAuditPhase = (
-  status: ProgressStatus, startedAt: number | null, active: boolean
-): string | null => {
-  const [now, setNow] = useState(() => Date.now())
-  const [runningSince, setRunningSince] = useState<number | null>(null)
-  const [seenStatus, setSeenStatus] = useState(status)
+export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, active: boolean): string | null => {
+  const [now, setNow] = useState(() => Date.now());
+  const [runningSince, setRunningSince] = useState<number | null>(null);
+  const [seenStatus, setSeenStatus] = useState(status);
 
   if (status !== seenStatus) {
-    setSeenStatus(status)
+    setSeenStatus(status);
     // EVERY transition into `running`, not only the first. This hook lives on
     // the home screen, which outlives any one audit: guarded on
     // `runningSince === null`, a second audit inherited the first one's epoch
     // and opened on "Scoring" - phases counted from a job that had already
     // finished, possibly minutes earlier.
-    if (status === 'running') setRunningSince(Date.now())
+    if (status === 'running') {
+      setRunningSince(Date.now());
+    }
   }
 
   // Falls back to `startedAt` when the transition was never observed - a reload
   // mid-audit, say. The same approximation as before, and the best available:
   // the response carries no worker-start timestamp.
-  const since = runningSince ?? startedAt
+  const since = runningSince ?? startedAt;
 
   /**
    * The clock runs only while the screen is actually waiting.
@@ -59,15 +59,23 @@ export const useAuditPhase = (
    * while the retained status still says `running`.
    */
   useEffect(() => {
-    if (!active || since === null) return
-    const timer = setInterval(() => { setNow(Date.now()) }, TICK_MS)
-    return () => { clearInterval(timer) }
-  }, [active, since])
+    if (!active || since === null) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, TICK_MS);
+    return (): void => {
+      clearInterval(timer);
+    };
+  }, [active, since]);
 
-  if (!active || since === null) return null
+  if (!active || since === null) {
+    return null;
+  }
 
   // Computed during render, so it can never be a tick behind the epoch. A
   // freshly moved epoch with a stale `now` reads as slightly negative, which
   // `phaseFor` treats as the first phase - correct, and the only sane answer.
-  return phaseFor(status, now - since)
-}
+  return phaseFor(status, now - since);
+};

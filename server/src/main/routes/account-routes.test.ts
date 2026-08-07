@@ -1,125 +1,131 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import request from 'supertest'
-import { randomUUID } from 'node:crypto'
-import type { Express } from 'express'
-import { setupApp } from '../config/app.js'
-import { connectDatabase, disconnectDatabase } from '../config/database.js'
-import { RATE_LIMITS } from '../config/rate-limits.js'
-import { makeTestAppDependencies } from '../test/test-app-dependencies.js'
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
+import request from 'supertest';
+import {randomUUID} from 'node:crypto';
+import type {Express} from 'express';
+import {setupApp} from '../config/app.js';
+import {connectDatabase, disconnectDatabase} from '../config/database.js';
+import {RATE_LIMITS} from '../config/rate-limits.js';
+import {makeTestAppDependencies} from '../test/test-app-dependencies.js';
 
-const password = 'correct horse battery staple'
-const newEmail = (): string => `${randomUUID()}@routes.test`
+const password = 'correct horse battery staple';
+const newEmail = (): string => `${randomUUID()}@routes.test`;
 
 // signup, login and me are all per-IP rate limited, and the buckets live for
 // the whole process. Without a distinct address per test, every plain
 // request in this file would share supertest's own loopback address and the
 // unrelated tests below would rate-limit each other - signup's capacity of 3
 // is exhausted by the third unrelated test that forgets this.
-let ipSeq = 0
+let ipSeq = 0;
 const uniqueIp = (): string => {
-  ipSeq += 1
-  return `10.${(ipSeq >> 16) & 255}.${(ipSeq >> 8) & 255}.${ipSeq & 255}`
-}
+  ipSeq += 1;
+  return `10.${(ipSeq >> 16) & 255}.${(ipSeq >> 8) & 255}.${ipSeq & 255}`;
+};
 
 const firstSetCookie = (response: request.Response): string => {
-  const header: unknown = response.headers['set-cookie']
+  const header: unknown = response.headers['set-cookie'];
   if (!Array.isArray(header) || typeof header[0] !== 'string') {
-    throw new Error('expected a set-cookie header')
+    throw new Error('expected a set-cookie header');
   }
-  return header[0]
-}
+  return header[0];
+};
 
 describe('account routes', () => {
-  let app: Express
-  let existingAccountEmail: string
+  let app: Express;
+  let existingAccountEmail: string;
 
   beforeAll(async () => {
-    const url = process.env.DATABASE_URL
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup')
-    connectDatabase(url)
-    const dependencies = makeTestAppDependencies()
-    app = setupApp(dependencies)
+    const url = process.env.DATABASE_URL;
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
+    connectDatabase(url);
+    const dependencies = makeTestAppDependencies();
+    app = setupApp(dependencies);
 
     // Shared by the login rate-limit specs below, which need an account that
     // is known to exist without spending their own signup bucket allowance.
-    existingAccountEmail = newEmail()
-    await request(app).post('/api/signup').set('x-forwarded-for', uniqueIp())
-      .send({ email: existingAccountEmail, password }).expect(201)
-  })
+    existingAccountEmail = newEmail();
+    await request(app)
+      .post('/api/signup')
+      .set('x-forwarded-for', uniqueIp())
+      .send({email: existingAccountEmail, password})
+      .expect(201);
+  });
 
   afterAll(async () => {
-    await disconnectDatabase()
-  })
+    await disconnectDatabase();
+  });
 
   it('does not share the me quota between independently constructed apps', async () => {
     // The real in-memory limiter refills from Date.now(). Freeze only that
     // clock so this isolation check cannot cross me's six-second refill
     // boundary while issuing its 60 HTTP requests under a loaded test worker.
-    const now = vi.spyOn(Date, 'now').mockReturnValue(0)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(0);
     try {
-      const first = setupApp(makeTestAppDependencies())
-      const second = setupApp(makeTestAppDependencies())
-      const isolatedIp = '198.51.100.57'
+      const first = setupApp(makeTestAppDependencies());
+      const second = setupApp(makeTestAppDependencies());
+      const isolatedIp = '198.51.100.57';
 
       for (let attempt = 0; attempt < RATE_LIMITS.me.capacity; attempt++) {
-        await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)
+        await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp);
       }
 
-      expect(
-        (await request(first).get('/api/me')
-          .set('X-Forwarded-For', isolatedIp)).status
-      ).toBe(429)
-      expect(
-        (await request(second).get('/api/me')
-          .set('X-Forwarded-For', isolatedIp)).status
-      ).toBe(401)
+      expect((await request(first).get('/api/me').set('X-Forwarded-For', isolatedIp)).status).toBe(429);
+      expect((await request(second).get('/api/me').set('X-Forwarded-For', isolatedIp)).status).toBe(401);
     } finally {
-      now.mockRestore()
+      now.mockRestore();
     }
-  })
+  });
 
   describe('POST /api/signup', () => {
     it('returns 201 with the account and an httpOnly session cookie', async () => {
-      const email = newEmail()
+      const email = newEmail();
 
-      const response = await request(app).post('/api/signup')
-        .set('x-forwarded-for', uniqueIp()).send({ email, password })
+      const response = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', uniqueIp())
+        .send({email, password});
 
-      expect(response.status).toBe(201)
+      expect(response.status).toBe(201);
       expect(response.body).toEqual({
-        id: expect.any(String), email, alertThreshold: 5
-      })
-      const cookie = firstSetCookie(response)
-      expect(cookie).toMatch(/^sid=[0-9a-f]{64};/)
-      expect(cookie).toContain('HttpOnly')
-      expect(cookie).toContain('SameSite=Lax')
-    })
+        id: expect.any(String),
+        email,
+        alertThreshold: 5,
+      });
+      const cookie = firstSetCookie(response);
+      expect(cookie).toMatch(/^sid=[0-9a-f]{64};/);
+      expect(cookie).toContain('HttpOnly');
+      expect(cookie).toContain('SameSite=Lax');
+    });
 
     it('normalises email case and whitespace through the whole stack', async () => {
-      const local = randomUUID()
-      const ip = uniqueIp()
-      await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: `  ${local}@Routes.TEST  `, password }).expect(201)
+      const local = randomUUID();
+      const ip = uniqueIp();
+      await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: `  ${local}@Routes.TEST  `, password})
+        .expect(201);
 
-      const login = await request(app).post('/api/login').set('x-forwarded-for', ip)
-        .send({ email: `${local}@routes.test`, password })
+      const login = await request(app)
+        .post('/api/login')
+        .set('x-forwarded-for', ip)
+        .send({email: `${local}@routes.test`, password});
 
-      expect(login.status).toBe(200)
-      expect(login.body.email).toBe(`${local}@routes.test`)
-    })
+      expect(login.status).toBe(200);
+      expect(login.body.email).toBe(`${local}@routes.test`);
+    });
 
     it('returns 409 for an email that is already registered', async () => {
-      const email = newEmail()
-      const ip = uniqueIp()
-      await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email, password }).expect(201)
+      const email = newEmail();
+      const ip = uniqueIp();
+      await request(app).post('/api/signup').set('x-forwarded-for', ip).send({email, password}).expect(201);
 
-      const response = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email, password })
+      const response = await request(app).post('/api/signup').set('x-forwarded-for', ip).send({email, password});
 
-      expect(response.status).toBe(409)
-      expect(response.body.error).toContain('already registered')
-    })
+      expect(response.status).toBe(409);
+      expect(response.body.error).toContain('already registered');
+    });
 
     it('returns 409, never 500, for the loser of a concurrent signup', async () => {
       // The race this proves is on the email's unique constraint, not on the
@@ -127,47 +133,54 @@ describe('account routes', () => {
       // here left this spec running at exactly signup's capacity of 3 with
       // no margin - any future change coupling the two would have started
       // failing this spec instead of whichever one actually regressed.
-      const email = newEmail()
+      const email = newEmail();
 
       const responses = await Promise.all([
-        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password }),
-        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password }),
-        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({ email, password })
-      ])
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({email, password}),
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({email, password}),
+        request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({email, password}),
+      ]);
 
-      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409, 409])
-    })
+      expect(responses.map((r) => r.status).toSorted((a, b) => a - b)).toEqual([201, 409, 409]);
+    });
 
     it('returns 400 for a short password or a malformed email', async () => {
-      const ip = uniqueIp()
-      const short = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: newEmail(), password: 'tooshort' })
-      expect(short.status).toBe(400)
-      expect(short.body.error).toContain('password')
+      const ip = uniqueIp();
+      const short = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: newEmail(), password: 'tooshort'});
+      expect(short.status).toBe(400);
+      expect(short.body.error).toContain('password');
 
-      const malformed = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: 'not-an-email', password })
-      expect(malformed.status).toBe(400)
-      expect(malformed.body.error).toContain('email')
-    })
-  })
+      const malformed = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: 'not-an-email', password});
+      expect(malformed.status).toBe(400);
+      expect(malformed.body.error).toContain('email');
+    });
+  });
 
   describe('POST /api/login', () => {
     it('returns an identical 401 for a wrong password and an unknown email', async () => {
-      const email = newEmail()
-      const ip = uniqueIp()
-      await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email, password }).expect(201)
+      const email = newEmail();
+      const ip = uniqueIp();
+      await request(app).post('/api/signup').set('x-forwarded-for', ip).send({email, password}).expect(201);
 
-      const wrongPassword = await request(app).post('/api/login').set('x-forwarded-for', ip)
-        .send({ email, password: 'not the right password' })
-      const unknownEmail = await request(app).post('/api/login').set('x-forwarded-for', ip)
-        .send({ email: newEmail(), password })
+      const wrongPassword = await request(app)
+        .post('/api/login')
+        .set('x-forwarded-for', ip)
+        .send({email, password: 'not the right password'});
+      const unknownEmail = await request(app)
+        .post('/api/login')
+        .set('x-forwarded-for', ip)
+        .send({email: newEmail(), password});
 
-      expect(wrongPassword.status).toBe(401)
-      expect(unknownEmail.status).toBe(401)
-      expect(wrongPassword.body).toEqual(unknownEmail.body)
-    })
+      expect(wrongPassword.status).toBe(401);
+      expect(unknownEmail.status).toBe(401);
+      expect(wrongPassword.body).toEqual(unknownEmail.body);
+    });
 
     it('rejects on the email bucket even when the IP bucket is fresh', async () => {
       // Credential stuffing is many addresses against one account, which a
@@ -178,20 +191,21 @@ describe('account routes', () => {
       // takes the LAST entry as the client - appending a fixed trailing
       // address (as the spoofing spec does on purpose) would make every
       // attempt resolve to that same constant address instead of varying it.
-      const email = `stuffing-${randomUUID()}@example.com`
-      const attempt = async (index: number) => await request(app)
-        .post('/api/login')
-        .set('x-forwarded-for', `198.51.100.${index + 1}`)
-        .send({ email, password: 'wrong-password-entirely' })
+      const email = `stuffing-${randomUUID()}@example.com`;
+      const attempt = async (index: number) =>
+        await request(app)
+          .post('/api/login')
+          .set('x-forwarded-for', `198.51.100.${index + 1}`)
+          .send({email, password: 'wrong-password-entirely'});
 
-      const statuses: number[] = []
+      const statuses: number[] = [];
       for (let i = 0; i <= RATE_LIMITS.loginEmail.capacity; i++) {
-        statuses.push((await attempt(i)).status)
+        statuses.push((await attempt(i)).status);
       }
 
-      expect(statuses.at(-1)).toBe(429)
-      expect(statuses.slice(0, -1).every((status) => status === 401)).toBe(true)
-    })
+      expect(statuses.at(-1)).toBe(429);
+      expect(statuses.slice(0, -1).every((status) => status === 401)).toBe(true);
+    });
 
     it('rate limits an unknown address exactly like a registered one', async () => {
       // The bucket is keyed on the submitted string, never on whether an
@@ -202,25 +216,28 @@ describe('account routes', () => {
       // (capacity 10) can never be what rejects: two exhaustions of a
       // capacity-5 email bucket is twelve requests.
       const exhaust = async (email: string) => {
-        let last
+        let last;
         for (let i = 0; i <= RATE_LIMITS.loginEmail.capacity; i++) {
           // A single value: with one trusted proxy hop, Express reads the
           // client address from the LAST X-Forwarded-For entry, so this has
           // to be the whole header rather than a prefix in front of a fixed
           // trusted address - otherwise every attempt shares one IP bucket.
-          last = await request(app).post('/api/login')
+          last = await request(app)
+            .post('/api/login')
             .set('x-forwarded-for', `192.0.2.${i + 1}`)
-            .send({ email, password: 'wrong-password-entirely' })
+            .send({email, password: 'wrong-password-entirely'});
         }
-        if (last === undefined) throw new Error('no request was made')
-        return last
-      }
+        if (last === undefined) {
+          throw new Error('no request was made');
+        }
+        return last;
+      };
 
-      const registered = await exhaust(existingAccountEmail)
-      const unknown = await exhaust(`ghost-${randomUUID()}@example.com`)
+      const registered = await exhaust(existingAccountEmail);
+      const unknown = await exhaust(`ghost-${randomUUID()}@example.com`);
 
-      expect(registered.status).toBe(429)
-      expect(unknown.status).toBe(429)
+      expect(registered.status).toBe(429);
+      expect(unknown.status).toBe(429);
 
       // Naming individual fields (or comparing key sets alone) only catches
       // a field present on one body and absent on the other. It misses a
@@ -232,72 +249,84 @@ describe('account routes', () => {
       // time-derived fields and deep-comparing everything else catches that,
       // for any field present today or added later, without this spec
       // needing to change.
-      const { retryAfter: unknownRetry, resetAt: unknownResetAt, ...unknownRest } = unknown.body
-      const { retryAfter: knownRetry, resetAt: knownResetAt, ...knownRest } = registered.body
+      const {retryAfter: unknownRetry, resetAt: unknownResetAt, ...unknownRest} = unknown.body;
+      const {retryAfter: knownRetry, resetAt: knownResetAt, ...knownRest} = registered.body;
 
       // Everything that is not time-derived must match exactly - including
       // any field added later, which is the case a named-field check would
       // miss.
-      expect(unknownRest).toEqual(knownRest)
+      expect(unknownRest).toEqual(knownRest);
       // These two are wall-clock-derived and the two exhaust() runs are
       // sequential, so they are compared with tolerance rather than excluded
       // from the comparison: enough real time between them legitimately
       // shifts retryAfter by a second, and resetAt is a fresh timestamp
       // every response.
-      expect(Math.abs(unknownRetry - knownRetry)).toBeLessThanOrEqual(1)
-      expect(typeof unknownResetAt).toBe('string')
-      expect(typeof knownResetAt).toBe('string')
-    })
-  })
+      expect(Math.abs(unknownRetry - knownRetry)).toBeLessThanOrEqual(1);
+      expect(typeof unknownResetAt).toBe('string');
+      expect(typeof knownResetAt).toBe('string');
+    });
+  });
 
   describe('GET /api/me', () => {
     it('returns 401 without a cookie and the account with one', async () => {
-      const email = newEmail()
-      const ip = uniqueIp()
-      const signup = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email, password }).expect(201)
+      const email = newEmail();
+      const ip = uniqueIp();
+      const signup = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email, password})
+        .expect(201);
 
-      const anonymous = await request(app).get('/api/me').set('x-forwarded-for', ip)
-      expect(anonymous.status).toBe(401)
+      const anonymous = await request(app).get('/api/me').set('x-forwarded-for', ip);
+      expect(anonymous.status).toBe(401);
 
-      const authenticated = await request(app).get('/api/me').set('x-forwarded-for', ip)
-        .set('Cookie', firstSetCookie(signup))
-      expect(authenticated.status).toBe(200)
-      expect(authenticated.body.email).toBe(email)
-    })
+      const authenticated = await request(app)
+        .get('/api/me')
+        .set('x-forwarded-for', ip)
+        .set('Cookie', firstSetCookie(signup));
+      expect(authenticated.status).toBe(200);
+      expect(authenticated.body.email).toBe(email);
+    });
 
     it('returns 401 for a well-formed but unknown session id', async () => {
-      const response = await request(app).get('/api/me').set('x-forwarded-for', uniqueIp())
-        .set('Cookie', `sid=${'a'.repeat(64)}`)
+      const response = await request(app)
+        .get('/api/me')
+        .set('x-forwarded-for', uniqueIp())
+        .set('Cookie', `sid=${'a'.repeat(64)}`);
 
-      expect(response.status).toBe(401)
-    })
-  })
+      expect(response.status).toBe(401);
+    });
+  });
 
   describe('POST /api/logout', () => {
     it('revokes the session, so the same cookie stops working', async () => {
-      const ip = uniqueIp()
-      const signup = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: newEmail(), password }).expect(201)
-      const cookie = firstSetCookie(signup)
-      await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200)
+      const ip = uniqueIp();
+      const signup = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: newEmail(), password})
+        .expect(201);
+      const cookie = firstSetCookie(signup);
+      await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200);
 
-      const logout = await request(app).post('/api/logout')
-        .set('x-forwarded-for', ip).set('Cookie', cookie)
-      expect(logout.status).toBe(204)
+      const logout = await request(app).post('/api/logout').set('x-forwarded-for', ip).set('Cookie', cookie);
+      expect(logout.status).toBe(204);
 
       // The assertion that proves revocation is real rather than cosmetic: the
       // client still holds the cookie, and it is now worthless.
-      const after = await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie)
-      expect(after.status).toBe(401)
-    })
+      const after = await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie);
+      expect(after.status).toBe(401);
+    });
 
     it('is idempotent without a cookie or with an unknown session', async () => {
-      const ip = uniqueIp()
-      await request(app).post('/api/logout').set('x-forwarded-for', ip).expect(204)
-      await request(app).post('/api/logout').set('x-forwarded-for', ip)
-        .set('Cookie', `sid=${'b'.repeat(64)}`).expect(204)
-    })
+      const ip = uniqueIp();
+      await request(app).post('/api/logout').set('x-forwarded-for', ip).expect(204);
+      await request(app)
+        .post('/api/logout')
+        .set('x-forwarded-for', ip)
+        .set('Cookie', `sid=${'b'.repeat(64)}`)
+        .expect(204);
+    });
 
     it('stays idempotent right up to the limit, then answers 429', async () => {
       // Logout was the one route with no bucket, on the reasoning that it is
@@ -309,74 +338,84 @@ describe('account routes', () => {
       // it - a person with several tabs signing out is still nowhere near -
       // which is why this asserts the idempotence survives all the way to
       // capacity rather than just that a 429 eventually arrives.
-      const ip = uniqueIp()
-      const logout = async () => await request(app)
-        .post('/api/logout').set('x-forwarded-for', ip)
+      const ip = uniqueIp();
+      const logout = async () => await request(app).post('/api/logout').set('x-forwarded-for', ip);
 
-      const statuses: number[] = []
+      const statuses: number[] = [];
       for (let i = 0; i <= RATE_LIMITS.logout.capacity; i++) {
-        statuses.push((await logout()).status)
+        statuses.push((await logout()).status);
       }
 
-      expect(statuses.slice(0, -1).every((status) => status === 204)).toBe(true)
-      expect(statuses.at(-1)).toBe(429)
-    })
-  })
+      expect(statuses.slice(0, -1).every((status) => status === 204)).toBe(true);
+      expect(statuses.at(-1)).toBe(429);
+    });
+  });
 
   describe('CORS', () => {
     it('sends credentialed headers and never a wildcard', async () => {
       // `*` is invalid on a credentialed request - for the origin and for the
       // allowed headers alike - so both are stated exactly.
-      const response = await request(app).get('/api/health')
+      const response = await request(app).get('/api/health');
 
-      expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173')
-      expect(response.headers['access-control-allow-credentials']).toBe('true')
-      expect(response.headers.vary).toBe('origin')
-      expect(response.headers['access-control-allow-headers']).toBe('content-type')
-    })
-  })
+      expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+      expect(response.headers.vary).toBe('origin');
+      expect(response.headers['access-control-allow-headers']).toBe('content-type');
+    });
+  });
 
   describe('CSRF', () => {
     it('rejects a state-changing request from another origin', async () => {
       // SameSite=Lax does not help here: this design puts the app and the API
       // under one registrable domain, so a page on a sibling host is same-site
       // and its form POST would carry the session cookie.
-      const ip = uniqueIp()
-      const signup = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: newEmail(), password }).expect(201)
-      const cookie = firstSetCookie(signup)
+      const ip = uniqueIp();
+      const signup = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: newEmail(), password})
+        .expect(201);
+      const cookie = firstSetCookie(signup);
 
-      const forced = await request(app).post('/api/logout')
+      const forced = await request(app)
+        .post('/api/logout')
         .set('x-forwarded-for', ip)
         .set('Cookie', cookie)
-        .set('Origin', 'https://evil.tabstop.dev')
+        .set('Origin', 'https://evil.tabstop.dev');
 
-      expect(forced.status).toBe(403)
+      expect(forced.status).toBe(403);
 
       // and the session was NOT revoked
-      await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200)
-    })
+      await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200);
+    });
 
     it('allows a state-changing request from the configured frontend origin', async () => {
-      const signup = await request(app).post('/api/signup').set('x-forwarded-for', uniqueIp())
-        .send({ email: newEmail(), password }).expect(201)
+      const signup = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', uniqueIp())
+        .send({email: newEmail(), password})
+        .expect(201);
 
-      await request(app).post('/api/logout')
+      await request(app)
+        .post('/api/logout')
         .set('x-forwarded-for', uniqueIp())
         .set('Cookie', firstSetCookie(signup))
         .set('Origin', 'http://localhost:5173')
-        .expect(204)
-    })
+        .expect(204);
+    });
 
     it('allows a request with no Origin at all, which no browser CSRF can be', async () => {
-      await request(app).post('/api/logout').set('x-forwarded-for', uniqueIp()).expect(204)
-    })
+      await request(app).post('/api/logout').set('x-forwarded-for', uniqueIp()).expect(204);
+    });
 
     it('does not interfere with reads', async () => {
-      await request(app).get('/api/me').set('x-forwarded-for', uniqueIp())
-        .set('Origin', 'https://evil.tabstop.dev').expect(401)
-    })
-  })
+      await request(app)
+        .get('/api/me')
+        .set('x-forwarded-for', uniqueIp())
+        .set('Origin', 'https://evil.tabstop.dev')
+        .expect(401);
+    });
+  });
 
   describe('caching', () => {
     it('marks authenticated responses no-store', async () => {
@@ -384,15 +423,17 @@ describe('account routes', () => {
       // heuristically cacheable, and the only thing a shared cache in front of
       // the API could vary on is the session cookie - so without this, a CDN
       // could serve one user's identity to another.
-      const ip = uniqueIp()
-      const signup = await request(app).post('/api/signup').set('x-forwarded-for', ip)
-        .send({ email: newEmail(), password }).expect(201)
+      const ip = uniqueIp();
+      const signup = await request(app)
+        .post('/api/signup')
+        .set('x-forwarded-for', ip)
+        .send({email: newEmail(), password})
+        .expect(201);
 
-      const me = await request(app).get('/api/me').set('x-forwarded-for', ip)
-        .set('Cookie', firstSetCookie(signup))
+      const me = await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', firstSetCookie(signup));
 
-      expect(me.status).toBe(200)
-      expect(me.headers['cache-control']).toBe('no-store')
-    })
-  })
-})
+      expect(me.status).toBe(200);
+      expect(me.headers['cache-control']).toBe('no-store');
+    });
+  });
+});

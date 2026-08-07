@@ -11,5 +11,5 @@ export interface DeleteExpiredSessionsRepository {
    * a sweep that starts reporting thousands is the signal that something else
    * changed, and a silent maintenance task is one nobody notices has stopped.
    */
-  deleteExpired: () => Promise<number>
+  deleteExpired: () => Promise<number>;
 }

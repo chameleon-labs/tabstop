@@ -3,8 +3,8 @@
  * would turn the login form into an account-existence oracle.
  */
 export class InvalidCredentialsError extends Error {
-  constructor () {
-    super('Invalid email or password')
-    this.name = 'InvalidCredentialsError'
+  constructor() {
+    super('Invalid email or password');
+    this.name = 'InvalidCredentialsError';
   }
 }

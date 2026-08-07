@@ -6,18 +6,18 @@
  * "tracking 10 of 10 pages" can get that number from nowhere else.
  */
 export type PageLimitReachedBody = {
-  code: 'page_limit_reached'
-  error: string
+  code: 'page_limit_reached';
+  error: string;
   /** The cap that was hit, so the message can name it rather than hardcode it. */
-  limit: number
-}
+  limit: number;
+};
 
 export type PageAlreadyTrackedBody = {
-  code: 'page_already_tracked'
-  error: string
-}
+  code: 'page_already_tracked';
+  error: string;
+};
 
-export type PageConflictBody = PageLimitReachedBody | PageAlreadyTrackedBody
+export type PageConflictBody = PageLimitReachedBody | PageAlreadyTrackedBody;
 
 /** Every code this endpoint may send, for a client that wants to be exhaustive. */
-export type PageConflictCode = PageConflictBody['code']
+export type PageConflictCode = PageConflictBody['code'];

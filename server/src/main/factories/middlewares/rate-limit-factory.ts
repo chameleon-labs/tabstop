@@ -1,18 +1,18 @@
-import { Redis } from 'ioredis'
-import { env } from '../../config/env.js'
-import { FallbackRateLimiter } from '../../decorators/fallback-rate-limiter.js'
-import { MemoryTokenBucket } from '../../../infra/rate-limit/memory-token-bucket.js'
-import { RedisTokenBucket } from '../../../infra/rate-limit/redis-token-bucket.js'
-import type { RateLimiter } from '../../../data/protocols/rate-limit/rate-limiter.js'
+import {Redis} from 'ioredis';
+import {env} from '../../config/env.js';
+import {FallbackRateLimiter} from '../../decorators/fallback-rate-limiter.js';
+import {MemoryTokenBucket} from '../../../infra/rate-limit/memory-token-bucket.js';
+import {RedisTokenBucket} from '../../../infra/rate-limit/redis-token-bucket.js';
+import type {RateLimiter} from '../../../data/protocols/rate-limit/rate-limiter.js';
 
 /** Bounds how long a request waits on a limiter that is not answering. */
-const COMMAND_TIMEOUT_MS = 250
+const COMMAND_TIMEOUT_MS = 250;
 
-let limiter: RateLimiter | null = null
+let limiter: RateLimiter | null = null;
 // Held separately from `limiter` because closing needs the raw client -
 // FallbackRateLimiter and RedisTokenBucket expose no way to reach back into
 // the connection they were built with.
-let redisClient: Redis | null = null
+let redisClient: Redis | null = null;
 
 export const makeRateLimiter = (): RateLimiter => {
   if (limiter === null) {
@@ -23,20 +23,20 @@ export const makeRateLimiter = (): RateLimiter => {
     const redis = new Redis(env.redisUrl, {
       enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
-      commandTimeout: COMMAND_TIMEOUT_MS
-    })
+      commandTimeout: COMMAND_TIMEOUT_MS,
+    });
 
     // Without a listener an EventEmitter error is a process-level hazard, and
     // a connection error here is expected rather than exceptional.
     redis.on('error', (error) => {
-      console.error('Rate limiter Redis error:', error)
-    })
+      console.error('Rate limiter Redis error:', error);
+    });
 
-    redisClient = redis
-    limiter = new FallbackRateLimiter(new RedisTokenBucket(redis), new MemoryTokenBucket())
+    redisClient = redis;
+    limiter = new FallbackRateLimiter(new RedisTokenBucket(redis), new MemoryTokenBucket());
   }
-  return limiter
-}
+  return limiter;
+};
 
 /**
  * Without this, the memoised client is never disposed. ioredis retries a
@@ -46,11 +46,13 @@ export const makeRateLimiter = (): RateLimiter => {
  * no equivalent of disconnectDatabase() to call from its own shutdown path.
  */
 export const closeRateLimiter = async (): Promise<void> => {
-  if (redisClient === null) return
+  if (redisClient === null) {
+    return;
+  }
 
   try {
     // Graceful: waits for in-flight replies before closing the socket.
-    await redisClient.quit()
+    await redisClient.quit();
   } catch {
     // quit() sends a command, and `enableOfflineQueue: false` makes that
     // throw if the client was still connecting (or already failed) rather
@@ -58,8 +60,8 @@ export const closeRateLimiter = async (): Promise<void> => {
     // used before shutdown, which is normal in a test that never sends a
     // request through it. disconnect() tears down the socket unconditionally
     // instead of sending anything, so it works from every connection state.
-    redisClient.disconnect()
+    redisClient.disconnect();
   }
-  redisClient = null
-  limiter = null
-}
+  redisClient = null;
+  limiter = null;
+};

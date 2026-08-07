@@ -6,9 +6,13 @@
 
 /* Lattice sets no color-scheme, and it is what makes native controls and
    scrollbars follow the theme its tokens already switch. */
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+}
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -17,7 +21,6 @@ body {
   font-family: var(--lat-text-body-font-family);
   line-height: 1.6;
 }
-
 
 /*
  * Visible to assistive technology, not to the eye. Not `display: none` and not
@@ -52,10 +55,14 @@ body {
   transition: top 120ms ease-in;
 }
 
-.skip-link:focus { top: 0.5rem; }
+.skip-link:focus {
+  top: 0.5rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .skip-link { transition: none; }
+  .skip-link {
+    transition: none;
+  }
 }
 
 /* Strengthened, never removed. The default ring is thin and often low contrast
@@ -70,10 +77,14 @@ body {
    never reached by Tab), and outlining the whole content region on arrival is
    noise rather than information. More specific than `:focus-visible` above, so
    it wins whether or not the browser considers the focus keyboard-driven. */
-main:focus { outline: none; }
+main:focus {
+  outline: none;
+}
 
 /* Lattice rings the wrapper, so the inner input must not ring too. */
-.lat-input:focus-visible { outline: none; }
+.lat-input:focus-visible {
+  outline: none;
+}
 
 .site-header {
   display: flex;
@@ -91,6 +102,16 @@ main:focus { outline: none; }
 
 /* Sized from the type scale, because an icon is sized to the text beside it.
    rem-based, so icons grow when the reader enlarges their font. */
-.icon { inline-size: var(--lat-font-size-sm); block-size: var(--lat-font-size-sm); flex: none; }
-.icon--sm { inline-size: var(--lat-font-size-xs); block-size: var(--lat-font-size-xs); }
-.icon--lg { inline-size: var(--lat-font-size-base); block-size: var(--lat-font-size-base); }
+.icon {
+  inline-size: var(--lat-font-size-sm);
+  block-size: var(--lat-font-size-sm);
+  flex: none;
+}
+.icon--sm {
+  inline-size: var(--lat-font-size-xs);
+  block-size: var(--lat-font-size-xs);
+}
+.icon--lg {
+  inline-size: var(--lat-font-size-base);
+  block-size: var(--lat-font-size-base);
+}

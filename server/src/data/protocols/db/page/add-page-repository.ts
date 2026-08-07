@@ -1,18 +1,18 @@
-import type { AuditModel } from '../../../../domain/models/audit.js'
-import type { PageModel } from '../../../../domain/models/page.js'
+import type {AuditModel} from '../../../../domain/models/audit.js';
+import type {PageModel} from '../../../../domain/models/page.js';
 
 export type AddPageRepositoryParams = {
-  userId: string
+  userId: string;
   /** The host the page is grouped under. Its `Site` is created if absent. */
-  domain: string
+  domain: string;
   /** Already canonicalised. The repository stores what it is given. */
-  url: string
+  url: string;
   /**
    * How many pages this account may hold, passed in rather than known here so
    * #35's per-plan quotas change a factory and not this file.
    */
-  limit: number
-}
+  limit: number;
+};
 
 /**
  * Four things happen and they have to happen together: the cap is checked, the
@@ -30,10 +30,10 @@ export type AddPageRepositoryParams = {
  * so the caller does it afterwards.
  */
 export type AddPageRepositoryResult =
-  | { outcome: 'added', page: PageModel, firstAudit: AuditModel }
-  | { outcome: 'limit-reached' }
-  | { outcome: 'duplicate' }
+  | {outcome: 'added'; page: PageModel; firstAudit: AuditModel}
+  | {outcome: 'limit-reached'}
+  | {outcome: 'duplicate'};
 
 export interface AddPageRepository {
-  add: (params: AddPageRepositoryParams) => Promise<AddPageRepositoryResult>
+  add: (params: AddPageRepositoryParams) => Promise<AddPageRepositoryResult>;
 }

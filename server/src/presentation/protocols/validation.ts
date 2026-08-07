@@ -5,8 +5,8 @@
  * which under this repo's strict settings is an unchecked assertion dressed up
  * as verification.
  */
-export type ValidationResult<T> = { data: T } | { error: Error }
+export type ValidationResult<T> = {data: T} | {error: Error};
 
 export interface Validation<T> {
-  validate: (input: unknown) => ValidationResult<T>
+  validate: (input: unknown) => ValidationResult<T>;
 }

@@ -11,6 +11,14 @@
     "dev": "pnpm -r --parallel dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "lint": "oxlint --config .oxlintrc.json web/src server/src contract/src",
+    "lint:fix": "oxlint --config .oxlintrc.json --fix web/src server/src contract/src",
+    "format": "oxfmt web/src server/src contract/src",
+    "format:check": "oxfmt --check web/src server/src contract/src"
+  },
+  "devDependencies": {
+    "oxlint": "^1.77.0",
+    "oxfmt": "^0.62.0"
   }
 }

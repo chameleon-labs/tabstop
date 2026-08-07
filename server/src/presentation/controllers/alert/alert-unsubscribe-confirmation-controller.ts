@@ -1,27 +1,28 @@
-import { notFound, okHtml } from '../../helpers/http/http-helper.js'
-import type { Controller } from '../../protocols/controller.js'
-import type { HttpResponse } from '../../protocols/http.js'
+import {notFound, okHtml} from '../../helpers/http/http-helper.js';
+import type {Controller} from '../../protocols/controller.js';
+import type {HttpResponse} from '../../protocols/http.js';
 
 export type AlertUnsubscribeConfirmationRequest = {
-  token?: unknown
-}
+  token?: unknown;
+};
 
-const escapeAttribute = (value: string): string => value
-  .replaceAll('&', '&amp;')
-  .replaceAll('"', '&quot;')
-  .replaceAll('\'', '&#39;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
+const escapeAttribute = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 
-export class AlertUnsubscribeConfirmationController implements
-Controller<AlertUnsubscribeConfirmationRequest> {
-  async handle (request: AlertUnsubscribeConfirmationRequest): Promise<HttpResponse> {
+export class AlertUnsubscribeConfirmationController implements Controller<AlertUnsubscribeConfirmationRequest> {
+  handle(request: AlertUnsubscribeConfirmationRequest): Promise<HttpResponse> {
     if (typeof request.token !== 'string') {
-      return notFound(new Error('Unsubscribe link not found'))
+      return Promise.resolve(notFound(new Error('Unsubscribe link not found')));
     }
 
-    const action = `/api/alerts/unsubscribe/${escapeAttribute(request.token)}`
-    return okHtml(`<!doctype html>
+    const action = `/api/alerts/unsubscribe/${escapeAttribute(request.token)}`;
+    return Promise.resolve(
+      okHtml(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -38,6 +39,7 @@ Controller<AlertUnsubscribeConfirmationRequest> {
     </form>
   </main>
 </body>
-</html>`)
+</html>`),
+    );
   }
 }

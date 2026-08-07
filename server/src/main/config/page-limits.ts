@@ -7,4 +7,4 @@
  * a per-plan quota, at which point it stops being one number for everybody -
  * which is why it is passed into the usecase rather than read inside it.
  */
-export const PAGE_LIMIT = 10
+export const PAGE_LIMIT = 10;

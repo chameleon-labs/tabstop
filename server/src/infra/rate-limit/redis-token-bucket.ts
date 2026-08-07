@@ -1,11 +1,9 @@
-import { once } from 'node:events'
-import type { Redis } from 'ioredis'
-import type {
-  BucketConfig, RateLimitDecision, RateLimiter
-} from '../../data/protocols/rate-limit/rate-limiter.js'
-import { makeRateLimitAllowance } from './rate-limit-allowance.js'
+import {once} from 'node:events';
+import type {Redis} from 'ioredis';
+import type {BucketConfig, RateLimitDecision, RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
+import {makeRateLimitAllowance} from './rate-limit-allowance.js';
 
-const MS_PER_HOUR = 3_600_000
+const MS_PER_HOUR = 3_600_000;
 
 /**
  * Not `(cost - tokens) / refillPerMs`: `refillPerMs` is already a rounded
@@ -18,7 +16,7 @@ const MS_PER_HOUR = 3_600_000
  * mean racing Redis's TIME(), so the boundary is checked here instead and the
  * shared string keeps the two from diverging.
  */
-export const WAIT_MS_FORMULA = '(cost - tokens) * msPerHour / refillPerHour'
+export const WAIT_MS_FORMULA = '(cost - tokens) * msPerHour / refillPerHour';
 
 /**
  * Check and consume in one round trip. Read-then-write from Node is not
@@ -60,7 +58,7 @@ redis.call('PEXPIRE', KEYS[1], math.ceil((capacity - tokens) / refillPerMs) + 10
 
 if allowed then return { 1, math.floor(tokens), 0 } end
 return { 0, math.floor(tokens), math.ceil(${WAIT_MS_FORMULA}) }
-`
+`;
 
 /**
  * How long a command waits for the connection to come up before giving up.
@@ -75,24 +73,24 @@ return { 0, math.floor(tokens), math.ceil(${WAIT_MS_FORMULA}) }
  * far longer than a connection needs and short enough to notice a real outage,
  * which costs one wait per degraded window rather than one per request.
  */
-export const READY_TIMEOUT_MS = 1000
+export const READY_TIMEOUT_MS = 1000;
 
 export class RedisTokenBucket implements RateLimiter {
-  constructor (
+  constructor(
     private readonly redis: Redis,
     private readonly keyPrefix = 'rl',
-    private readonly readyTimeoutMs = READY_TIMEOUT_MS
+    private readonly readyTimeoutMs = READY_TIMEOUT_MS,
   ) {}
 
-  async consume (key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
-    const [allowed, remaining, retryAfterMs] = await this.run(key, bucket, cost)
+  async consume(key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
+    const [allowed, remaining, retryAfterMs] = await this.run(key, bucket, cost);
 
     if (allowed === 1) {
       return makeRateLimitAllowance(remaining, async () => {
-        await this.run(key, bucket, -cost)
-      })
+        await this.run(key, bucket, -cost);
+      });
     }
-    return { allowed: false, retryAfterMs }
+    return {allowed: false, retryAfterMs};
   }
 
   /**
@@ -104,7 +102,7 @@ export class RedisTokenBucket implements RateLimiter {
    *
    * Cleared on settlement, so a later disconnect gets a fresh wait.
    */
-  private connecting: Promise<void> | null = null
+  private connecting: Promise<void> | null = null;
 
   /**
    * Waits for a connection that is on its way, and only for that.
@@ -117,44 +115,49 @@ export class RedisTokenBucket implements RateLimiter {
    * full budget - left alone, since it needs a shutdown to land inside the
    * window and a second on the way out is not worth racing listeners over.
    */
-  private async awaitConnection (): Promise<void> {
-    if (this.redis.status === 'ready') return
+  private async awaitConnection(): Promise<void> {
+    if (this.redis.status === 'ready') {
+      return;
+    }
     if (this.redis.status === 'end') {
-      throw new Error('Rate limiter connection is closed')
+      throw new Error('Rate limiter connection is closed');
     }
 
-    this.connecting ??= this.waitForReady()
+    this.connecting ??= this.waitForReady();
 
-    await this.connecting
+    await this.connecting;
   }
 
-  private async waitForReady (): Promise<void> {
+  private async waitForReady(): Promise<void> {
     try {
-      await once(this.redis, 'ready', { signal: AbortSignal.timeout(this.readyTimeoutMs) })
+      await once(this.redis, 'ready', {signal: AbortSignal.timeout(this.readyTimeoutMs)});
     } finally {
       // On success as well as failure: the next burst after a dropped
       // connection has to wait for its own `ready`, not remember this one.
-      this.connecting = null
+      this.connecting = null;
     }
   }
 
-  private async run (
-    key: string, bucket: BucketConfig, cost: number
-  ): Promise<[number, number, number]> {
+  private async run(key: string, bucket: BucketConfig, cost: number): Promise<[number, number, number]> {
     // Before the command, not around it. A rejection here is indistinguishable
     // to the caller from any other failure to reach Redis, which is what the
     // fallback limiter above already knows how to handle.
-    await this.awaitConnection()
+    await this.awaitConnection();
 
     const result = await this.redis.eval(
-      SCRIPT, 1, `${this.keyPrefix}:${key}`,
-      bucket.capacity, bucket.refillPerHour / MS_PER_HOUR, cost, bucket.refillPerHour
-    )
+      SCRIPT,
+      1,
+      `${this.keyPrefix}:${key}`,
+      bucket.capacity,
+      bucket.refillPerHour / MS_PER_HOUR,
+      cost,
+      bucket.refillPerHour,
+    );
 
     // eval is typed `unknown`; the script's own return shape is the contract.
     if (!Array.isArray(result) || result.length !== 3) {
-      throw new Error('Rate limit script returned an unexpected shape')
+      throw new Error('Rate limit script returned an unexpected shape');
     }
-    return result.map(Number) as [number, number, number]
+    return result.map(Number) as [number, number, number];
   }
 }
