@@ -191,7 +191,15 @@
     "typescript/explicit-member-accessibility": "off",
     "no-console": "off",
     "unicorn/consistent-function-scoping": "warn",
-    "unicorn/no-array-sort": "warn"
+    "unicorn/no-array-sort": "warn",
+    "import/no-unassigned-import": [
+      "error",
+      {
+        "allow": [
+          "**/*.css"
+        ]
+      }
+    ]
   },
   "overrides": [
     {
@@ -251,6 +259,7 @@
         "vitest"
       ],
       "rules": {
+        "no-undef": "off",
         "typescript/no-non-null-assertion": "off",
         "no-magic-numbers": "off",
         "vitest/require-mock-type-parameters": "off",
