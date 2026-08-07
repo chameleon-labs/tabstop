@@ -10,7 +10,9 @@ import {makeQueryClient} from './query-client';
  */
 const retryOf = (client = makeQueryClient()): ((count: number, error: unknown) => boolean) => {
   const retry = client.getDefaultOptions().queries?.retry;
-  if (typeof retry !== 'function') throw new Error('queries.retry is not a predicate');
+  if (typeof retry !== 'function') {
+    throw new Error('queries.retry is not a predicate');
+  }
   return retry as (count: number, error: unknown) => boolean;
 };
 

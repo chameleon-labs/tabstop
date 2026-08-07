@@ -30,7 +30,9 @@ export class FallbackRateLimiter implements RateLimiter {
   ) {}
 
   async consume(key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
-    if (this.degraded()) return await this.fallback.consume(key, bucket, cost);
+    if (this.degraded()) {
+      return await this.fallback.consume(key, bucket, cost);
+    }
 
     try {
       return await this.primary.consume(key, bucket, cost);
@@ -51,7 +53,9 @@ export class FallbackRateLimiter implements RateLimiter {
 
   private report(error: unknown): void {
     const now = Date.now();
-    if (now - this.lastLoggedAt < LOG_INTERVAL_MS) return;
+    if (now - this.lastLoggedAt < LOG_INTERVAL_MS) {
+      return;
+    }
 
     this.lastLoggedAt = now;
     console.warn('Rate limiter falling back to in-process buckets:', error);

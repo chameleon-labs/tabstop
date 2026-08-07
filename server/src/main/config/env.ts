@@ -163,7 +163,9 @@ const requiredOrigin = (source: NodeJS.ProcessEnv, name: string): string => {
 
 const mailDriver = (source: NodeJS.ProcessEnv): 'console' | 'resend' => {
   const value = source.MAIL_DRIVER;
-  if (value === undefined || value === '') return 'console';
+  if (value === undefined || value === '') {
+    return 'console';
+  }
   if (value !== 'console' && value !== 'resend') {
     throw new Error(`MAIL_DRIVER must be "console" or "resend", but was "${value}"`);
   }
@@ -189,7 +191,9 @@ const positiveIntegerOr = (
   name: string,
   maximum = Number.MAX_SAFE_INTEGER,
 ): number => {
-  if (raw === undefined || raw === '') return fallback;
+  if (raw === undefined || raw === '') {
+    return fallback;
+  }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error(`${name} must be a positive integer, but was "${raw}"`);
@@ -210,7 +214,9 @@ const nonNegativeIntegerOr = (
   name: string,
   maximum = Number.MAX_SAFE_INTEGER,
 ): number => {
-  if (raw === undefined || raw === '') return fallback;
+  if (raw === undefined || raw === '') {
+    return fallback;
+  }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new Error(`${name} must be a non-negative integer, but was "${raw}"`);

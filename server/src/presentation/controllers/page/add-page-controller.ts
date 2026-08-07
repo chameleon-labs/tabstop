@@ -32,7 +32,9 @@ export class AddPageController implements Controller<AddPageRequest> {
   async handle(request: AddPageRequest): Promise<HttpResponse> {
     try {
       const validated = this.validation.validate(request);
-      if ('error' in validated) return badRequest(validated.error);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
       const result = await this.addPage.add({
         userId: request.userId,

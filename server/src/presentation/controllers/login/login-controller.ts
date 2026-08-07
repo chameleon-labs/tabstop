@@ -17,11 +17,15 @@ export class LoginController implements Controller {
   async handle(request: unknown): Promise<HttpResponse> {
     try {
       const validated = this.validation.validate(request);
-      if ('error' in validated) return badRequest(validated.error);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
       const session = await this.authenticate.auth(validated.data);
       // One response for an unknown email and a wrong password alike.
-      if (session === null) return unauthorized(new InvalidCredentialsError());
+      if (session === null) {
+        return unauthorized(new InvalidCredentialsError());
+      }
 
       return okWithCookies(toAccountView(session.account), setSessionCookie(this.sessionCookieName, session));
     } catch (error) {

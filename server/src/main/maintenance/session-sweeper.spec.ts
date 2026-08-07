@@ -3,7 +3,7 @@ import {startSessionSweeper} from './session-sweeper.js';
 
 type DeleteExpired = () => Promise<number>;
 
-const mockSessions = (deleteExpired: DeleteExpired = async () => 0) => ({
+const mockSessions = (deleteExpired: DeleteExpired = () => Promise.resolve(0)) => ({
   deleteExpired: vi.fn<DeleteExpired>(deleteExpired),
 });
 
@@ -41,7 +41,7 @@ describe('startSessionSweeper', () => {
 
   it('reports how many it removed', async () => {
     const sweeper = startSessionSweeper(
-      mockSessions(async () => 7),
+      mockSessions(() => Promise.resolve(7)),
       1000,
     );
 
@@ -51,7 +51,7 @@ describe('startSessionSweeper', () => {
     sweeper.stop();
   });
 
-  it('does not sweep on boot', async () => {
+  it('does not sweep on boot', () => {
     // A worker restarting in a crash loop would otherwise issue a table-wide
     // delete on every start - which is precisely when the database is least
     // likely to want one.
@@ -76,9 +76,7 @@ describe('startSessionSweeper', () => {
   it('keeps sweeping after a failure', async () => {
     // Failing to tidy up must never take the worker down, and the next pass
     // finds the same rows still waiting.
-    const sessions = mockSessions(async () => {
-      throw new Error('database down');
-    });
+    const sessions = mockSessions(() => Promise.reject(new Error('database down')));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const sweeper = startSessionSweeper(sessions, 1000);
 

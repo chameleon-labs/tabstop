@@ -36,7 +36,9 @@ export const HELP_ORIGIN = 'https://dequeuniversity.com';
  * not the only guard.
  */
 export const safeHelpUrl = (helpUrl: unknown): string => {
-  if (typeof helpUrl !== 'string') return '';
+  if (typeof helpUrl !== 'string') {
+    return '';
+  }
 
   try {
     const parsed = new URL(helpUrl);

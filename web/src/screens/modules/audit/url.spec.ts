@@ -3,7 +3,9 @@ import {URL_PROBLEMS, normaliseUrl} from './url';
 
 const urlOf = (raw: string): string => {
   const result = normaliseUrl(raw);
-  if (!result.ok) throw new Error(`expected ${raw} to normalise, got ${result.problem}`);
+  if (!result.ok) {
+    throw new Error(`expected ${raw} to normalise, got ${result.problem}`);
+  }
   return result.url;
 };
 
@@ -59,12 +61,14 @@ describe('normaliseUrl', () => {
     });
 
     it.each([
+      // oxlint-disable-next-line no-script-url -- the refused input under test
       ['javascript:alert(1)', 'a scheme that names no page'],
       ['mailto:someone@example.com', 'an address rather than a page'],
       // A digit after the colon is not enough to mean "port". Read that way,
       // `mailto:123` became `https://mailto:123/` - a real address, entirely
       // unrelated to what was typed, submitted without a word.
       ['mailto:123', 'an opaque scheme whose payload is numeric'],
+      // oxlint-disable-next-line no-script-url -- the refused input under test
       ['javascript:1', 'the same trap with an executable scheme'],
       ['https://', 'a scheme and nothing else'],
     ])('refuses %p - %s', (raw) => {
@@ -74,8 +78,10 @@ describe('normaliseUrl', () => {
     it('has a message for each problem it reports', () => {
       // The only two sentences this package writes. Everything else is quoted
       // from the server, which owns the policy that produced it.
-      expect(Object.keys(URL_PROBLEMS).sort()).toEqual(['empty', 'unparseable']);
-      for (const message of Object.values(URL_PROBLEMS)) expect(message).not.toBe('');
+      expect(Object.keys(URL_PROBLEMS).toSorted()).toEqual(['empty', 'unparseable']);
+      for (const message of Object.values(URL_PROBLEMS)) {
+        expect(message).not.toBe('');
+      }
     });
   });
 

@@ -58,7 +58,7 @@ describe('toAuditResultResponse', () => {
     const response = toAuditResultResponse({audit: audit(), violations: [violation()]});
 
     expect(JSON.stringify(response)).not.toContain('violation-internal-1');
-    expect(Object.keys(response.violations[0] ?? {}).sort()).toEqual([
+    expect(Object.keys(response.violations[0] ?? {}).toSorted()).toEqual([
       'description',
       'helpUrl',
       'impact',

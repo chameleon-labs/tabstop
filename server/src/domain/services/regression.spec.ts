@@ -32,13 +32,13 @@ describe('diffViolations', () => {
 });
 
 describe('detectRegression', () => {
-  const cases: Array<{
+  const cases: {
     name: string;
     current: AuditSnapshot;
     previous: AuditSnapshot | null;
     threshold: number;
     expected: ReturnType<typeof detectRegression>;
-  }> = [
+  }[] = [
     {
       name: 'the first audit',
       current: snapshot({score: 10, violations: [violation('image-alt', 'critical')]}),

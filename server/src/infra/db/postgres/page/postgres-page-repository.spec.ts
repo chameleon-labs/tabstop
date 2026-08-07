@@ -1,7 +1,7 @@
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {Kysely, PostgresDialect, sql} from 'kysely';
-import pg from 'pg';
+import {Pool} from 'pg';
 import type {Database} from '../database.js';
 import {makeDatabase} from '../helpers/postgres-helper.js';
 import {HISTORY_POINTS, PostgresPageRepository} from './postgres-page-repository.js';
@@ -16,7 +16,9 @@ import type {DuePage} from '../../../../data/protocols/db/page/load-due-reaudits
 
 const connectionUrl = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -27,9 +29,11 @@ const connectionUrl = (): string => {
  */
 const makeCountingDatabase = (sink: string[]): Kysely<Database> =>
   new Kysely<Database>({
-    dialect: new PostgresDialect({pool: new pg.Pool({connectionString: connectionUrl()})}),
+    dialect: new PostgresDialect({pool: new Pool({connectionString: connectionUrl()})}),
     log: (event) => {
-      if (event.level === 'query') sink.push(event.query.sql);
+      if (event.level === 'query') {
+        sink.push(event.query.sql);
+      }
     },
   });
 
@@ -39,7 +43,9 @@ describe('PostgresPageRepository', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
     sut = new PostgresPageRepository(db);
   });
@@ -87,7 +93,9 @@ describe('PostgresPageRepository', () => {
       const result = await sut.add({userId, domain, url, limit: 10});
 
       expect(result.outcome).toBe('added');
-      if (result.outcome !== 'added') return;
+      if (result.outcome !== 'added') {
+        return;
+      }
       expect(result.page).toEqual({
         id: expect.any(String),
         siteId: expect.any(String),
@@ -111,7 +119,9 @@ describe('PostgresPageRepository', () => {
 
       expect(first.outcome).toBe('added');
       expect(second.outcome).toBe('added');
-      if (first.outcome !== 'added' || second.outcome !== 'added') return;
+      if (first.outcome !== 'added' || second.outcome !== 'added') {
+        return;
+      }
       expect(second.page.siteId).toBe(first.page.siteId);
 
       const sites = await db.selectFrom('sites').select('id').where('user_id', '=', userId).execute();
@@ -127,7 +137,9 @@ describe('PostgresPageRepository', () => {
 
       expect(hers.outcome).toBe('added');
       expect(his.outcome).toBe('added');
-      if (hers.outcome !== 'added' || his.outcome !== 'added') return;
+      if (hers.outcome !== 'added' || his.outcome !== 'added') {
+        return;
+      }
       expect(his.page.siteId).not.toBe(hers.page.siteId);
     });
 
@@ -236,7 +248,9 @@ describe('PostgresPageRepository', () => {
       const domain = newDomain();
       const first = await sut.add({userId, domain, url: `https://${domain}/a`, limit: 10});
       await sut.add({userId, domain, url: `https://${domain}/b`, limit: 10});
-      if (first.outcome !== 'added') throw new Error('expected the page to be added');
+      if (first.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
       await sut.setMonitoringForUser(first.page.id, userId, false);
 
       const summaries = await sut.loadSummariesForUser(userId);
@@ -262,7 +276,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       await db.updateTable('audits').set({status: 'done', score: 80}).where('id', '=', added.firstAudit.id).execute();
       await addAudit(added.page.id, {status: 'failed'});
@@ -277,7 +293,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       // Sequential rather than parallel so created_at orders the way the
       // scores do; the assertion below is about order, so it must not depend
@@ -341,7 +359,9 @@ describe('PostgresPageRepository', () => {
         const userId = await makeUser();
         const domain = newDomain();
         const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-        if (added.outcome !== 'added') throw new Error('expected the page to be added');
+        if (added.outcome !== 'added') {
+          throw new Error('expected the page to be added');
+        }
 
         const history = 2000;
         await sql`
@@ -413,7 +433,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       const summaries = await sut.loadSummariesForUser(userId);
 
@@ -447,7 +469,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
       // The first audit is queued and dated now; the specs below add their own.
       await db.deleteFrom('audits').where('id', '=', added.firstAudit.id).execute();
       return {userId, pageId: added.page.id};
@@ -543,7 +567,9 @@ describe('PostgresPageRepository', () => {
 
         const auditQuery = queryMatching(issued, /from "audits"/i);
         expect(auditQuery).toBeDefined();
-        if (auditQuery === undefined) return;
+        if (auditQuery === undefined) {
+          return;
+        }
 
         expect(await explainPlanText(recording, auditQuery)).toContain('audits_page_created_idx');
       } finally {
@@ -750,7 +776,7 @@ describe('PostgresPageRepository', () => {
       // previous batch handled.
       const first = await monitoredPage();
       const second = await monitoredPage();
-      const ordered = [first.pageId, second.pageId].sort((left, right) => Number(BigInt(left) - BigInt(right)));
+      const ordered = [first.pageId, second.pageId].toSorted((left, right) => Number(BigInt(left) - BigInt(right)));
       const lower = ordered[0] ?? '';
       const higher = ordered[1] ?? '';
 
@@ -770,9 +796,13 @@ describe('PostgresPageRepository', () => {
       let after: string | null = null;
       for (;;) {
         const batch = await due({limit: 1, after});
-        const page = batch[0];
-        if (page === undefined) break;
-        if (mine.has(page.pageId)) seen.push(page.pageId);
+        const [page] = batch;
+        if (page === undefined) {
+          break;
+        }
+        if (mine.has(page.pageId)) {
+          seen.push(page.pageId);
+        }
         after = page.pageId;
       }
 
@@ -805,7 +835,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       const paused = await sut.setMonitoringForUser(added.page.id, userId, false);
       expect(paused?.monitoringEnabled).toBe(false);
@@ -821,7 +853,9 @@ describe('PostgresPageRepository', () => {
       const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
       const domain = newDomain();
       const hers = await sut.add({userId: alice, domain, url: `https://${domain}/`, limit: 10});
-      if (hers.outcome !== 'added') throw new Error('expected the page to be added');
+      if (hers.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       expect(await sut.setMonitoringForUser(hers.page.id, bob, false)).toBeNull();
 
@@ -849,7 +883,9 @@ describe('PostgresPageRepository', () => {
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
-      if (added.outcome !== 'added') throw new Error('expected the page to be added');
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       const auditId = added.firstAudit.id;
       await db
@@ -893,7 +929,9 @@ describe('PostgresPageRepository', () => {
       const domain = newDomain();
       const first = await sut.add({userId, domain, url: `https://${domain}/a`, limit: 10});
       await sut.add({userId, domain, url: `https://${domain}/b`, limit: 10});
-      if (first.outcome !== 'added') throw new Error('expected the page to be added');
+      if (first.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       await sut.deleteForUser(first.page.id, userId);
 
@@ -905,7 +943,9 @@ describe('PostgresPageRepository', () => {
       const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
       const domain = newDomain();
       const hers = await sut.add({userId: alice, domain, url: `https://${domain}/`, limit: 10});
-      if (hers.outcome !== 'added') throw new Error('expected the page to be added');
+      if (hers.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
 
       expect(await sut.deleteForUser(hers.page.id, bob)).toBe(false);
 

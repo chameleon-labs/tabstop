@@ -18,12 +18,22 @@ const BODY_PARSER_MESSAGES: Readonly<Record<string, string>> = {
   'request.size.invalid': 'That request body did not match its content-length',
 };
 
+// 4xx only. A library reporting 500 is reporting something unexpected, and
+// that must fall through to the generic answer below rather than be trusted.
+const asClientError = (status: unknown): number | null =>
+  typeof status === 'number' && status >= 400 && status < 500 ? status : null;
+
 const statusOf = (error: unknown): number | null => {
-  if (typeof error !== 'object' || error === null) return null;
-  const status = 'status' in error ? error.status : 'statusCode' in error ? error.statusCode : null;
-  // 4xx only. A library reporting 500 is reporting something unexpected, and
-  // that must fall through to the generic answer below rather than be trusted.
-  return typeof status === 'number' && status >= 400 && status < 500 ? status : null;
+  if (typeof error !== 'object' || error === null) {
+    return null;
+  }
+  if ('status' in error) {
+    return asClientError(error.status);
+  }
+  if ('statusCode' in error) {
+    return asClientError(error.statusCode);
+  }
+  return null;
 };
 
 const typeOf = (error: unknown): string | null =>

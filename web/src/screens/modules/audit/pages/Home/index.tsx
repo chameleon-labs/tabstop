@@ -62,12 +62,12 @@ export const Home = (): React.JSX.Element => {
    */
   const progressStatus = request.data === undefined ? 'submitting' : (audit.data?.status ?? request.data.status);
   const phase = useAuditPhase(progressStatus, startedAt, waiting);
-  const announcement =
-    done && audit.data !== undefined
-      ? completionAnnouncement(audit.data.score, audit.data.violations.length)
-      : waiting && phase !== null
-        ? `${phase}… ${EXPECTED_DURATION}`
-        : null;
+  let announcement: string | null = null;
+  if (done && audit.data !== undefined) {
+    announcement = completionAnnouncement(audit.data.score, audit.data.violations.length);
+  } else if (waiting && phase !== null) {
+    announcement = `${phase}… ${EXPECTED_DURATION}`;
+  }
 
   const submit = (url: string): void => {
     setStartedAt(Date.now());
@@ -93,7 +93,9 @@ export const Home = (): React.JSX.Element => {
     }
 
     const url = request.variables;
-    if (url === undefined) return;
+    if (url === undefined) {
+      return;
+    }
     request.reset();
     submit(url);
   };

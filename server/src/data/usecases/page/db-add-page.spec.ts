@@ -22,7 +22,7 @@ const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const pages = mockAddPageRepository();
   const deletes = mockDeleteQueuedAuditRepository();
   const queue = mockAuditQueue();
-  const resolver = {resolve: vi.fn<DnsResolver['resolve']>(async () => addresses)};
+  const resolver = {resolve: vi.fn<DnsResolver['resolve']>(() => Promise.resolve(addresses))};
   const sut = new DbAddPage(pages, deletes, queue, resolver, stubPolicy, LIMIT);
   return {sut, pages, deletes, queue, resolver};
 };
@@ -58,8 +58,9 @@ describe('DbAddPage', () => {
       order.push('commit');
       return await mockAddPageRepository().add(...args);
     });
-    queue.enqueueOnce.mockImplementationOnce(async () => {
+    queue.enqueueOnce.mockImplementationOnce(() => {
       order.push('enqueue');
+      return Promise.resolve();
     });
 
     await sut.add({userId: 'user-1', url: 'https://example.com/'});
@@ -141,7 +142,7 @@ describe('DbAddPage', () => {
   it('keeps the audit when the queue lost the reply but did accept the job', async () => {
     const {sut, deletes, queue} = makeSut();
     queue.enqueueOnce.mockRejectedValue(new Error('timeout'));
-    queue.has = vi.fn<AuditJobQueue['has']>(async () => true);
+    queue.has = vi.fn<AuditJobQueue['has']>(() => Promise.resolve(true));
 
     const result = await sut.add({userId: 'user-1', url: 'https://example.com/'});
 

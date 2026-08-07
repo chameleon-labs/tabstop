@@ -45,8 +45,12 @@ describe('useAuditPhase, as it reaches the screen', () => {
     // bug for that reason.
     const drain = (records: MutationRecord[]): void => {
       for (const record of records) {
-        if (record.oldValue !== null && record.oldValue !== undefined) seen.push(record.oldValue);
-        for (const removed of record.removedNodes) seen.push(removed.textContent ?? '');
+        if (record.oldValue !== null && record.oldValue !== undefined) {
+          seen.push(record.oldValue);
+        }
+        for (const removed of record.removedNodes) {
+          seen.push(removed.textContent ?? '');
+        }
       }
     };
     const observer = new MutationObserver(drain);

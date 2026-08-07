@@ -34,8 +34,12 @@ export const RequireAuth = ({children}: RequireAuthProps): React.JSX.Element => 
   const {data: account, isPending, error} = useSession();
   const location = useLocation();
 
-  if (error !== null) throw error;
-  if (isPending) return <></>;
+  if (error !== null) {
+    throw error;
+  }
+  if (isPending) {
+    return <></>;
+  }
 
   if (account === null) {
     // `replace`, so Back does not land on the gate again and bounce; `state`

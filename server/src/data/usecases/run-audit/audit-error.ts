@@ -29,7 +29,7 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
  * Playwright surfaces navigation failures as a generic error carrying a
  * net::ERR_* code in its message rather than a typed class.
  */
-const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+const PERMANENT_PATTERNS: readonly (readonly [RegExp, string])[] = [
   // Deliberately vague, and deliberately identical whatever the reason. A
   // message distinguishing "blocked" from "unreachable" would turn the audit
   // endpoint into an internal port scanner. Permanent because a blocked
@@ -47,9 +47,13 @@ const PERMANENT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 export const classifyAuditError = (error: unknown): AuditFailure => {
-  if (!(error instanceof Error)) return TRANSIENT;
+  if (!(error instanceof Error)) {
+    return TRANSIENT;
+  }
 
-  if (TRANSIENT_PATTERNS.some((pattern) => pattern.test(error.message))) return TRANSIENT;
+  if (TRANSIENT_PATTERNS.some((pattern) => pattern.test(error.message))) {
+    return TRANSIENT;
+  }
 
   // Scoped to page.goto deliberately. `chromium.launch()` times out with the
   // same error NAME, and a slow or unhealthy worker host is not a property of
@@ -67,7 +71,9 @@ export const classifyAuditError = (error: unknown): AuditFailure => {
   }
 
   for (const [pattern, message] of PERMANENT_PATTERNS) {
-    if (pattern.test(error.message)) return {permanent: true, message};
+    if (pattern.test(error.message)) {
+      return {permanent: true, message};
+    }
   }
 
   // Unrecognised failures are transient on purpose: a new failure mode is more

@@ -44,7 +44,7 @@ const guarded = <TRequest>(
   adaptRoute(controller),
 ];
 
-export default (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
+export const setupPageRoutes = (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
   // The tightest bucket here by a distance, because an accepted add is roughly
   // thirty seconds of Chromium - the same cost the anonymous audit endpoint is
   // metered for. The ten-page cap bounds how many pages an account can HOLD,

@@ -25,7 +25,7 @@ describe('useAudit', () => {
 
   beforeEach(() => {
     vi.useFakeTimers({shouldAdvanceTime: true});
-    fetchMock = vi.fn(async () => jsonResponse(200, audit('running')));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(200, audit('running'))));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -51,7 +51,7 @@ describe('useAudit', () => {
     // The whole reason the interval is a function of the response. A tab left
     // open on a finished audit must not keep asking about it forever, and no
     // component should have to remember to clear a timer to make that true.
-    fetchMock.mockImplementation(async () => jsonResponse(200, audit('done')));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, audit('done'))));
     renderHook(() => useAudit('abc', {pollAfterMs: 1000}), {wrapper});
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -65,7 +65,7 @@ describe('useAudit', () => {
   });
 
   it('stops on failed too, which is terminal for the same reason', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(200, audit('failed')));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, audit('failed'))));
     renderHook(() => useAudit('abc', {pollAfterMs: 1000}), {wrapper});
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -104,7 +104,7 @@ describe('useRequestAudit', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 2000}));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 2000})));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -136,7 +136,9 @@ describe('useRequestAudit', () => {
     // Anonymous and per-IP rate limited, so a 429 here is an expected outcome
     // of the product's main hook rather than something to hide.
     const resetAt = '2026-08-02T10:00:00.000Z';
-    fetchMock.mockImplementation(async () => jsonResponse(429, {error: 'Too many requests', retryAfter: 45, resetAt}));
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(429, {error: 'Too many requests', retryAfter: 45, resetAt})),
+    );
 
     const {result} = renderHook(() => useRequestAudit(), {wrapper});
     result.current.mutate('https://example.com');
@@ -152,7 +154,9 @@ describe('useRequestAudit', () => {
   });
 
   it("reports a rejected url with the server's own sentence", async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(400, {error: 'That URL resolves to a private address'}));
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(400, {error: 'That URL resolves to a private address'})),
+    );
 
     const {result} = renderHook(() => useRequestAudit(), {wrapper});
     result.current.mutate('http://192.168.0.1');
@@ -165,8 +169,8 @@ describe('useRequestAudit', () => {
   });
 
   it('does not retry, because a second audit is a second thirty seconds of Chromium', async () => {
-    fetchMock.mockImplementation(async () =>
-      jsonResponse(503, {error: 'Could not queue that audit, please try again'}),
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(503, {error: 'Could not queue that audit, please try again'})),
     );
 
     const {result} = renderHook(() => useRequestAudit(), {wrapper});

@@ -65,7 +65,7 @@ describe('PlaywrightAxeAuditor', () => {
     const result = await sut.audit(server.baseUrl, signal());
     const node = result.violations[0]?.nodes[0];
 
-    expect(Object.keys(node ?? {}).sort()).toEqual(['html', 'target']);
+    expect(Object.keys(node ?? {}).toSorted()).toEqual(['html', 'target']);
     expect(Array.isArray(node?.target)).toBe(true);
   });
 
@@ -109,7 +109,7 @@ describe('PlaywrightAxeAuditor', () => {
   }, 30_000);
 
   it('closes the context on the failure path, not just the happy one', async () => {
-    await expect(sut.audit('http://127.0.0.1:45999', signal())).rejects.toThrow();
+    await expect(sut.audit('http://127.0.0.1:45999', signal())).rejects.toThrow(Error);
 
     expect(await sut.contextCount()).toBe(0);
   });
@@ -207,10 +207,12 @@ describe('PlaywrightAxeAuditor URL safety', () => {
    */
   const socketOutcome = async (page: Page): Promise<string> => {
     await page.waitForFunction(
+      // oxlint-disable-next-line no-underscore-dangle -- the fixture page's own global
       () => (globalThis as unknown as {__socketOutcome: string}).__socketOutcome !== 'pending',
       undefined,
       {timeout: 10_000},
     );
+    // oxlint-disable-next-line no-underscore-dangle -- the fixture page's own global
     return await page.evaluate(() => (globalThis as unknown as {__socketOutcome: string}).__socketOutcome);
   };
 
@@ -296,7 +298,7 @@ describe('PlaywrightAxeAuditor URL safety', () => {
         const globals = globalThis as unknown as Record<string, unknown>;
         let reinstated = 'no';
         try {
-          globals.RTCPeerConnection = function () {
+          globals.RTCPeerConnection = function RTCPeerConnection() {
             /* attempt to restore */
           };
           reinstated = typeof globals.RTCPeerConnection;
@@ -368,7 +370,7 @@ describe('vendored engine in the build output', () => {
     const distExists = existsSync(fileURLToPath(new URL('../../../dist', import.meta.url)));
 
     if (!distExists) {
-      expect(distExists).toBe(false); // nothing built locally; CI covers this
+      // nothing built locally; CI covers this
       return;
     }
     expect(existsSync(dist)).toBe(true);

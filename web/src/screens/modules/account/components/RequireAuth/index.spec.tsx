@@ -69,7 +69,7 @@ describe('RequireAuth', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => jsonResponse(401, {error: 'Unauthorized'}));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -78,7 +78,7 @@ describe('RequireAuth', () => {
   });
 
   it('renders its children once there is a session', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(200, account));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, account)));
 
     renderGate();
 
@@ -86,7 +86,7 @@ describe('RequireAuth', () => {
   });
 
   it('asks the server, because the session cookie is httpOnly and unreadable here', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(200, account));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, account)));
 
     renderGate();
     await screen.findByRole('heading', {name: 'Protected'});
@@ -102,7 +102,7 @@ describe('RequireAuth', () => {
     // already started, and a spinner that appears for 80ms and vanishes is
     // worse than a beat of nothing - to a screen reader it is an announcement
     // about a state that no longer holds.
-    let release = (): void => {};
+    let release = (): void => undefined;
     fetchMock.mockImplementation(async () => {
       await new Promise<void>((resolve) => {
         release = resolve;
@@ -157,7 +157,7 @@ describe('RequireAuth', () => {
     // The failure mode this exists to prevent. A 500 read as "logged out"
     // bounces every signed-in user to a login page that could not work either,
     // and turns a backend outage into a support ticket about lost accounts.
-    fetchMock.mockImplementation(async () => jsonResponse(500, {error: 'Internal server error'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
     const router = createMemoryRouter(
       [

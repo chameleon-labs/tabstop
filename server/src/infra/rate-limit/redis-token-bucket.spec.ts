@@ -7,7 +7,9 @@ import type {BucketConfig} from '../../data/protocols/rate-limit/rate-limiter.js
 
 const connectionUrl = (): string => {
   const url = process.env.REDIS_URL;
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('REDIS_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -44,7 +46,9 @@ describe('RedisTokenBucket', () => {
   it('sets a bounded TTL after refunding an allowance', async () => {
     const k = key();
     const allowance = await sut.consume(k, frozen);
-    if (!allowance.allowed) throw new Error('expected allowance');
+    if (!allowance.allowed) {
+      throw new Error('expected allowance');
+    }
     await allowance.refund();
 
     const ttl = await redis.pttl(`rl:${k}`);
@@ -166,9 +170,9 @@ describe('RedisTokenBucket', () => {
       process.on('warning', onWarning);
 
       try {
-        const sut = new RedisTokenBucket(client);
+        const bucket = new RedisTokenBucket(client);
 
-        const decisions = await Promise.all(Array.from({length: 30}, async () => await sut.consume(key(), frozen)));
+        const decisions = await Promise.all(Array.from({length: 30}, async () => await bucket.consume(key(), frozen)));
 
         expect(decisions.every((decision) => decision.allowed)).toBe(true);
         expect(warnings).not.toContain('MaxListenersExceededWarning');
@@ -207,7 +211,7 @@ describe('RedisTokenBucket', () => {
       try {
         const startedAt = Date.now();
 
-        await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow();
+        await expect(new RedisTokenBucket(client).consume(key(), frozen)).rejects.toThrow(Error);
 
         expect(Date.now() - startedAt).toBeLessThan(READY_TIMEOUT_MS);
       } finally {

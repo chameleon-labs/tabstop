@@ -16,7 +16,7 @@ const rule = (impact: Impact | null, nodeCount: number, ruleId: string = randomU
 
 describe('summariseViolations', () => {
   describe('the score', () => {
-    const cases: Array<{name: string; violations: ScoredViolation[]; score: number}> = [
+    const cases: {name: string; violations: ScoredViolation[]; score: number}[] = [
       {name: 'a clean page', violations: [], score: 100},
       {name: 'one critical rule, one element', violations: [rule('critical', 1)], score: 90},
       {name: 'one serious rule, two elements', violations: [rule('serious', 2)], score: 90},

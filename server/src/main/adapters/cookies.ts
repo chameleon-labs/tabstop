@@ -9,19 +9,27 @@ export const parseCookies = (header: string | undefined): Record<string, string>
   // immediately, so `__proto__`, `constructor` and `toString` must be ordinary
   // entries rather than things with meaning.
   const cookies: Record<string, string> = Object.create(null);
-  if (header === undefined) return cookies;
+  if (header === undefined) {
+    return cookies;
+  }
 
   for (const part of header.split(';')) {
     const separator = part.indexOf('=');
-    if (separator === -1) continue;
+    if (separator === -1) {
+      continue;
+    }
     const name = part.slice(0, separator).trim();
-    if (name === '') continue;
+    if (name === '') {
+      continue;
+    }
     // FIRST wins. RFC 6265 orders the header most-specific-first, so the first
     // value is the one the browser considers the closest match - and a second
     // cookie of the same name is not a typo, it is an attempt to replace a
     // session. `__Host-` is what puts that out of reach in production; the
     // parser should not be the weak link everywhere else.
-    if (name in cookies) continue;
+    if (name in cookies) {
+      continue;
+    }
     cookies[name] = part.slice(separator + 1).trim();
   }
 

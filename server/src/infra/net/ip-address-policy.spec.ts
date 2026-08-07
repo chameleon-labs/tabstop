@@ -108,6 +108,7 @@ describe('parseAuditUrl', () => {
       'file:///etc/passwd',
       'ftp://example.com',
       'gopher://example.com',
+      // oxlint-disable-next-line no-script-url -- the blocked scheme under test
       'javascript:alert(1)',
       'data:text/html,<h1>x',
     ]) {

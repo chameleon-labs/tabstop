@@ -102,7 +102,11 @@ const ViolationItem = ({violation, defaultExpanded}: ViolationItemProps): React.
               <p>No specific elements were reported for this rule.</p>
             ) : (
               <ul>
+                {/* Audit nodes are render-once data that never reorders, and
+                    two nodes can share the same selector and markup, so
+                    content cannot make a unique key. */}
                 {violation.nodes.map((node, index) => (
+                  // oxlint-disable-next-line react/no-array-index-key
                   <li key={`${violation.ruleId}-${index}`}>
                     <p>
                       <code>{describeTarget(node.target)}</code>

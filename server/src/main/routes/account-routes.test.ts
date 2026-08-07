@@ -35,7 +35,9 @@ describe('account routes', () => {
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     connectDatabase(url);
     const dependencies = makeTestAppDependencies();
     app = setupApp(dependencies);
@@ -139,7 +141,7 @@ describe('account routes', () => {
         request(app).post('/api/signup').set('x-forwarded-for', uniqueIp()).send({email, password}),
       ]);
 
-      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409, 409]);
+      expect(responses.map((r) => r.status).toSorted((a, b) => a - b)).toEqual([201, 409, 409]);
     });
 
     it('returns 400 for a short password or a malformed email', async () => {
@@ -225,7 +227,9 @@ describe('account routes', () => {
             .set('x-forwarded-for', `192.0.2.${i + 1}`)
             .send({email, password: 'wrong-password-entirely'});
         }
-        if (last === undefined) throw new Error('no request was made');
+        if (last === undefined) {
+          throw new Error('no request was made');
+        }
         return last;
       };
 

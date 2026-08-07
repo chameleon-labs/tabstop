@@ -22,7 +22,9 @@ export class CoalescingDnsResolver implements DnsResolver {
 
   async resolve(hostname: string): Promise<string[]> {
     const pending = this.inFlight.get(hostname);
-    if (pending !== undefined) return await pending;
+    if (pending !== undefined) {
+      return await pending;
+    }
 
     const lookup = this.inner.resolve(hostname);
     this.inFlight.set(hostname, lookup);

@@ -32,6 +32,7 @@ describe('safeHelpUrl', () => {
   });
 
   it.each([
+    // oxlint-disable-next-line no-script-url -- the hostile input under test
     'javascript:alert(document.cookie)',
     'data:text/html,<script>alert(1)</script>',
     'file:///etc/passwd',
@@ -52,7 +53,7 @@ describe('safeHelpUrl', () => {
 });
 
 describe('toStoredViolations', () => {
-  const fromPage = (helpUrl: string): Array<{helpUrl: string}> =>
+  const fromPage = (helpUrl: string): {helpUrl: string}[] =>
     toStoredViolations([
       {
         ruleId: 'r',

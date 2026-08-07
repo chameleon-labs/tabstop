@@ -138,7 +138,9 @@ describe('DbRunScheduledReaudits', () => {
     // numbering and hands one of them a slot a sibling already holds.
     const {sut, pages, queue} = makeSut();
     const [first, second, third] = pagesOn('example.test', 3);
-    if (first === undefined || second === undefined || third === undefined) return;
+    if (first === undefined || second === undefined || third === undefined) {
+      return;
+    }
 
     pages.loadDueForReaudit.mockResolvedValueOnce([first, second, third]);
     await sut.run(NOW);
@@ -363,7 +365,12 @@ describe('DbRunScheduledReaudits', () => {
       // outside the attempt that was supposed to have ended.
       const {sut, audits, queue} = makeSut();
       audits.loadStaleInFlight.mockResolvedValueOnce([mockStaleAudit('audit-7', 1)]);
-      queue.isPending.mockImplementation(async () => await new Promise<never>(() => {}));
+      queue.isPending.mockImplementation(
+        async () =>
+          await new Promise<never>(() => {
+            /* never settles */
+          }),
+      );
 
       const startedAt = Date.now();
       const summary = await sut.run(NOW);
@@ -483,7 +490,7 @@ describe('DbRunScheduledReaudits', () => {
       const orphan = mockStaleAudit('orphan', 99);
       const {sut, audits, queue} = makeSut({batchSize: 5});
       audits.loadStaleInFlight.mockImplementation(mockPagedStaleAudits([...pending, orphan]));
-      queue.isPending.mockImplementation(async (auditId) => auditId !== 'orphan');
+      queue.isPending.mockImplementation((auditId) => Promise.resolve(auditId !== 'orphan'));
 
       const summary = await sut.run(NOW);
 
@@ -578,7 +585,7 @@ describe('DbRunScheduledReaudits', () => {
 
     it('reports a copy, so the caller is not holding a moving target', async () => {
       const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 250));
-      const snapshots: Array<{pagesConsidered: number}> = [];
+      const snapshots: {pagesConsidered: number}[] = [];
       const sut = new DbRunScheduledReaudits(
         pages,
         mockAddScheduledAuditRepository(),
@@ -607,9 +614,9 @@ describe('DbRunScheduledReaudits', () => {
       const pages = mockPagedDueReauditsRepository(pagesOn('example.test', 50));
       const audits = mockAddScheduledAuditRepository();
       const controller = new AbortController();
-      audits.addScheduled.mockImplementation(async (params) => {
+      audits.addScheduled.mockImplementation((params) => {
         controller.abort();
-        return {...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId};
+        return Promise.resolve({...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId});
       });
       const sut = new DbRunScheduledReaudits(
         pages,

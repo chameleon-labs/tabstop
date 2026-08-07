@@ -62,7 +62,9 @@ describe('daily re-audit scheduler', () => {
 
   const urlFor = (name: string): string => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     const parsed = new URL(url);
     parsed.pathname = `/${name}`;
     return parsed.toString();
@@ -70,7 +72,9 @@ describe('daily re-audit scheduler', () => {
 
   beforeAll(async () => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
 
     const admin = makeDatabase(urlFor('postgres'));
     try {
@@ -140,7 +144,7 @@ describe('daily re-audit scheduler', () => {
     return {pageId: page.id, domain};
   };
 
-  const auditsFor = async (pageId: string): Promise<Array<{id: string; status: string}>> =>
+  const auditsFor = async (pageId: string): Promise<{id: string; status: string}[]> =>
     await db.selectFrom('audits').select(['id', 'status']).where('page_id', '=', pageId).execute();
 
   it('creates one audit per monitored page and queues a job for each', async () => {

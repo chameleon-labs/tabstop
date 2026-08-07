@@ -123,7 +123,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       });
 
       const batch = rows.slice(0, wanted);
-      if (batch.length === 0) break;
+      if (batch.length === 0) {
+        break;
+      }
 
       for (const page of batch) {
         if (stopped()) {
@@ -141,7 +143,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       // exactly as many pages as this batch handled.
       after = batch[batch.length - 1]?.pageId ?? null;
       publish();
-      if (rows.length <= wanted) break;
+      if (rows.length <= wanted) {
+        break;
+      }
     }
 
     return summary;
@@ -173,7 +177,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
     // page is excluded from re-audits permanently - the exact failure this
     // pass exists to prevent.
     while (examined < this.maxPagesPerRun) {
-      if (stopped()) break;
+      if (stopped()) {
+        break;
+      }
 
       const wanted = Math.min(this.batchSize, this.maxPagesPerRun - examined);
 
@@ -188,14 +194,20 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
         return {reclaimed, failed: failed + 1};
       }
 
-      if (candidates.length === 0) break;
+      if (candidates.length === 0) {
+        break;
+      }
 
       for (const candidate of candidates) {
-        if (stopped()) return {reclaimed, failed};
+        if (stopped()) {
+          return {reclaimed, failed};
+        }
         examined += 1;
 
         const verdict = await this.queueVerdict(candidate.auditId);
-        if (verdict === 'pending') continue;
+        if (verdict === 'pending') {
+          continue;
+        }
         if (verdict === 'unknown') {
           // Skipped, exactly as `pending` is - but COUNTED, because they are
           // not the same fact. An unreachable queue means no candidate was
@@ -207,7 +219,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
         }
 
         try {
-          if (await this.audits.markAbandoned(candidate.auditId, ABANDONED_ERROR)) reclaimed += 1;
+          if (await this.audits.markAbandoned(candidate.auditId, ABANDONED_ERROR)) {
+            reclaimed += 1;
+          }
         } catch {
           // The row stays unfinished and is a candidate again next run.
           failed += 1;
@@ -215,7 +229,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       }
 
       after = candidates[candidates.length - 1] ?? null;
-      if (candidates.length < wanted) break;
+      if (candidates.length < wanted) {
+        break;
+      }
     }
 
     return {reclaimed, failed};
@@ -273,7 +289,9 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
       });
       // The unique index refused it: another run already scheduled this page
       // today, and its audit is the one that should exist.
-      if (audit === null) return 'skippedDuplicate';
+      if (audit === null) {
+        return 'skippedDuplicate';
+      }
       auditId = audit.id;
     } catch {
       // One page's insert failing must not end the night for every page after

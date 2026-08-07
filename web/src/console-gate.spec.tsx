@@ -1,3 +1,5 @@
+/* oxlint-disable vitest/expect-expect -- the `it.fails` tests assert by
+   failing: the gate's verdict is the assertion. See the header comment. */
 import {render, screen} from '@testing-library/react';
 import {Component, useEffect, type ReactNode} from 'react';
 import {describe, expect, it} from 'vitest';

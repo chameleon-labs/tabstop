@@ -37,7 +37,9 @@ export const withTimeout = async <T>(work: Promise<T>, ms: number): Promise<T> =
 export const resolvesSafely = async (url: URL, dnsResolver: DnsResolver, urlPolicy: UrlPolicy): Promise<boolean> => {
   const host = bareHostname(url);
   // A literal address was already checked by parseAuditUrl.
-  if (urlPolicy.isIpLiteral(host)) return true;
+  if (urlPolicy.isIpLiteral(host)) {
+    return true;
+  }
 
   const addresses = await dnsResolver.resolve(host);
   // Empty means resolution failed: fail closed. And every address must be
@@ -84,7 +86,9 @@ export const enqueueAudit = async (queue: AuditJobQueue, auditId: string, delayM
       await withTimeout(submit(), ENQUEUE_TIMEOUT_MS);
       return 'queued';
     } catch {
-      if (attempt >= ENQUEUE_ATTEMPTS) break;
+      if (attempt >= ENQUEUE_ATTEMPTS) {
+        break;
+      }
       await new Promise<void>((resolve) => {
         setTimeout(resolve, ENQUEUE_BACKOFF_MS * attempt).unref();
       });

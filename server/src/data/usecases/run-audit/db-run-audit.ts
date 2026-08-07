@@ -22,7 +22,9 @@ export class DbRunAudit implements RunAudit {
   async run({auditId, signal, isFinalAttempt}: RunAuditParams): Promise<void> {
     const audit = await this.loadAuditByIdRepository.loadById(auditId);
     // Retrying cannot conjure the row back, so this is permanent by definition.
-    if (audit === null) throw new PermanentAuditError(`Audit ${auditId} no longer exists`);
+    if (audit === null) {
+      throw new PermanentAuditError(`Audit ${auditId} no longer exists`);
+    }
 
     // A queue redelivers - after a lost acknowledgement, or a process that
     // died between finishing the work and reporting it. Claiming is a single
@@ -38,7 +40,9 @@ export class DbRunAudit implements RunAudit {
       // writing a terminal status, and if this job acknowledges now, nothing
       // will ever pick the audit up again. Failing keeps it on the queue.
       const current = await this.loadAuditByIdRepository.loadById(auditId);
-      if (current === null || current.status === 'done' || current.status === 'failed') return;
+      if (current === null || current.status === 'done' || current.status === 'failed') {
+        return;
+      }
 
       throw new Error(`Audit ${auditId} is held by another attempt`);
     }
@@ -82,7 +86,9 @@ export class DbRunAudit implements RunAudit {
         await this.auditStatusRepository.releaseClaim(auditId, claimedAt);
       }
 
-      if (failure.permanent) throw new PermanentAuditError(failure.message);
+      if (failure.permanent) {
+        throw new PermanentAuditError(failure.message);
+      }
       throw error;
     }
   }

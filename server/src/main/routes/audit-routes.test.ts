@@ -20,7 +20,9 @@ describe('audit routes', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     connectDatabase(url);
     db = getDatabase();
     dependencies = makeTestAppDependencies();
@@ -91,6 +93,7 @@ describe('audit routes', () => {
         'file:///etc/passwd',
         'https://alice:secret@example.com/',
         'data:text/html,<h1>x',
+        // oxlint-disable-next-line no-script-url -- the blocked input under test
         'javascript:alert(1)',
         'http://169.254.169.254/latest/meta-data/',
         'http://127.0.0.1/',
@@ -137,12 +140,12 @@ describe('audit routes', () => {
       // Distinct IP per spec: the bucket is shared process-wide, so a fixed
       // address would make these specs depend on each other's order.
       const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
-      const submit = async () =>
+      const attempt = async () =>
         await request(app).post('/api/audits').set('x-forwarded-for', ip).send({url: auditableUrl()});
 
       const statuses: number[] = [];
       for (let i = 0; i < env.auditRateCapacity + 1; i++) {
-        statuses.push((await submit()).status);
+        statuses.push((await attempt()).status);
       }
 
       expect(statuses.at(-1)).toBe(429);
@@ -194,7 +197,9 @@ describe('audit routes', () => {
         .executeTakeFirstOrThrow();
 
       const claimedAt = await audits.claimForRun(row.id);
-      if (claimedAt === null) throw new Error('fixture failed to claim');
+      if (claimedAt === null) {
+        throw new Error('fixture failed to claim');
+      }
       await violations.replaceAll(row.id, claimedAt, [
         {
           ruleId: 'image-alt',

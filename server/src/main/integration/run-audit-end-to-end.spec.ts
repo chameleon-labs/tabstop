@@ -2,7 +2,6 @@ import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import type {UrlPolicy} from '../../domain/services/url-safety.js';
 import {DEFAULT_URL_POLICY, isBlockedAddress} from '../../infra/net/ip-address-policy.js';
 import {NodeDnsResolver} from '../../infra/net/node-dns-resolver.js';
-import {randomUUID} from 'node:crypto';
 import type {Kysely} from 'kysely';
 import {DbRunAudit} from '../../data/usecases/run-audit/db-run-audit.js';
 import {PermanentAuditError} from '../../domain/errors/permanent-audit-error.js';
@@ -44,7 +43,9 @@ describe('run-audit end to end', () => {
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
     server = await startFixtureServer();
     auditor = new PlaywrightAxeAuditor(
@@ -93,15 +94,15 @@ describe('run-audit end to end', () => {
     expect(audit.duration_ms).toBeGreaterThan(0);
     expect(audit.completed_at).toBeInstanceOf(Date);
 
-    const violations = await db.selectFrom('violations').selectAll().where('audit_id', '=', auditId).execute();
-    const ruleIds = violations.map((violation) => violation.rule_id);
+    const stored = await db.selectFrom('violations').selectAll().where('audit_id', '=', auditId).execute();
+    const ruleIds = stored.map((violation) => violation.rule_id);
     expect(ruleIds).toContain('image-alt');
     expect(ruleIds).toContain('label');
 
     // The score has to come from the violations this run actually stored, not
     // from a constant that happens to match.
     const expected = summariseViolations(
-      violations.map((violation) => ({
+      stored.map((violation) => ({
         ruleId: violation.rule_id,
         impact: violation.impact,
         nodeCount: violation.nodes.length,
@@ -114,13 +115,13 @@ describe('run-audit end to end', () => {
 
     // jsonb reorders keys, so compare structurally rather than as JSON text.
     const counts = audit.counts_by_impact;
-    expect(Object.keys(counts).sort()).toEqual(['critical', 'minor', 'moderate', 'serious']);
+    expect(Object.keys(counts).toSorted()).toEqual(['critical', 'minor', 'moderate', 'serious']);
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
-    const nodeTotal = violations.reduce((sum, violation) => sum + violation.nodes.length, 0);
+    const nodeTotal = stored.reduce((sum, violation) => sum + violation.nodes.length, 0);
     expect(total).toBe(nodeTotal);
 
     // nodes survive the jsonb round trip as objects, not a Postgres array literal
-    expect(violations[0]?.nodes[0]).toEqual({
+    expect(stored[0]?.nodes[0]).toEqual({
       target: expect.any(Array),
       html: expect.any(String),
     });
@@ -139,7 +140,9 @@ describe('run-audit end to end', () => {
 
     // Attempt 1: claims, commits violations, then dies before completion.
     const firstClaim = await audits.claimForRun(auditId);
-    if (firstClaim === null) throw new Error('fixture failed to claim');
+    if (firstClaim === null) {
+      throw new Error('fixture failed to claim');
+    }
     await violations.replaceAll(auditId, firstClaim, [
       {
         ruleId: 'left-behind-by-the-crashed-attempt',
@@ -215,7 +218,7 @@ describe('run-audit end to end', () => {
     aborted.abort();
 
     // Attempt 1: fails transiently, with attempts still remaining.
-    await expect(sut.run({auditId, signal: aborted.signal, isFinalAttempt: false})).rejects.toThrow();
+    await expect(sut.run({auditId, signal: aborted.signal, isFinalAttempt: false})).rejects.toThrow(Error);
 
     const betweenAttempts = await load(auditId);
     expect(betweenAttempts.status).toBe('queued');

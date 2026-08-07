@@ -71,7 +71,7 @@ describe('DbRunAudit', () => {
 
   it('audits the URL from the loaded audit row', async () => {
     const {sut, pageAuditor} = makeSut();
-    const signal = new AbortController().signal;
+    const {signal} = new AbortController();
 
     await sut.run(params({signal}));
 

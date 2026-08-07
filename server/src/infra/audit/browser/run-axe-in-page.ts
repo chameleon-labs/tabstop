@@ -1,3 +1,5 @@
+import type * as axeCore from 'axe-core';
+
 /**
  * What crosses back from the page.
  *
@@ -9,24 +11,24 @@
  */
 export type EvaluatedResult = {
   axeVersion: string;
-  violations: Array<{
+  violations: {
     ruleId: string;
     impact: string | null;
     description: string;
     helpUrl: string;
-    nodes: Array<{target: string[]; html: string}>;
-  }>;
+    nodes: {target: string[]; html: string}[];
+  }[];
 };
 
 /**
  * The engine, injected by `page.addScriptTag` before this runs.
  *
- * Declared rather than imported, and typed through an inline `import type` so
- * this file has no import statement at all. `axe-core` is a devDependency used
- * for its types only; a real import would fail at runtime in the page and
- * break the serialisation this function depends on.
+ * Declared rather than imported, and typed through a type-only import that
+ * compiles away, so this file emits no import statement at all. `axe-core` is
+ * a devDependency used for its types only; a real import would fail at runtime
+ * in the page and break the serialisation this function depends on.
  */
-declare const axe: typeof import('axe-core') | undefined;
+declare const axe: typeof axeCore | undefined;
 
 /**
  * Runs in the BROWSER.

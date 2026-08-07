@@ -13,7 +13,9 @@ type TestPayload = {value: string};
 
 const connectionUrl = (): string => {
   const url = process.env.REDIS_URL;
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('REDIS_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -22,7 +24,7 @@ const JOB_DURATION_MS = 150;
 
 describe('setGlobalConcurrency', () => {
   let queue: PayloadQueue<TestPayload> | null = null;
-  let workers: Array<PayloadWorker<TestPayload>> = [];
+  let workers: PayloadWorker<TestPayload>[] = [];
 
   afterEach(async () => {
     try {
@@ -73,7 +75,9 @@ describe('setGlobalConcurrency', () => {
         async () => {
           running += 1;
           peak = Math.max(peak, running);
-          await new Promise((resolve) => setTimeout(resolve, JOB_DURATION_MS));
+          await new Promise((resolve) => {
+            setTimeout(resolve, JOB_DURATION_MS);
+          });
           running -= 1;
           finished += 1;
         },
@@ -94,9 +98,14 @@ describe('setGlobalConcurrency', () => {
     );
 
     const deadline = Date.now() + 30_000;
+    // oxlint-disable-next-line no-unmodified-loop-condition -- the workers above mutate `finished`
     while (finished < jobCount) {
-      if (Date.now() > deadline) throw new Error(`Only ${finished}/${jobCount} jobs ran`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      if (Date.now() > deadline) {
+        throw new Error(`Only ${finished}/${jobCount} jobs ran`);
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
     }
 
     return peak;
@@ -219,7 +228,7 @@ describe('upsertDailySchedule', () => {
 });
 
 describe('rateLimitForAtLeast', () => {
-  let queues: Array<PayloadQueue<TestPayload>> = [];
+  let queues: PayloadQueue<TestPayload>[] = [];
 
   afterEach(async () => {
     try {

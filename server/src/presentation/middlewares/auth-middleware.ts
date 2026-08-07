@@ -18,7 +18,9 @@ export class AuthMiddleware implements Middleware {
       }
 
       const account = await this.loadAccountBySession.load(sessionId);
-      if (account === null) return unauthorized(new UnauthorizedError());
+      if (account === null) {
+        return unauthorized(new UnauthorizedError());
+      }
 
       // userId is what #11's ownership-scoped repositories need; account saves
       // /api/me a second lookup. Both land in res.locals, which adaptRoute

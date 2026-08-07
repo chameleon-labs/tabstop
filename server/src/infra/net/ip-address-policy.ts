@@ -80,7 +80,9 @@ blocked.addSubnet('5f00::', 16, 'ipv6'); // segment routing
  */
 export const isBlockedAddress = (address: string): boolean => {
   const family = isIP(address);
-  if (family === 0) return true;
+  if (family === 0) {
+    return true;
+  }
   return blocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
 };
 

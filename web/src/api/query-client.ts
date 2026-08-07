@@ -11,7 +11,9 @@ import {ApiError} from './client';
  * all and does get retried, because it may genuinely be transient.
  */
 const retry = (failureCount: number, error: unknown): boolean => {
-  if (error instanceof ApiError && error.status < 500) return false;
+  if (error instanceof ApiError && error.status < 500) {
+    return false;
+  }
   return failureCount < 2;
 };
 

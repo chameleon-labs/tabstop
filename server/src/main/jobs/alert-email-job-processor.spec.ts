@@ -29,9 +29,9 @@ describe('makeAlertEmailJobProcessor', () => {
 
   it('logs dispatch summaries for dispatch jobs', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const dispatch = vi.fn(async () => ({processed: 3}));
-    const send = vi.fn(async () => 'sent' as const);
-    const rateLimit = vi.fn(async () => {});
+    const dispatch = vi.fn(() => Promise.resolve({processed: 3}));
+    const send = vi.fn(() => Promise.resolve('sent' as const));
+    const rateLimit = vi.fn(() => Promise.resolve());
     const process = makeAlertEmailJobProcessor({dispatch, send, rateLimit});
 
     await process({data: {kind: 'dispatch'}, attemptsMade: 0});
@@ -48,10 +48,8 @@ describe('makeAlertEmailJobProcessor', () => {
 
   it('waits for the retry delay before throwing BullMQ RateLimitError on provider rate limiting', async () => {
     const retryDelay = createDeferred<void>();
-    const dispatch = vi.fn(async () => ({processed: 0}));
-    const send = vi.fn(async () => {
-      throw new AlertRateLimitError(7_000);
-    });
+    const dispatch = vi.fn(() => Promise.resolve({processed: 0}));
+    const send = vi.fn(() => Promise.reject(new AlertRateLimitError(7_000)));
     const rateLimit = vi.fn(() => retryDelay.promise);
     const process = makeAlertEmailJobProcessor({dispatch, send, rateLimit});
     const processing = process({
@@ -83,13 +81,9 @@ describe('makeAlertEmailJobProcessor', () => {
 
   it('propagates a shared-backoff installation failure instead of claiming a rate-limited retry', async () => {
     const redisFailure = new Error('cannot install shared provider backoff');
-    const dispatch = vi.fn(async () => ({processed: 0}));
-    const send = vi.fn(async () => {
-      throw new AlertRateLimitError(7_000);
-    });
-    const rateLimit = vi.fn(async () => {
-      throw redisFailure;
-    });
+    const dispatch = vi.fn(() => Promise.resolve({processed: 0}));
+    const send = vi.fn(() => Promise.reject(new AlertRateLimitError(7_000)));
+    const rateLimit = vi.fn(() => Promise.reject(redisFailure));
     const process = makeAlertEmailJobProcessor({dispatch, send, rateLimit});
 
     await expect(
@@ -103,11 +97,9 @@ describe('makeAlertEmailJobProcessor', () => {
 
   it('propagates ordinary transient send failures unchanged', async () => {
     const transient = new Error('provider unavailable');
-    const dispatch = vi.fn(async () => ({processed: 0}));
-    const send = vi.fn(async () => {
-      throw transient;
-    });
-    const rateLimit = vi.fn(async () => {});
+    const dispatch = vi.fn(() => Promise.resolve({processed: 0}));
+    const send = vi.fn(() => Promise.reject(transient));
+    const rateLimit = vi.fn(() => Promise.resolve());
     const process = makeAlertEmailJobProcessor({dispatch, send, rateLimit});
 
     await expect(
@@ -121,9 +113,9 @@ describe('makeAlertEmailJobProcessor', () => {
 
   it('completes terminal failed outcomes and logs them truthfully', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const dispatch = vi.fn(async () => ({processed: 0}));
-    const send = vi.fn(async () => 'failed' as const);
-    const rateLimit = vi.fn(async () => {});
+    const dispatch = vi.fn(() => Promise.resolve({processed: 0}));
+    const send = vi.fn(() => Promise.resolve('failed' as const));
+    const rateLimit = vi.fn(() => Promise.resolve());
     const process = makeAlertEmailJobProcessor({dispatch, send, rateLimit});
 
     await expect(

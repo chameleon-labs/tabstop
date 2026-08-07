@@ -10,7 +10,9 @@ describe('009 alert delivery state', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
   });
 
@@ -151,7 +153,7 @@ describe('009 alert delivery state', () => {
         and table_name = 'alert_events'
         and column_name in ('previewed_at', 'failed_at', 'failure_reason')
     `.execute(db);
-    expect(columns.rows.map((column) => column.column_name).sort()).toEqual([
+    expect(columns.rows.map((column) => column.column_name).toSorted()).toEqual([
       'failed_at',
       'failure_reason',
       'previewed_at',

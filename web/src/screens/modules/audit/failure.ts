@@ -71,10 +71,14 @@ export const describeRequestFailure = (error: unknown): DescribedFailure => {
 
   // 400 is the address being refused - scheme, port, private address,
   // credentials. All properties of the URL, so a retry fails identically.
-  if (error.status === 400) return {message: error.message, action: 'check-url', source: 'request'};
+  if (error.status === 400) {
+    return {message: error.message, action: 'check-url', source: 'request'};
+  }
 
   // 503 is the queue at its depth cap, and the audit row was removed.
-  if (error.status >= 500) return {message: error.message, action: 'retry', source: 'request'};
+  if (error.status >= 500) {
+    return {message: error.message, action: 'retry', source: 'request'};
+  }
 
   return {message: error.message, action: 'none', source: 'request'};
 };
@@ -94,7 +98,9 @@ export const describePollFailure = (error: unknown): DescribedFailure => {
   }
 
   // The uuid names nothing, and it is the one poll failure that is permanent.
-  if (error.status === 404) return {message: error.message, action: 'none', source: 'poll'};
+  if (error.status === 404) {
+    return {message: error.message, action: 'none', source: 'poll'};
+  }
 
   return {message: error.message, action: 'retry', source: 'poll'};
 };
@@ -141,8 +147,12 @@ export const describeFailure = ({requestError, pollError, audit}: FailureSources
   if (requestError !== null && requestError !== undefined) {
     return describeRequestFailure(requestError);
   }
-  if (pollError !== null && pollError !== undefined) return describePollFailure(pollError);
-  if (audit?.status === 'failed') return describeAuditFailure(audit);
+  if (pollError !== null && pollError !== undefined) {
+    return describePollFailure(pollError);
+  }
+  if (audit?.status === 'failed') {
+    return describeAuditFailure(audit);
+  }
   return null;
 };
 

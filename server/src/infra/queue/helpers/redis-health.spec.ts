@@ -4,7 +4,9 @@ import {watchRedis} from './redis-health.js';
 
 const connectionString = (): string => {
   const url = process.env.REDIS_URL;
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('REDIS_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -17,10 +19,12 @@ const reported = (): {lines: string[]; log: (message: string) => void} => {
 };
 
 describe('watchRedis', () => {
-  const open: Array<{close: () => Promise<void>}> = [];
+  const open: {close: () => Promise<void>}[] = [];
 
   afterEach(async () => {
-    for (const watcher of open.splice(0)) await watcher.close();
+    for (const watcher of open.splice(0)) {
+      await watcher.close();
+    }
     vi.useRealTimers();
   });
 
@@ -64,7 +68,9 @@ describe('watchRedis', () => {
     });
     const afterFirst = lines.length;
     // Long enough for several reconnection attempts to have gone by.
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 600);
+    });
 
     expect(lines.length).toBe(afterFirst);
   });
@@ -113,7 +119,9 @@ describe('watchRedis', () => {
       // connection open and `server.close` - which waits for them - would never
       // return while it still runs.
       await watcher.close();
-      for (const socket of live) socket.destroy();
+      for (const socket of live) {
+        socket.destroy();
+      }
       await new Promise<void>((resolve) => {
         server.close(() => {
           resolve();

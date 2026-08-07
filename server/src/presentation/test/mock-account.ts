@@ -21,15 +21,15 @@ export const mockAuthenticatedSession = (): AuthenticatedSession => ({
 });
 
 export const mockAddAccount = () => ({
-  add: vi.fn<AddAccount['add']>(async () => mockAuthenticatedSession()),
+  add: vi.fn<AddAccount['add']>(() => Promise.resolve(mockAuthenticatedSession())),
 });
 
 export const mockAuthenticate = () => ({
-  auth: vi.fn<Authenticate['auth']>(async () => mockAuthenticatedSession()),
+  auth: vi.fn<Authenticate['auth']>(() => Promise.resolve(mockAuthenticatedSession())),
 });
 
 export const mockLoadAccountBySession = () => ({
-  load: vi.fn<LoadAccountBySession['load']>(async () => mockAccountModel()),
+  load: vi.fn<LoadAccountBySession['load']>(() => Promise.resolve(mockAccountModel())),
 });
 
 export const mockRevokeSession = () => ({

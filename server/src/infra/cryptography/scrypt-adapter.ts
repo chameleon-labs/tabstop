@@ -94,12 +94,20 @@ export class ScryptAdapter implements Hasher, HashComparer {
 
   async compare(plaintext: string, digest: string): Promise<boolean> {
     const parts = digest.split('$');
-    if (parts.length !== DIGEST_PARTS) return false;
+    if (parts.length !== DIGEST_PARTS) {
+      return false;
+    }
 
     const [scheme, n, r, p, saltBase64, keyBase64] = parts;
-    if (scheme !== 'scrypt') return false;
-    if (n === undefined || r === undefined || p === undefined) return false;
-    if (saltBase64 === undefined || keyBase64 === undefined) return false;
+    if (scheme !== 'scrypt') {
+      return false;
+    }
+    if (n === undefined || r === undefined || p === undefined) {
+      return false;
+    }
+    if (saltBase64 === undefined || keyBase64 === undefined) {
+      return false;
+    }
 
     const parameters = {N: Number(n), r: Number(r), p: Number(p)};
     const expected = Buffer.from(keyBase64, 'base64');
@@ -107,7 +115,9 @@ export class ScryptAdapter implements Hasher, HashComparer {
     // The derivation below uses the stored length, so a truncated digest would
     // compare only that many bytes: a one-byte key accepts an arbitrary
     // password with probability 1/256. Measured at 3 in 1500 before this check.
-    if (expected.length !== KEY_LENGTH) return false;
+    if (expected.length !== KEY_LENGTH) {
+      return false;
+    }
 
     // Parameter validity is left to scrypt itself rather than re-checked here.
     // Node validates synchronously and throws - for a cost that is not a power

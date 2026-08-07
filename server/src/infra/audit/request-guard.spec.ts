@@ -41,10 +41,10 @@ const makeRoute = (
     abort: vi.fn(async (_errorCode: string) => {
       /* no-op */
     }),
-    fetch: vi.fn(async (attempt: Attempted & {maxRedirects: number}) => {
+    fetch: vi.fn((attempt: Attempted & {maxRedirects: number}) => {
       fetched.push(attempt.url);
       attempts.push(attempt);
-      return responses[Math.min(served++, responses.length - 1)] as FetchedResponse;
+      return Promise.resolve(responses[Math.min(served++, responses.length - 1)] as FetchedResponse);
     }),
     fulfill: vi.fn(async (_options: {response: FetchedResponse}) => {
       /* no-op */
@@ -57,7 +57,7 @@ const makeRoute = (
 };
 
 const resolverFor = (map: Record<string, string[]>): DnsResolver => ({
-  resolve: vi.fn(async (hostname: string) => map[hostname] ?? []),
+  resolve: vi.fn((hostname: string) => Promise.resolve(map[hostname] ?? [])),
 });
 
 const PUBLIC = {'example.com': ['93.184.216.34'], 'evil.test': ['93.184.216.34']};
@@ -259,9 +259,7 @@ describe('makeRequestGuard', () => {
       abort: vi.fn(async (_code: string) => {
         /* no-op */
       }),
-      fetch: vi.fn(async () => {
-        throw new Error(message);
-      }),
+      fetch: vi.fn(() => Promise.reject(new Error(message))),
       fulfill: vi.fn(async () => {
         /* no-op */
       }),
@@ -275,7 +273,7 @@ describe('makeRequestGuard', () => {
       // the route is never answered, page.goto runs to its full timeout, and a
       // fast "Nothing responded at that address" becomes a slow, wrong "The
       // page took too long to load".
-      const cases: Array<[string, string]> = [
+      const cases: [string, string][] = [
         ['connect ECONNREFUSED 127.0.0.1:45999', 'connectionrefused'],
         ['getaddrinfo ENOTFOUND nope.invalid', 'namenotresolved'],
         ['socket hang up ECONNRESET', 'connectionreset'],

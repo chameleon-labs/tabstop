@@ -22,19 +22,26 @@ const measuring = (width: number): void => {
     'ResizeObserver',
     class {
       constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element): void {
+      observe(_target: Element): void {
         this.callback([{contentRect: {width}} as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
       }
 
-      unobserve(): void {}
-      disconnect(): void {}
+      unobserve(): void {
+        /* nothing to release */
+      }
+
+      disconnect(): void {
+        /* nothing to release */
+      }
     },
   );
 };
 
 const svgOf = (container: HTMLElement): SVGSVGElement => {
   const svg = container.querySelector('svg');
-  if (svg === null) throw new Error('no svg rendered');
+  if (svg === null) {
+    throw new Error('no svg rendered');
+  }
   return svg;
 };
 
@@ -67,7 +74,9 @@ describe('ScoreChart', () => {
     const {container} = render(<ScoreChart data={DATA} referenceDate="Jul 21" />);
     const labels = [...container.querySelectorAll('text')].map((node) => node.textContent);
 
-    for (const date of DATA.map(({date}) => date)) expect(labels).toContain(date);
+    for (const date of DATA.map((point) => point.date)) {
+      expect(labels).toContain(date);
+    }
     expect(labels).toContain('50');
     expect(labels).toContain('100');
   });

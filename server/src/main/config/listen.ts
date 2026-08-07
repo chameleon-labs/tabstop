@@ -16,7 +16,9 @@ export type ListenHandlers = {
  */
 const boundPort = (server: Server): number | null => {
   const address = server.address();
-  if (address === null || typeof address === 'string') return null;
+  if (address === null || typeof address === 'string') {
+    return null;
+  }
   return address.port;
 };
 
@@ -53,7 +55,9 @@ export const startListening = (app: Express, port: number, handlers: ListenHandl
     // Not `else`: the failure is reported by the error handler below, which
     // carries the reason. Saying anything here would either duplicate it or
     // guess at it.
-    if (bound !== null) handlers.info(`Server running at http://localhost:${bound}`);
+    if (bound !== null) {
+      handlers.info(`Server running at http://localhost:${bound}`);
+    }
   });
 
   // `once`, because one listen attempt has one outcome. Node emits a single

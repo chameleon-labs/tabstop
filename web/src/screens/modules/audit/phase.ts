@@ -56,16 +56,20 @@ export type ProgressStatus = AuditStatus | 'submitting';
  * progress indicator untrustworthy.
  */
 export const phaseFor = (status: ProgressStatus, elapsedMs: number): string | null => {
-  if (status === 'submitting') return SUBMITTING_LABEL;
-  if (status === 'queued') return QUEUED_LABEL;
-  if (status !== 'running') return null;
-
-  // Last match wins, so the array reads in the order the phases happen.
-  let label = PHASES[0]?.label ?? null;
-  for (const phase of PHASES) {
-    if (elapsedMs >= phase.fromMs) label = phase.label;
+  if (status === 'submitting') {
+    return SUBMITTING_LABEL;
   }
-  return label;
+  if (status === 'queued') {
+    return QUEUED_LABEL;
+  }
+  if (status !== 'running') {
+    return null;
+  }
+
+  // Last match wins, so the array reads in the order the phases happen. The
+  // first phase doubles as the fallback before its own threshold.
+  const phase = PHASES.findLast((candidate) => elapsedMs >= candidate.fromMs) ?? PHASES[0];
+  return phase?.label ?? null;
 };
 
 /**

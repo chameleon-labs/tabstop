@@ -1,13 +1,15 @@
 import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {sql, type Kysely} from 'kysely';
-import pg from 'pg';
+import {DatabaseError} from 'pg';
 import {PostgresHealthAdapter} from './postgres-health-adapter.js';
 import {makeDatabase} from '../helpers/postgres-helper.js';
 import type {Database} from '../database.js';
 
 const connectionString = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -28,7 +30,7 @@ describe('PostgresHealthAdapter', () => {
     // logs the diagnosis by design. Silence it so a passing run doesn't print
     // alarming stderr in CI, and assert on the spy instead - the logging is
     // part of the adapter's contract, so it's worth pinning rather than hiding.
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -58,7 +60,7 @@ describe('PostgresHealthAdapter', () => {
       // destroy() throws if the pool was already destroyed above; that's
       // expected on the happy path, so swallow it here - this is only a
       // safety net for a failure before the intentional destroy() runs.
-      await destroyed.destroy().catch(() => {});
+      await destroyed.destroy().catch(() => undefined);
     }
   });
 
@@ -74,10 +76,9 @@ describe('PostgresHealthAdapter', () => {
     // and a test that fails whenever CI is busy. The error is a genuine
     // pg.DatabaseError carrying the real SQLSTATE, so what is faked is the
     // timing, not the failure being handled.
-    const queryCanceled = Object.assign(
-      new pg.DatabaseError('canceling statement due to statement timeout', 0, 'error'),
-      {code: '57014'},
-    );
+    const queryCanceled = Object.assign(new DatabaseError('canceling statement due to statement timeout', 0, 'error'), {
+      code: '57014',
+    });
     const cancelling = {
       getExecutor: () => {
         throw queryCanceled;

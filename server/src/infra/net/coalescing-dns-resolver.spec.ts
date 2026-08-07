@@ -16,7 +16,7 @@ const deferred = () => {
 
 describe('CoalescingDnsResolver', () => {
   it('shares one lookup between concurrent callers', async () => {
-    const inner = mockResolver(async () => ['93.184.216.34']);
+    const inner = mockResolver(() => Promise.resolve(['93.184.216.34']));
     const sut = new CoalescingDnsResolver(inner);
 
     await Promise.all([sut.resolve('example.com'), sut.resolve('example.com'), sut.resolve('example.com')]);
@@ -30,7 +30,7 @@ describe('CoalescingDnsResolver', () => {
     // tens of seconds - long enough to answer publicly, flip DNS, and have a
     // later request approved against the stale public answer while the browser
     // resolves the private one.
-    const inner = mockResolver(async () => ['93.184.216.34']);
+    const inner = mockResolver(() => Promise.resolve(['93.184.216.34']));
     const sut = new CoalescingDnsResolver(inner);
 
     await sut.resolve('example.com');
@@ -41,7 +41,7 @@ describe('CoalescingDnsResolver', () => {
 
   it('sees the answer change when DNS changes underneath it', async () => {
     let answer = ['93.184.216.34'];
-    const sut = new CoalescingDnsResolver(mockResolver(async () => answer));
+    const sut = new CoalescingDnsResolver(mockResolver(() => Promise.resolve(answer)));
 
     expect(await sut.resolve('example.com')).toEqual(['93.184.216.34']);
     answer = ['10.0.0.5'];
@@ -65,13 +65,11 @@ describe('CoalescingDnsResolver', () => {
   });
 
   it('does not leave a failure wedged in the map', async () => {
-    const inner = mockResolver(async () => {
-      throw new Error('EAI_AGAIN');
-    });
+    const inner = mockResolver(() => Promise.reject(new Error('EAI_AGAIN')));
     const sut = new CoalescingDnsResolver(inner);
 
-    await expect(sut.resolve('example.com')).rejects.toThrow();
-    await expect(sut.resolve('example.com')).rejects.toThrow();
+    await expect(sut.resolve('example.com')).rejects.toThrow('EAI_AGAIN');
+    await expect(sut.resolve('example.com')).rejects.toThrow('EAI_AGAIN');
 
     expect(inner.resolve).toHaveBeenCalledTimes(2);
   });

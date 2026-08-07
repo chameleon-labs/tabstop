@@ -47,7 +47,9 @@ export class PostgresAccountRepository
 
       return toAccountModel(row);
     } catch (error) {
-      if (isEmailAlreadyTaken(error)) return null;
+      if (isEmailAlreadyTaken(error)) {
+        return null;
+      }
       throw error;
     }
   }
@@ -55,7 +57,9 @@ export class PostgresAccountRepository
   async loadByEmail(email: string): Promise<AccountWithDigest | null> {
     const row = await this.db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
 
-    if (row === undefined) return null;
+    if (row === undefined) {
+      return null;
+    }
     return {account: toAccountModel(row), passwordDigest: row.password_digest};
   }
 

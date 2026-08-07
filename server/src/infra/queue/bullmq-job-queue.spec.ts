@@ -9,7 +9,9 @@ type TestPayload = {value: string};
 
 const connectionUrl = (): string => {
   const url = process.env.REDIS_URL;
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('REDIS_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -32,8 +34,9 @@ describe('BullMqJobQueue', () => {
     const received: TestPayload[] = [];
 
     queue = makeQueue<TestPayload>(name, connectionUrl());
-    worker = makeWorker<TestPayload>(name, connectionUrl(), async (job) => {
+    worker = makeWorker<TestPayload>(name, connectionUrl(), (job) => {
       received.push(job.data);
+      return Promise.resolve();
     });
     await worker.waitUntilReady();
 
@@ -53,9 +56,12 @@ describe('BullMqJobQueue', () => {
     let attempts = 0;
 
     queue = makeQueue<TestPayload>(name, connectionUrl());
-    worker = makeWorker<TestPayload>(name, connectionUrl(), async () => {
+    worker = makeWorker<TestPayload>(name, connectionUrl(), () => {
       attempts += 1;
-      if (attempts < 3) throw new Error('transient');
+      if (attempts < 3) {
+        return Promise.reject(new Error('transient'));
+      }
+      return Promise.resolve();
     });
     await worker.waitUntilReady();
 
@@ -64,7 +70,9 @@ describe('BullMqJobQueue', () => {
     const job = await queue.add(name, {value: 'retry me'}, {attempts: 3, backoff: {type: 'fixed', delay: 10}});
 
     const jobId = job.id;
-    if (jobId === undefined) throw new Error('BullMQ did not assign a job id');
+    if (jobId === undefined) {
+      throw new Error('BullMQ did not assign a job id');
+    }
 
     await vi.waitFor(
       async () => {
@@ -81,16 +89,18 @@ describe('BullMqJobQueue', () => {
     let attempts = 0;
 
     queue = makeQueue<TestPayload>(name, connectionUrl());
-    worker = makeWorker<TestPayload>(name, connectionUrl(), async () => {
+    worker = makeWorker<TestPayload>(name, connectionUrl(), () => {
       attempts += 1;
-      throw new Error('permanent');
+      return Promise.reject(new Error('permanent'));
     });
     await worker.waitUntilReady();
 
     const job = await queue.add(name, {value: 'always fails'}, {attempts: 3, backoff: {type: 'fixed', delay: 10}});
 
     const jobId = job.id;
-    if (jobId === undefined) throw new Error('BullMQ did not assign a job id');
+    if (jobId === undefined) {
+      throw new Error('BullMQ did not assign a job id');
+    }
 
     await vi.waitFor(
       async () => {
@@ -230,7 +240,7 @@ describe('BullMqAuditQueue', () => {
     queue = makeQueue<AuditJob>(name, connectionUrl());
     const sut = new BullMqAuditQueue(queue);
 
-    let release = (): void => {};
+    let release = (): void => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -278,9 +288,7 @@ describe('BullMqAuditQueue', () => {
     // entirely - measured and tracked separately, not smuggled in here.
     const name = `audit-${randomUUID()}`;
     queue = makeQueue<AuditJob>(name, connectionUrl());
-    worker = makeWorker<AuditJob>(name, connectionUrl(), async () => {
-      throw new Error('transient');
-    });
+    worker = makeWorker<AuditJob>(name, connectionUrl(), () => Promise.reject(new Error('transient')));
     await worker.waitUntilReady();
     const sut = new BullMqAuditQueue(queue);
 
@@ -332,9 +340,7 @@ describe('BullMqAuditQueue', () => {
     // writing a status keeps its page out of the nightly worklist.
     const name = `audit-${randomUUID()}`;
     queue = makeQueue<AuditJob>(name, connectionUrl());
-    worker = makeWorker<AuditJob>(name, connectionUrl(), async () => {
-      throw new Error('permanent');
-    });
+    worker = makeWorker<AuditJob>(name, connectionUrl(), () => Promise.reject(new Error('permanent')));
     await worker.waitUntilReady();
     const sut = new BullMqAuditQueue(queue);
 
@@ -406,8 +412,11 @@ describe('BullMqAuditQueue', () => {
     // into the depth check if the count reached for them.
     const name = `audit-${randomUUID()}`;
     queue = makeQueue<AuditJob>(name, connectionUrl());
-    worker = makeWorker<AuditJob>(name, connectionUrl(), async (job) => {
-      if (job.data.auditId === '555') throw new Error('permanent');
+    worker = makeWorker<AuditJob>(name, connectionUrl(), (job) => {
+      if (job.data.auditId === '555') {
+        return Promise.reject(new Error('permanent'));
+      }
+      return Promise.resolve();
     });
     await worker.waitUntilReady();
 

@@ -42,23 +42,27 @@ export const mockPageSummary = (): PageSummary => ({
 });
 
 export const mockAddPage = () => ({
-  add: vi.fn<AddPage['add']>(async () => ({
-    outcome: 'added' as const,
-    page: mockPageModel(),
-    firstAuditId: '22222222-2222-2222-2222-222222222222',
-  })),
+  add: vi.fn<AddPage['add']>(() =>
+    Promise.resolve({
+      outcome: 'added' as const,
+      page: mockPageModel(),
+      firstAuditId: '22222222-2222-2222-2222-222222222222',
+    }),
+  ),
 });
 
 export const mockLoadPages = () => ({
-  load: vi.fn<LoadPages['load']>(async () => ({pages: [mockPageSummary()], limit: 10})),
+  load: vi.fn<LoadPages['load']>(() => Promise.resolve({pages: [mockPageSummary()], limit: 10})),
 });
 
 export const mockUpdatePage = () => ({
-  update: vi.fn<UpdatePage['update']>(async ({monitoringEnabled}) => ({...mockPageModel(), monitoringEnabled})),
+  update: vi.fn<UpdatePage['update']>(({monitoringEnabled}) =>
+    Promise.resolve({...mockPageModel(), monitoringEnabled}),
+  ),
 });
 
 export const mockDeletePage = () => ({
-  delete: vi.fn<DeletePage['delete']>(async () => true),
+  delete: vi.fn<DeletePage['delete']>(() => Promise.resolve(true)),
 });
 
 export const mockPageHistory = (): PageHistory => ({
@@ -88,5 +92,5 @@ export const mockPageHistory = (): PageHistory => ({
 });
 
 export const mockLoadPageHistory = () => ({
-  load: vi.fn<LoadPageHistory['load']>(async () => mockPageHistory()),
+  load: vi.fn<LoadPageHistory['load']>(() => Promise.resolve(mockPageHistory())),
 });

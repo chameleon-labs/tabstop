@@ -1,5 +1,5 @@
 import {Kysely, PostgresDialect} from 'kysely';
-import pg from 'pg';
+import {Pool} from 'pg';
 import type {Database} from '../database.js';
 
 export interface DatabaseOptions {
@@ -19,7 +19,7 @@ export interface DatabaseOptions {
 }
 
 export const makeDatabase = (connectionString: string, options: DatabaseOptions = {}): Kysely<Database> => {
-  const pool = new pg.Pool({
+  const pool = new Pool({
     connectionString,
     connectionTimeoutMillis: 5000,
     // Sent as a startup parameter, so every connection the pool opens carries

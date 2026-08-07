@@ -5,10 +5,12 @@ import type {RequestAudit} from '../../../domain/usecases/request-audit.js';
 
 const makeSut = () => {
   const requestAudit = {
-    request: vi.fn<RequestAudit['request']>(async () => ({
-      outcome: 'queued' as const,
-      audit: mockAuditModel(),
-    })),
+    request: vi.fn<RequestAudit['request']>(() =>
+      Promise.resolve({
+        outcome: 'queued' as const,
+        audit: mockAuditModel(),
+      }),
+    ),
   };
   return {sut: new RequestAuditController(requestAudit), requestAudit};
 };

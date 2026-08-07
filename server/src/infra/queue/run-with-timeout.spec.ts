@@ -17,7 +17,7 @@ const SHORT_GRACE_MS = 50;
 
 describe('runWithTimeout', () => {
   it('resolves with the handler result when it finishes in time', async () => {
-    const result = await runWithTimeout(1000, async () => 'done');
+    const result = await runWithTimeout(1000, () => Promise.resolve('done'));
 
     expect(result).toBe('done');
   });
@@ -59,18 +59,17 @@ describe('runWithTimeout', () => {
   });
 
   it('propagates a handler error unchanged', async () => {
-    await expect(
-      runWithTimeout(1000, async () => {
-        throw new Error('handler blew up');
-      }),
-    ).rejects.toThrow('handler blew up');
+    await expect(runWithTimeout(1000, () => Promise.reject(new Error('handler blew up')))).rejects.toThrow(
+      'handler blew up',
+    );
   });
 
   it('does not abort the signal when the handler finishes in time', async () => {
     let observed: boolean | null = null;
 
-    await runWithTimeout(1000, async (signal) => {
+    await runWithTimeout(1000, (signal) => {
       observed = signal.aborted;
+      return Promise.resolve();
     });
 
     expect(observed).toBe(false);

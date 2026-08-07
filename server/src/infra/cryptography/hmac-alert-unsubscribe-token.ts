@@ -9,13 +9,17 @@ export class HmacAlertUnsubscribeToken implements AlertUnsubscribeTokenCodec {
   constructor(private readonly secret: string) {}
 
   encode(pageId: string): string {
-    if (!this.isPageId(pageId)) throw new Error('Cannot sign an invalid page id');
+    if (!this.isPageId(pageId)) {
+      throw new Error('Cannot sign an invalid page id');
+    }
     return `v1.${pageId}.${this.signatureFor(pageId)}`;
   }
 
   decode(token: string): string | null {
     const match = /^v1\.([^.]+)\.([^.]+)$/.exec(token);
-    if (match === null) return null;
+    if (match === null) {
+      return null;
+    }
 
     const [, pageId, signature] = match;
     if (pageId === undefined || signature === undefined || !this.isPageId(pageId) || !SIGNATURE.test(signature)) {

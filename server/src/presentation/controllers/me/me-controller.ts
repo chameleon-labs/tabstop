@@ -13,13 +13,11 @@ export type MeRequest = {
  * middleware put in res.locals rather than loading the account a second time.
  */
 export class MeController implements Controller<MeRequest> {
-  constructor() {}
-
-  async handle(request: MeRequest): Promise<HttpResponse> {
+  handle(request: MeRequest): Promise<HttpResponse> {
     try {
-      return ok(toAccountView(request.account));
+      return Promise.resolve(ok(toAccountView(request.account)));
     } catch (error) {
-      return serverError(error as Error);
+      return Promise.resolve(serverError(error as Error));
     }
   }
 }

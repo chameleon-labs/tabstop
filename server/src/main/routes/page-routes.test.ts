@@ -22,7 +22,9 @@ describe('page routes', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     connectDatabase(url);
     db = getDatabase();
     dependencies = makeTestAppDependencies();
@@ -89,7 +91,9 @@ describe('page routes', () => {
   /** The account behind a session cookie, for specs that seed rows directly. */
   const accountIdFor = async (cookie: string): Promise<string> => {
     const sessionId = cookie.split(';')[0]?.split('=')[1];
-    if (sessionId === undefined) throw new Error('expected a session cookie');
+    if (sessionId === undefined) {
+      throw new Error('expected a session cookie');
+    }
     const session = await db
       .selectFrom('sessions')
       .select('user_id')
@@ -115,7 +119,9 @@ describe('page routes', () => {
       url,
       limit: 100,
     });
-    if (added.outcome !== 'added') throw new Error(`expected a page, got ${added.outcome}`);
+    if (added.outcome !== 'added') {
+      throw new Error(`expected a page, got ${added.outcome}`);
+    }
     return {pageId: added.page.id, url};
   };
 
@@ -203,7 +209,7 @@ describe('page routes', () => {
 
       const response = await addPage(cookie, auditableUrl());
 
-      expect(Object.keys(response.body as Record<string, unknown>).sort()).toEqual([
+      expect(Object.keys(response.body as Record<string, unknown>).toSorted()).toEqual([
         'createdAt',
         'firstAuditId',
         'id',
@@ -345,9 +351,9 @@ describe('page routes', () => {
     it('does not enqueue while reading or updating a repository-seeded page', async () => {
       const isolatedDependencies = makeTestAppDependencies();
       let enqueueCalls = 0;
-      isolatedDependencies.auditQueue.enqueueOnce = async (): Promise<void> => {
+      isolatedDependencies.auditQueue.enqueueOnce = (): Promise<void> => {
         enqueueCalls += 1;
-        throw new Error('non-POST page routes must not enqueue');
+        return Promise.reject(new Error('non-POST page routes must not enqueue'));
       };
       const isolatedApp = setupApp(isolatedDependencies);
       const cookie = await signUp(isolatedApp);
@@ -408,7 +414,7 @@ describe('page routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.used).toBe(1);
-      const [page] = response.body.pages as Array<Record<string, unknown>>;
+      const [page] = response.body.pages as Record<string, unknown>[];
       expect(page).toMatchObject({
         id: pageId,
         domain: '93.184.216.34',
@@ -578,7 +584,7 @@ describe('page routes', () => {
       expect(response.body.pageId).toBe(pageId);
       expect(response.body.days).toBe(90);
 
-      const points = response.body.points as Array<Record<string, unknown>>;
+      const points = response.body.points as Record<string, unknown>[];
       // The page's own queued first audit is in here too, newest of all.
       expect(points.map((point) => point.score)).toEqual([70, 82, 91, null, null]);
       expect(points.map((point) => point.status)).toEqual(['done', 'done', 'done', 'failed', 'queued']);

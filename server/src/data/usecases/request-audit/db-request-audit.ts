@@ -29,7 +29,9 @@ export class DbRequestAudit implements RequestAudit {
   async request({url}: RequestAuditParams): Promise<RequestAuditResult> {
     // Gate 1, the half of #7 left open by the worker-side guard.
     const parsed = parseAuditUrl(url, this.urlPolicy);
-    if (!parsed.safe) return {outcome: 'rejected', reason: parsed.reason};
+    if (!parsed.safe) {
+      return {outcome: 'rejected', reason: parsed.reason};
+    }
 
     // Resolved as well as parsed. A hostname that answers with a private
     // address is rejected here rather than becoming a queued job, a browser
@@ -55,7 +57,9 @@ export class DbRequestAudit implements RequestAudit {
     // Checked here, after the url has been accepted and before the insert:
     // a rejected url still gets its own specific message rather than a
     // generic "try again later", and a refusal strands no row.
-    if (await this.queueIsSaturated()) return {outcome: 'unavailable'};
+    if (await this.queueIsSaturated()) {
+      return {outcome: 'unavailable'};
+    }
 
     // Insert BEFORE enqueue. Reversed, the worker can dequeue an id whose row
     // does not exist yet.

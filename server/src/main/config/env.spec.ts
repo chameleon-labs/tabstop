@@ -58,7 +58,7 @@ describe('parseEnv', () => {
   });
 
   it('throws when FRONTEND_ORIGIN is missing', () => {
-    const {FRONTEND_ORIGIN, ...rest} = validSource;
+    const {FRONTEND_ORIGIN: _FRONTEND_ORIGIN, ...rest} = validSource;
     expect(() => parseEnv(rest)).toThrow('FRONTEND_ORIGIN');
   });
 
@@ -87,7 +87,7 @@ describe('parseEnv', () => {
   });
 
   it('requires a canonical public API origin for unsubscribe links', () => {
-    const {PUBLIC_API_ORIGIN, ...missing} = validSource;
+    const {PUBLIC_API_ORIGIN: _PUBLIC_API_ORIGIN, ...missing} = validSource;
     expect(() => parseEnv(missing)).toThrow('PUBLIC_API_ORIGIN');
     expect(() => parseEnv({...validSource, PUBLIC_API_ORIGIN: 'https://api.tabstop.dev/path'})).toThrow(
       'PUBLIC_API_ORIGIN',
@@ -129,7 +129,7 @@ describe('parseEnv', () => {
   });
 
   it('throws when SESSION_COOKIE_SECURE is missing', () => {
-    const {SESSION_COOKIE_SECURE, ...rest} = validSource;
+    const {SESSION_COOKIE_SECURE: _SESSION_COOKIE_SECURE, ...rest} = validSource;
     expect(() => parseEnv(rest)).toThrow('SESSION_COOKIE_SECURE');
   });
 

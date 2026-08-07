@@ -107,13 +107,13 @@ describe('DbSendAlertEmail', () => {
   it('sends the regression detail and marks the event only after acceptance', async () => {
     const calls: string[] = [];
     const {sut, sender, repository} = setup({
-      send: vi.fn(async (): Promise<'accepted'> => {
+      send: vi.fn((): Promise<'accepted'> => {
         calls.push('send');
-        return 'accepted';
+        return Promise.resolve('accepted');
       }),
-      mark: vi.fn(async () => {
+      mark: vi.fn(() => {
         calls.push('mark');
-        return true;
+        return Promise.resolve(true);
       }),
     });
 

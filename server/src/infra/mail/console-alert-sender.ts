@@ -3,7 +3,7 @@ import type {AlertEmail, AlertSender} from '../../data/protocols/mail/alert-send
 export class ConsoleAlertSender implements AlertSender {
   constructor(private readonly write: (line: string) => void = console.log) {}
 
-  async send(email: AlertEmail): Promise<'previewed'> {
+  send(email: AlertEmail): Promise<'previewed'> {
     this.write(
       JSON.stringify({
         event: 'alert-email-console',
@@ -14,6 +14,6 @@ export class ConsoleAlertSender implements AlertSender {
         idempotencyKey: email.idempotencyKey,
       }),
     );
-    return 'previewed';
+    return Promise.resolve('previewed');
   }
 }

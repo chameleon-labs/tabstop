@@ -8,7 +8,7 @@ import {
 import {ipKey, makeRateLimit} from '../middlewares/rate-limit.js';
 import type {RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
 
-export default (router: Router, rateLimiter: RateLimiter): void => {
+export const setupAlertRoutes = (router: Router, rateLimiter: RateLimiter): void => {
   // Public by design: the HMAC token is the authority. Requiring a session
   // would make both the email link and RFC 8058 one-click unsubscribe fail.
   router.get(

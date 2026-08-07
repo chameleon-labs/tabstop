@@ -55,7 +55,9 @@ export const startSessionSweeper = (
   // becomes "an hour after the last one finished" rather than "on the hour" -
   // which for a cleanup task is the more useful of the two.
   const schedule = (): void => {
-    if (stopped) return;
+    if (stopped) {
+      return;
+    }
     timer = setTimeout(() => {
       void run();
     }, intervalMs);
@@ -79,7 +81,9 @@ export const startSessionSweeper = (
   return {
     stop: () => {
       stopped = true;
-      if (timer !== null) clearTimeout(timer);
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
     },
   };
 };

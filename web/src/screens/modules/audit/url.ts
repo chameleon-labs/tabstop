@@ -40,8 +40,12 @@ const HOST_AND_PORT = /^(?:localhost|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+):\d/i;
 const OPAQUE_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 const hasScheme = (input: string): boolean => {
-  if (HIERARCHICAL_SCHEME.test(input)) return true;
-  if (HOST_AND_PORT.test(input)) return false;
+  if (HIERARCHICAL_SCHEME.test(input)) {
+    return true;
+  }
+  if (HOST_AND_PORT.test(input)) {
+    return false;
+  }
   return OPAQUE_SCHEME.test(input);
 };
 
@@ -57,7 +61,9 @@ const hasScheme = (input: string): boolean => {
  */
 export const normaliseUrl = (raw: string): UrlInput => {
   const trimmed = raw.trim();
-  if (trimmed === '') return {ok: false, problem: 'empty'};
+  if (trimmed === '') {
+    return {ok: false, problem: 'empty'};
+  }
 
   const candidate = hasScheme(trimmed) ? trimmed : `https://${trimmed}`;
 
@@ -70,7 +76,9 @@ export const normaliseUrl = (raw: string): UrlInput => {
 
   // `javascript:alert(1)` and `mailto:a@b.com` parse fine and have no host.
   // Rejecting on the host keeps scheme policy in one place - the server's.
-  if (parsed.hostname === '') return {ok: false, problem: 'unparseable'};
+  if (parsed.hostname === '') {
+    return {ok: false, problem: 'unparseable'};
+  }
 
   return {ok: true, url: parsed.href};
 };

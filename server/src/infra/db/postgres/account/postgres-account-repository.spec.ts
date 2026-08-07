@@ -13,7 +13,9 @@ describe('PostgresAccountRepository', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
     sut = new PostgresAccountRepository(db);
     sessions = new PostgresSessionRepository(db);
@@ -93,7 +95,9 @@ describe('PostgresAccountRepository', () => {
       sessionId: string;
     }> => {
       const account = await sut.add({email: newEmail(), passwordDigest: 'd'});
-      if (account === null) throw new Error('fixture failed to create an account');
+      if (account === null) {
+        throw new Error('fixture failed to create an account');
+      }
       const sessionId = randomUUID();
       await sessions.add({id: sessionId, userId: account.id, expiresAt});
       return {account, sessionId};

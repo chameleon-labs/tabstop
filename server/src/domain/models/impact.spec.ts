@@ -16,7 +16,9 @@ describe('IMPACTS', () => {
       serious: false,
       critical: false,
     };
-    for (const impact of IMPACTS) seen[impact] = true;
+    for (const impact of IMPACTS) {
+      seen[impact] = true;
+    }
 
     expect(Object.values(seen).every(Boolean)).toBe(true);
   });

@@ -52,10 +52,14 @@ export const useAudit = (
       // audit" and offered a Try again button while silently retrying behind
       // it, several times a second, for as long as the tab stayed open. A
       // button that claims to be the way to retry must be the way to retry.
-      if (query.state.status === 'error') return false;
+      if (query.state.status === 'error') {
+        return false;
+      }
 
       const status = query.state.data?.status;
-      if (status === undefined) return false;
+      if (status === undefined) {
+        return false;
+      }
       return isSettled(status) ? false : pollAfterMs;
     },
   });

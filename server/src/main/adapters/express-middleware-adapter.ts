@@ -10,8 +10,9 @@ import {applyCookies} from './express-route-adapter.js';
  * On success its body is merged into res.locals, which adaptRoute then merges
  * into the controller's request - last, so it outranks client input.
  */
-export const adaptMiddleware = (middleware: Middleware) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const adaptMiddleware =
+  (middleware: Middleware) =>
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const httpResponse = await middleware.handle({
       cookies: parseCookies(req.headers.cookie),
     });
@@ -25,4 +26,3 @@ export const adaptMiddleware = (middleware: Middleware) => {
     applyCookies(res, httpResponse.cookies);
     res.status(httpResponse.statusCode).json(httpResponse.body);
   };
-};

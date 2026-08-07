@@ -25,25 +25,29 @@ export const mockPageSummary = (): PageSummary => ({
 });
 
 export const mockAddPageRepository = () => ({
-  add: vi.fn<AddPageRepository['add']>(async () => ({
-    outcome: 'added' as const,
-    page: mockPageModel(),
-    firstAudit: {...mockAuditModel(), pageId: 'page-1'},
-  })),
+  add: vi.fn<AddPageRepository['add']>(() =>
+    Promise.resolve({
+      outcome: 'added' as const,
+      page: mockPageModel(),
+      firstAudit: {...mockAuditModel(), pageId: 'page-1'},
+    }),
+  ),
 });
 
 export const mockLoadPageSummariesRepository = () => ({
-  loadSummariesForUser: vi.fn<LoadPageSummariesRepository['loadSummariesForUser']>(async () => [mockPageSummary()]),
+  loadSummariesForUser: vi.fn<LoadPageSummariesRepository['loadSummariesForUser']>(() =>
+    Promise.resolve([mockPageSummary()]),
+  ),
 });
 
 export const mockSetPageMonitoringRepository = () => ({
   setMonitoringForUser: vi.fn<SetPageMonitoringRepository['setMonitoringForUser']>(
-    async (_pageId, _userId, monitoringEnabled) => ({...mockPageModel(), monitoringEnabled}),
+    (_pageId, _userId, monitoringEnabled) => Promise.resolve({...mockPageModel(), monitoringEnabled}),
   ),
 });
 
 export const mockDeletePageRepository = () => ({
-  deleteForUser: vi.fn<DeletePageRepository['deleteForUser']>(async () => true),
+  deleteForUser: vi.fn<DeletePageRepository['deleteForUser']>(() => Promise.resolve(true)),
 });
 
 export const mockPageHistory = (): PageHistory => ({
@@ -67,8 +71,8 @@ export const mockDuePages = (): DuePage[] => [
  * returned the same batch forever would let a broken cursor pass.
  */
 export const mockLoadDueReauditsRepository = () => ({
-  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(async (query) =>
-    query.after === null ? mockDuePages() : [],
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>((query) =>
+    Promise.resolve(query.after === null ? mockDuePages() : []),
   ),
 });
 
@@ -77,11 +81,11 @@ export const mockLoadDueReauditsRepository = () => ({
  * paging spec exercises the loop rather than a stub that agrees with it.
  */
 export const mockPagedDueReauditsRepository = (pages: DuePage[]) => ({
-  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>(async (query) =>
-    pages.filter((page) => query.after === null || page.pageId > query.after).slice(0, query.limit),
+  loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>((query) =>
+    Promise.resolve(pages.filter((page) => query.after === null || page.pageId > query.after).slice(0, query.limit)),
   ),
 });
 
 export const mockLoadPageHistoryRepository = () => ({
-  loadHistoryForUser: vi.fn<LoadPageHistoryRepository['loadHistoryForUser']>(async () => mockPageHistory()),
+  loadHistoryForUser: vi.fn<LoadPageHistoryRepository['loadHistoryForUser']>(() => Promise.resolve(mockPageHistory())),
 });

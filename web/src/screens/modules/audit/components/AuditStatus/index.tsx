@@ -62,7 +62,9 @@ export const AuditStatus = ({message}: AuditStatusProps): React.JSX.Element => {
     // Only on change, so the region mutates once per thing worth saying rather
     // than once per render - the screen re-renders every second while an audit
     // runs, and thirty announcements for one audit is unusable.
-    if (message === shown) return;
+    if (message === shown) {
+      return;
+    }
 
     // Deferred rather than written here. A passive effect can run before the
     // browser has painted or exposed the node, so an immediate write can still
@@ -70,7 +72,7 @@ export const AuditStatus = ({message}: AuditStatusProps): React.JSX.Element => {
     const timer = setTimeout(() => {
       setShown(message);
     }, ANNOUNCE_DELAY_MS);
-    return () => {
+    return (): void => {
       clearTimeout(timer);
     };
   }, [message, shown]);

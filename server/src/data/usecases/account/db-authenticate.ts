@@ -62,7 +62,9 @@ export class DbAuthenticate implements Authenticate {
     }
 
     const matches = await this.hashComparer.compare(params.password, found.passwordDigest);
-    if (!matches) return null;
+    if (!matches) {
+      return null;
+    }
 
     return await this.startSession.start(found.account);
   }

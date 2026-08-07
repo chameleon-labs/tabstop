@@ -27,13 +27,16 @@ export type RateLimitRule = {
  * from becoming an early return that skips the dummy scrypt verify - the
  * mechanism that stops response time revealing whether an account exists.
  */
-export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const makeRateLimit =
+  (limiter: RateLimiter, rules: RateLimitRule[]) =>
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const consumed: RateLimitAllowance[] = [];
 
     for (const rule of rules) {
       const rawKey = rule.key(req);
-      if (rawKey === undefined) continue;
+      if (rawKey === undefined) {
+        continue;
+      }
       const key = `${rule.name}:${rawKey}`;
 
       // The limiter the factory wires in is a FallbackRateLimiter, whose own
@@ -80,7 +83,6 @@ export const makeRateLimit = (limiter: RateLimiter, rules: RateLimitRule[]) => {
 
     next();
   };
-};
 
 /**
  * The key never needs to be read back - only compared - so there is no
@@ -96,7 +98,9 @@ const hashEmail = (normalised: string): string => createHash('sha256').update(no
 /** Trimmed and lowercased to match the zod schema in account-validation-factory.ts. */
 export const emailKey = (req: Request): string | undefined => {
   const email = (req.body as {email?: unknown} | undefined)?.email;
-  if (typeof email !== 'string') return undefined;
+  if (typeof email !== 'string') {
+    return undefined;
+  }
 
   const normalised = email.trim().toLowerCase();
   return normalised === '' ? undefined : `email:${hashEmail(normalised)}`;
@@ -126,8 +130,12 @@ const normaliseIp = (ip: string): string => {
     return ip;
   }
 
-  if (parsed instanceof ipaddr.IPv4) return parsed.toNormalizedString();
-  if (parsed.isIPv4MappedAddress()) return parsed.toIPv4Address().toNormalizedString();
+  if (parsed instanceof ipaddr.IPv4) {
+    return parsed.toNormalizedString();
+  }
+  if (parsed.isIPv4MappedAddress()) {
+    return parsed.toIPv4Address().toNormalizedString();
+  }
 
   const prefix = new ipaddr.IPv6([...parsed.parts.slice(0, IPV6_BUCKET_PREFIX_GROUPS), 0, 0, 0, 0]);
   return prefix.toNormalizedString();

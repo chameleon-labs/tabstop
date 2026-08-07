@@ -12,7 +12,9 @@ import '@chameleon-labs/lattice-react/styles.css';
 import './styles.css';
 
 const container = document.getElementById('root');
-if (container === null) throw new Error('#root is missing from index.html');
+if (container === null) {
+  throw new Error('#root is missing from index.html');
+}
 
 /**
  * Built OUT HERE, above the render, and that placement is load-bearing.

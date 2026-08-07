@@ -35,7 +35,9 @@ export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX
       onSubmit={(event) => {
         event.preventDefault();
         setSubmitted(true);
-        if (parsed.ok) onSubmit(parsed.url);
+        if (parsed.ok) {
+          onSubmit(parsed.url);
+        }
       }}
     >
       <div className="landing-page__url-row">

@@ -30,7 +30,5 @@ export const migrations: Record<string, Migration> = {
 };
 
 export const staticMigrationProvider: MigrationProvider = {
-  async getMigrations(): Promise<Record<string, Migration>> {
-    return migrations;
-  },
+  getMigrations: (): Promise<Record<string, Migration>> => Promise.resolve(migrations),
 };

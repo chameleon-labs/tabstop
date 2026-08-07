@@ -89,6 +89,7 @@ describe('safeHelpUrl', () => {
   });
 
   it.each([
+    // oxlint-disable-next-line no-script-url -- the hostile input under test
     ['javascript:alert(document.cookie)', 'script execution'],
     ['data:text/html,<script>alert(1)</script>', 'attacker HTML in a null origin'],
     ['vbscript:msgbox(1)', 'another executable scheme'],

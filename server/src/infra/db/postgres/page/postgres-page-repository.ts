@@ -85,7 +85,9 @@ export class PostgresPageRepository
         .where('pages.url', '=', params.url)
         .executeTakeFirst();
 
-      if (existing !== undefined) return {outcome: 'duplicate'};
+      if (existing !== undefined) {
+        return {outcome: 'duplicate'};
+      }
 
       const counted = await trx
         .selectFrom('pages')
@@ -94,7 +96,9 @@ export class PostgresPageRepository
         .where('sites.user_id', '=', params.userId)
         .executeTakeFirstOrThrow();
 
-      if (Number(counted.count) >= params.limit) return {outcome: 'limit-reached'};
+      if (Number(counted.count) >= params.limit) {
+        return {outcome: 'limit-reached'};
+      }
 
       const siteId = await this.findOrCreateSite(trx, params.userId, params.domain);
 
@@ -108,7 +112,9 @@ export class PostgresPageRepository
         .returningAll()
         .executeTakeFirst();
 
-      if (page === undefined) return {outcome: 'duplicate'};
+      if (page === undefined) {
+        return {outcome: 'duplicate'};
+      }
 
       // Inside the transaction so a page cannot exist without a first audit.
       // Only the ENQUEUE has to wait for the commit - a job handed to Redis
@@ -204,7 +210,9 @@ export class PostgresPageRepository
       .orderBy('pages.id')
       .execute();
 
-    if (pageRows.length === 0) return [];
+    if (pageRows.length === 0) {
+      return [];
+    }
 
     const pageIds = pageRows.map((row) => row.id);
     // Two more queries for the whole list rather than two per page. The naive
@@ -232,7 +240,9 @@ export class PostgresPageRepository
    * No status filter. Every audit in the window is a point, `failed` included.
    */
   async loadHistoryForUser(pageId: string, userId: string, since: Date): Promise<PageHistory | null> {
-    if (!isStorableId(pageId)) return null;
+    if (!isStorableId(pageId)) {
+      return null;
+    }
 
     const page = await this.db
       .selectFrom('pages')
@@ -243,7 +253,9 @@ export class PostgresPageRepository
       )
       .executeTakeFirst();
 
-    if (page === undefined) return null;
+    if (page === undefined) {
+      return null;
+    }
 
     const audits = await this.db
       .selectFrom('audits')
@@ -257,7 +269,9 @@ export class PostgresPageRepository
   }
 
   async setMonitoringForUser(pageId: string, userId: string, monitoringEnabled: boolean): Promise<PageModel | null> {
-    if (!isStorableId(pageId)) return null;
+    if (!isStorableId(pageId)) {
+      return null;
+    }
 
     const updated = await this.db
       .updateTable('pages')
@@ -275,7 +289,9 @@ export class PostgresPageRepository
   }
 
   async deleteForUser(pageId: string, userId: string): Promise<boolean> {
-    if (!isStorableId(pageId)) return false;
+    if (!isStorableId(pageId)) {
+      return false;
+    }
 
     // Cascades to the page's audits, their violations and their alert events,
     // by the foreign keys #4 declared. Every public share link for those
@@ -304,7 +320,9 @@ export class PostgresPageRepository
       .where('domain', '=', domain)
       .executeTakeFirst();
 
-    if (existing !== undefined) return existing.id;
+    if (existing !== undefined) {
+      return existing.id;
+    }
 
     const inserted = await trx
       .insertInto('sites')
@@ -313,7 +331,9 @@ export class PostgresPageRepository
       .returning('id')
       .executeTakeFirst();
 
-    if (inserted !== undefined) return inserted.id;
+    if (inserted !== undefined) {
+      return inserted.id;
+    }
 
     const won = await trx
       .selectFrom('sites')
@@ -344,7 +364,9 @@ export class PostgresPageRepository
 
     const byPage = new Map<string, AuditModel>();
     for (const row of rows) {
-      if (row.page_id === null) continue;
+      if (row.page_id === null) {
+        continue;
+      }
       byPage.set(row.page_id, toAuditModel(row));
     }
     return byPage;
@@ -392,7 +414,9 @@ export class PostgresPageRepository
 
     const byPage = new Map<string, PageScorePoint[]>();
     for (const row of rows) {
-      if (row.page_id === null || row.score === null) continue;
+      if (row.page_id === null || row.score === null) {
+        continue;
+      }
       const points = byPage.get(row.page_id) ?? [];
       points.push({score: row.score, at: row.created_at});
       byPage.set(row.page_id, points);

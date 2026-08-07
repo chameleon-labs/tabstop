@@ -25,7 +25,9 @@ describe('the route announcer', () => {
     await screen.findByRole('heading', {level: 1});
     // Long enough for the deferred announcement to have fired if it were going
     // to. An assertion made immediately would pass whether or not it was.
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
 
     expect(liveRegion()).toHaveTextContent('');
   });
@@ -114,7 +116,9 @@ describe('the route announcer', () => {
     // Long enough after the announcement for a correction to have landed, if
     // the implementation were still making one.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
     });
     observer.disconnect();
 
@@ -133,12 +137,13 @@ describe('the route announcer', () => {
     // technology reacts to, so mutation is what to measure.
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
+      vi.fn(() =>
+        Promise.resolve(
           new Response(JSON.stringify({id: '1', email: 'a@b.co', alertThreshold: 5}), {
             status: 200,
             headers: {'content-type': 'application/json'},
           }),
+        ),
       ),
     );
 

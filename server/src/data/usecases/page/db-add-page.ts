@@ -21,7 +21,9 @@ export class DbAddPage implements AddPage {
 
   async add({userId, url}: AddPageParams): Promise<AddPageResult> {
     const parsed = parseAuditUrl(url, this.urlPolicy);
-    if (!parsed.safe) return {outcome: 'rejected', reason: parsed.reason};
+    if (!parsed.safe) {
+      return {outcome: 'rejected', reason: parsed.reason};
+    }
 
     // Worth a lookup here in a way it is not for a one-off audit: a monitored
     // page is fetched again every night, so a host that already resolves into
@@ -43,8 +45,12 @@ export class DbAddPage implements AddPage {
       limit: this.limit,
     });
 
-    if (result.outcome === 'limit-reached') return {outcome: 'limit-reached', limit: this.limit};
-    if (result.outcome === 'duplicate') return {outcome: 'duplicate'};
+    if (result.outcome === 'limit-reached') {
+      return {outcome: 'limit-reached', limit: this.limit};
+    }
+    if (result.outcome === 'duplicate') {
+      return {outcome: 'duplicate'};
+    }
 
     // AFTER the commit, never inside the transaction. A job enqueued inside a
     // transaction that then rolls back leaves the queue holding work for a page

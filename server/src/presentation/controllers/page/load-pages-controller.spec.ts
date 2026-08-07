@@ -66,7 +66,7 @@ describe('LoadPagesController', () => {
     });
 
     const response = await sut.handle({userId: 'user-1'});
-    const page = (response.body as {pages: Array<Record<string, unknown>>}).pages[0];
+    const [page] = (response.body as {pages: Record<string, unknown>[]}).pages;
 
     expect(page).toMatchObject({
       score: 74,
@@ -93,7 +93,7 @@ describe('LoadPagesController', () => {
     });
 
     const response = await sut.handle({userId: 'user-1'});
-    const page = (response.body as {pages: Array<Record<string, unknown>>}).pages[0];
+    const [page] = (response.body as {pages: Record<string, unknown>[]}).pages;
 
     expect(page).toMatchObject({
       latestAudit: {status: 'queued', score: null, completedAt: null},
@@ -112,7 +112,7 @@ describe('LoadPagesController', () => {
 
     const response = await sut.handle({userId: 'user-1'});
 
-    expect((response.body as {pages: Array<Record<string, unknown>>}).pages[0]).toMatchObject({
+    expect((response.body as {pages: Record<string, unknown>[]}).pages[0]).toMatchObject({
       score: null,
       previousScore: null,
       latestAudit: null,

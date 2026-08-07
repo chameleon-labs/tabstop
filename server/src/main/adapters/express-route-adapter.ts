@@ -49,8 +49,9 @@ export const applyCookies = (res: Response, cookies: CookieDirective[] | undefin
  * `as Controller`. The type parameter moves the one unavoidable assertion to
  * the only place that can explain it: see below.
  */
-export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
-  return async (req: Request, res: Response): Promise<void> => {
+export const adaptRoute =
+  <TRequest>(controller: Controller<TRequest>) =>
+  async (req: Request, res: Response): Promise<void> => {
     // Client-supplied input first, then what WE established - parsed cookies,
     // then res.locals from the auth middleware. Both must outrank the body, or
     // a client posts {"userId": 1} and impersonates. Pinned by a spec.
@@ -90,7 +91,9 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
     // owns here.
     for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
       const header = name.toLowerCase();
-      if (!CONTROLLER_HEADERS.has(header)) continue;
+      if (!CONTROLLER_HEADERS.has(header)) {
+        continue;
+      }
 
       // `vary` is a LIST, and the middleware stack has already contributed to
       // it - cors.ts appends `origin`, with a comment saying overwriting would
@@ -99,8 +102,11 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       // silently removed Origin from the cache key. `cache-control` is the
       // opposite case - a single directive set that a controller opting into
       // caching has to be able to replace outright.
-      if (header === 'vary') res.append(header, value);
-      else res.set(header, value);
+      if (header === 'vary') {
+        res.append(header, value);
+      } else {
+        res.set(header, value);
+      }
     }
 
     if (httpResponse.bodyType === 'html') {
@@ -117,4 +123,3 @@ export const adaptRoute = <TRequest>(controller: Controller<TRequest>) => {
       res.status(httpResponse.statusCode).json(httpResponse.body);
     }
   };
-};

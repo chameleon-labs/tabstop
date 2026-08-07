@@ -9,7 +9,7 @@ describe('the route table', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => jsonResponse(401, {error: 'Unauthorized'}));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -18,7 +18,7 @@ describe('the route table', () => {
   });
 
   const withSession = (): void => {
-    fetchMock.mockImplementation(async () => jsonResponse(200, signedIn));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, signedIn)));
   };
 
   it('resolves / to the home screen', async () => {
@@ -67,7 +67,7 @@ describe('the route table', () => {
     // The failure mode this exists to prevent: a 500 from the session endpoint
     // silently reading as "logged out" and bouncing every signed-in user to a
     // home page, on a backend that could not have logged them in either.
-    fetchMock.mockImplementation(async () => jsonResponse(500, {error: 'Internal server error'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
     renderAt('/dashboard');
 
@@ -83,7 +83,7 @@ describe('the route table', () => {
   });
 
   it('keeps the shell when a screen fails', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(500, {error: 'Internal server error'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
     renderAt('/dashboard');
 

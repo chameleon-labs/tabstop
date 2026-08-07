@@ -76,7 +76,7 @@ export type GuardedContext = Pick<BrowserContext, 'route' | 'routeWebSocket' | '
  */
 export const toStoredViolations = (
   violations: EvaluatedResult['violations'],
-): Array<Omit<EvaluatedResult['violations'][number], 'impact'> & {impact: Impact | null}> =>
+): (Omit<EvaluatedResult['violations'][number], 'impact'> & {impact: Impact | null})[] =>
   violations.map((violation) => ({
     ...violation,
     impact: toImpact(violation.impact),
@@ -118,16 +118,20 @@ export const installGuards = async (
  */
 const isNavigable = async (url: string, resolver: DnsResolver, policy: UrlPolicy): Promise<boolean> => {
   const parsed = parseAuditUrl(url, policy);
-  if (!parsed.safe) return false;
+  if (!parsed.safe) {
+    return false;
+  }
 
   const host = bareHostname(parsed.url);
-  if (policy.isIpLiteral(host)) return !policy.isBlockedAddress(host);
+  if (policy.isIpLiteral(host)) {
+    return !policy.isBlockedAddress(host);
+  }
 
   const addresses = await resolver.resolve(host);
   return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address));
 };
 
-const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical'];
+const IMPACTS: ReadonlySet<string> = new Set(['minor', 'moderate', 'serious', 'critical']);
 
 /**
  * axe reports `impact: null` for a violation whose failing checks carry no
@@ -137,7 +141,7 @@ const IMPACTS: readonly string[] = ['minor', 'moderate', 'serious', 'critical'];
  * violation is stored uncounted.
  */
 const toImpact = (value: string | null): Impact | null =>
-  value !== null && IMPACTS.includes(value) ? (value as Impact) : null;
+  value !== null && IMPACTS.has(value) ? (value as Impact) : null;
 
 /**
  * The only file in the codebase that imports Playwright, and the only place an
@@ -177,8 +181,12 @@ export class PlaywrightAxeAuditor implements PageAuditor {
       const browser = await pending;
       // Otherwise a crashed browser stays cached and every retry calls
       // newContext() on the same dead object, so it could never succeed.
-      if (browser.isConnected()) return browser;
-      if (this.launching === pending) this.launching = null;
+      if (browser.isConnected()) {
+        return browser;
+      }
+      if (this.launching === pending) {
+        this.launching = null;
+      }
     }
 
     this.launching ??= chromium.launch().catch((error: unknown) => {
@@ -290,17 +298,23 @@ export class PlaywrightAxeAuditor implements PageAuditor {
   async close(): Promise<void> {
     const pending = this.launching;
     this.launching = null;
-    if (pending === null) return;
+    if (pending === null) {
+      return;
+    }
 
     // Await the in-flight launch: a browser finishing after shutdown began
     // would otherwise outlive the process's intent to stop.
     const browser = await pending.catch(() => null);
-    if (browser !== null && browser.isConnected()) await browser.close();
+    if (browser !== null && browser.isConnected()) {
+      await browser.close();
+    }
   }
 
   /** Test seam: lets a spec assert contexts were torn down. */
   async contextCount(): Promise<number> {
-    if (this.launching === null) return 0;
+    if (this.launching === null) {
+      return 0;
+    }
     const browser = await this.launching.catch(() => null);
     return browser?.contexts().length ?? 0;
   }

@@ -9,7 +9,7 @@ import {RATE_LIMITS} from '../config/rate-limits.js';
 import type {RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
 import type {AuditJobQueue} from '../../data/protocols/queue/audit-job-queue.js';
 
-export default (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
+export const setupAuditRoutes = (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
   // Anonymous by design - a one-off audit with no signup is the product's
   // hook - and each accepted request is roughly thirty seconds of Chromium.
   // The per-IP bucket is what makes that affordable.

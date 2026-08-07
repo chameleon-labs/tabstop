@@ -4,7 +4,7 @@ import {classifyAuditError} from './audit-error.js';
 const named = (name: string, message: string): Error => Object.assign(new Error(message), {name});
 
 describe('classifyAuditError', () => {
-  const cases: Array<[string, unknown, boolean, string]> = [
+  const cases: [string, unknown, boolean, string][] = [
     [
       'a navigation timeout',
       named('TimeoutError', 'page.goto: Timeout 20000ms exceeded.'),

@@ -38,6 +38,7 @@ describe('parseCookies', () => {
 
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(Object.getPrototypeOf(parsed)).toBeNull();
+    // oxlint-disable-next-line no-proto -- reading the polluted key back is the assertion
     expect(parsed.__proto__).toBe('polluted');
   });
 });

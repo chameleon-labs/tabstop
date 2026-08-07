@@ -63,7 +63,9 @@ export class BullMqAuditQueue implements AuditJobQueue {
 
   async isPending(auditId: string): Promise<boolean> {
     const job = await this.queue.getJob(jobIdFor(auditId));
-    if (job === undefined) return false;
+    if (job === undefined) {
+      return false;
+    }
 
     return BullMqAuditQueue.PENDING_STATES.has(await job.getState());
   }

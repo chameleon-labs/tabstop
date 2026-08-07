@@ -1,5 +1,5 @@
 import type {AuditResultResponse} from '@tabstop/contract';
-import {screen, waitFor, within} from '@testing-library/react';
+import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ANNOUNCE_DELAY_MS} from '@/a11y/announce';
@@ -35,10 +35,12 @@ const auditBody = (over: Partial<AuditResultResponse> = {}): AuditResultResponse
  * done" - which is the only interesting shape this screen has.
  */
 const server = (handlers: {post?: () => Response; get?: () => Response}): ReturnType<typeof vi.fn> => {
-  const mock = vi.fn(async (_url: string, init?: RequestInit) =>
-    init?.method === 'POST'
-      ? (handlers.post?.() ?? jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}))
-      : (handlers.get?.() ?? jsonResponse(200, auditBody())),
+  const mock = vi.fn((_url: string, init?: RequestInit) =>
+    Promise.resolve(
+      init?.method === 'POST'
+        ? (handlers.post?.() ?? jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}))
+        : (handlers.get?.() ?? jsonResponse(200, auditBody())),
+    ),
   );
   vi.stubGlobal('fetch', mock);
   return mock;
@@ -122,7 +124,7 @@ describe('the home screen', () => {
   it('does not claim a queue place while the request is still in flight', async () => {
     // A slow POST announced "Waiting for a free worker" before anything had
     // been accepted - a queue the request had not reached, and might never.
-    let release = (): void => {};
+    let release = (): void => undefined;
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: string, init?: RequestInit) => {
@@ -229,7 +231,7 @@ describe('the home screen', () => {
       await waitFor(() => {
         const posts = fetchMock.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST');
         expect(posts.length).toBeGreaterThan(1);
-        expect((posts.at(-1)?.[1] as RequestInit).body).toBe('{"url":"https://example.com/"}');
+        expect((posts.at(-1)?.[1] as RequestInit | undefined)?.body).toBe('{"url":"https://example.com/"}');
       });
     });
 
@@ -246,7 +248,9 @@ describe('the home screen', () => {
       // takes it back down.
       // Slow enough that the progress line is on screen before the failure.
       const slowFetch = vi.fn(async (_url: string, init?: RequestInit) => {
-        await new Promise((resolve) => setTimeout(resolve, ANNOUNCE_DELAY_MS * 3));
+        await new Promise((resolve) => {
+          setTimeout(resolve, ANNOUNCE_DELAY_MS * 3);
+        });
         return init?.method === 'POST'
           ? jsonResponse(405, {error: 'Method Not Allowed'})
           : jsonResponse(200, auditBody());
@@ -313,7 +317,7 @@ describe('the home screen', () => {
       // The retry is HELD OPEN deliberately. A mocked refetch that resolves
       // immediately never leaves the intermediate state observable, and a first
       // version of this test passed for exactly that reason.
-      let release = (): void => {};
+      let release = (): void => undefined;
       let failing = true;
       const held = async (): Promise<Response> => {
         await new Promise<void>((resolve) => {
@@ -327,7 +331,9 @@ describe('the home screen', () => {
           if (init?.method === 'POST') {
             return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
           }
-          if (failing) return jsonResponse(500, {error: 'Internal server error'});
+          if (failing) {
+            return jsonResponse(500, {error: 'Internal server error'});
+          }
           return await held();
         }),
       );
@@ -357,14 +363,16 @@ describe('the home screen', () => {
       let gets = 0;
       vi.stubGlobal(
         'fetch',
-        vi.fn(async (_url: string, init?: RequestInit) => {
+        vi.fn((_url: string, init?: RequestInit) => {
           if (init?.method === 'POST') {
-            return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
           }
           gets += 1;
-          return gets === 1
-            ? jsonResponse(200, auditBody({status: 'running'}))
-            : jsonResponse(500, {error: 'Internal server error'});
+          return Promise.resolve(
+            gets === 1
+              ? jsonResponse(200, auditBody({status: 'running'}))
+              : jsonResponse(500, {error: 'Internal server error'}),
+          );
         }),
       );
 
@@ -383,7 +391,7 @@ describe('the home screen', () => {
       // body retained from an earlier poll it survives, and the failure panel
       // and its own button sat there for the whole request.
       let gets = 0;
-      let release = (): void => {};
+      let release = (): void => undefined;
       vi.stubGlobal(
         'fetch',
         vi.fn(async (_url: string, init?: RequestInit) => {
@@ -391,8 +399,12 @@ describe('the home screen', () => {
             return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
           }
           gets += 1;
-          if (gets === 1) return jsonResponse(200, auditBody({status: 'running'}));
-          if (gets === 2) return jsonResponse(500, {error: 'Internal server error'});
+          if (gets === 1) {
+            return jsonResponse(200, auditBody({status: 'running'}));
+          }
+          if (gets === 2) {
+            return jsonResponse(500, {error: 'Internal server error'});
+          }
           await new Promise<void>((resolve) => {
             release = resolve;
           });
@@ -424,15 +436,19 @@ describe('the home screen', () => {
       let recovered = false;
       vi.stubGlobal(
         'fetch',
-        vi.fn(async (_url: string, init?: RequestInit) => {
+        vi.fn((_url: string, init?: RequestInit) => {
           if (init?.method === 'POST') {
-            return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
           }
           gets += 1;
-          if (gets === 1) return jsonResponse(200, auditBody({status: 'running'}));
-          return recovered
-            ? jsonResponse(200, auditBody({status: 'running'}))
-            : jsonResponse(500, {error: 'Internal server error'});
+          if (gets === 1) {
+            return Promise.resolve(jsonResponse(200, auditBody({status: 'running'})));
+          }
+          return Promise.resolve(
+            recovered
+              ? jsonResponse(200, auditBody({status: 'running'}))
+              : jsonResponse(500, {error: 'Internal server error'}),
+          );
         }),
       );
 
@@ -458,14 +474,16 @@ describe('the home screen', () => {
       let gets = 0;
       vi.stubGlobal(
         'fetch',
-        vi.fn(async (_url: string, init?: RequestInit) => {
+        vi.fn((_url: string, init?: RequestInit) => {
           if (init?.method === 'POST') {
-            return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
           }
           gets += 1;
-          return gets === 1
-            ? jsonResponse(200, auditBody({status: 'running'}))
-            : jsonResponse(500, {error: 'Internal server error'});
+          return Promise.resolve(
+            gets === 1
+              ? jsonResponse(200, auditBody({status: 'running'}))
+              : jsonResponse(500, {error: 'Internal server error'}),
+          );
         }),
       );
 
@@ -474,7 +492,9 @@ describe('the home screen', () => {
       await screen.findByText('Internal server error');
 
       const settled = gets;
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
 
       expect(gets).toBe(settled);
     });

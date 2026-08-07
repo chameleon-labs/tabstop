@@ -28,16 +28,16 @@ const makeApp = (controller: Controller, middleware?: Middleware): express.Expre
 };
 
 const echoController: Controller = {
-  async handle(httpRequest: unknown): Promise<HttpResponse> {
-    return {statusCode: 200, body: httpRequest};
+  handle(httpRequest: unknown): Promise<HttpResponse> {
+    return Promise.resolve({statusCode: 200, body: httpRequest});
   },
 };
 
 describe('adaptRoute', () => {
   it('sends an explicit html response without JSON quoting it', async () => {
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {statusCode: 200, body: '<h1>Confirmed</h1>', bodyType: 'html'};
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({statusCode: 200, body: '<h1>Confirmed</h1>', bodyType: 'html'});
       },
     };
     const app = express();
@@ -58,12 +58,12 @@ describe('adaptRoute', () => {
   it('applies the security attributes the adapter owns, not the controller', async () => {
     const expiresAt = new Date(Date.now() + 86_400_000);
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({
           statusCode: 201,
           body: {ok: true},
           cookies: [{action: 'set', name: 'sid', value: 'deadbeef', expiresAt}],
-        };
+        });
       },
     };
 
@@ -81,8 +81,8 @@ describe('adaptRoute', () => {
 
   it('clears a cookie', async () => {
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {statusCode: 204, body: null, cookies: [{action: 'clear', name: 'sid'}]};
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({statusCode: 204, body: null, cookies: [{action: 'clear', name: 'sid'}]});
       },
     };
 
@@ -110,8 +110,8 @@ describe('adaptRoute', () => {
     // If res.locals were merged before req.body, a client would post
     // {"userId": ...} and impersonate. Mutation-check by reordering the spread.
     const middleware: Middleware = {
-      async handle(): Promise<HttpResponse> {
-        return {statusCode: 200, body: {userId: 'from-session'}};
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({statusCode: 200, body: {userId: 'from-session'}});
       },
     };
 
@@ -142,8 +142,8 @@ describe('adaptRoute', () => {
 describe('adaptMiddleware', () => {
   it('stops the request when the middleware rejects it', async () => {
     const middleware: Middleware = {
-      async handle(): Promise<HttpResponse> {
-        return {statusCode: 401, body: {error: 'Unauthorized'}};
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({statusCode: 401, body: {error: 'Unauthorized'}});
       },
     };
 
@@ -156,9 +156,9 @@ describe('adaptMiddleware', () => {
   it('hands the middleware the parsed cookies', async () => {
     let seen: Record<string, string> | null = null;
     const middleware: Middleware = {
-      async handle(middlewareRequest): Promise<HttpResponse> {
+      handle(middlewareRequest): Promise<HttpResponse> {
         seen = middlewareRequest.cookies;
-        return {statusCode: 200, body: {}};
+        return Promise.resolve({statusCode: 200, body: {}});
       },
     };
 
@@ -172,12 +172,12 @@ describe('adaptMiddleware', () => {
     // into caching has to be able to win - otherwise an immutable public
     // result could never be cached at all.
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({
           statusCode: 200,
           body: {ok: true},
           headers: {'cache-control': 'public, max-age=3600'},
-        };
+        });
       },
     };
     const app = express();
@@ -197,8 +197,8 @@ describe('adaptMiddleware', () => {
     // controller could emit its own set-cookie without the security
     // attributes, or rewrite the CORS headers the middleware just set.
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({
           statusCode: 200,
           body: {},
           headers: {
@@ -206,7 +206,7 @@ describe('adaptMiddleware', () => {
             'access-control-allow-origin': '*',
             'cache-control': 'public, max-age=60',
           },
-        };
+        });
       },
     };
     const app = express();
@@ -232,8 +232,8 @@ describe('adaptMiddleware', () => {
     // cache key - and a credentialed CORS response cached without varying on
     // Origin is one that can be served to the wrong origin.
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {statusCode: 200, body: {}, headers: {vary: 'Cookie'}};
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({statusCode: 200, body: {}, headers: {vary: 'Cookie'}});
       },
     };
     const app = express();
@@ -256,12 +256,12 @@ describe('adaptMiddleware', () => {
     // list, so a controller opting into caching has to BEAT the global
     // no-store, not accumulate alongside it.
     const controller: Controller = {
-      async handle(): Promise<HttpResponse> {
-        return {
+      handle(): Promise<HttpResponse> {
+        return Promise.resolve({
           statusCode: 200,
           body: {},
           headers: {'cache-control': 'private, max-age=60'},
-        };
+        });
       },
     };
     const app = express();

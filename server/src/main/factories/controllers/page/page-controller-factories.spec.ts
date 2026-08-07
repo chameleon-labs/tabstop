@@ -58,10 +58,10 @@ const firstAudit = (): AuditModel => ({
 });
 
 const queue = (): AuditJobQueue => ({
-  enqueueOnce: vi.fn<AuditJobQueue['enqueueOnce']>(async () => undefined),
-  has: vi.fn<AuditJobQueue['has']>(async () => false),
-  isPending: vi.fn<AuditJobQueue['isPending']>(async () => false),
-  backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => 0),
+  enqueueOnce: vi.fn<AuditJobQueue['enqueueOnce']>(() => Promise.resolve(undefined)),
+  has: vi.fn<AuditJobQueue['has']>(() => Promise.resolve(false)),
+  isPending: vi.fn<AuditJobQueue['isPending']>(() => Promise.resolve(false)),
+  backlogCount: vi.fn<AuditJobQueue['backlogCount']>(() => Promise.resolve(0)),
 });
 
 describe('makeAddPageController', () => {

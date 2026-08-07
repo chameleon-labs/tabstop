@@ -11,7 +11,7 @@ const allowance = (refund = vi.fn().mockResolvedValue(undefined)): RateLimitAllo
   refund,
 });
 
-const allowingLimiter = (): RateLimiter => ({consume: vi.fn(async () => allowance())});
+const allowingLimiter = (): RateLimiter => ({consume: vi.fn(() => Promise.resolve(allowance()))});
 
 const mockRes = () => {
   const res = {
@@ -74,7 +74,7 @@ describe('rate limit middleware', () => {
 
   it('answers 429 with Retry-After in whole seconds', async () => {
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({allowed: false as const, retryAfterMs: 1500})),
+      consume: vi.fn(() => Promise.resolve({allowed: false as const, retryAfterMs: 1500})),
     };
     const res = mockRes();
     const next = vi.fn();
@@ -92,7 +92,7 @@ describe('rate limit middleware', () => {
 
   it('never reports Retry-After: 0, which would invite an immediate retry', async () => {
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({allowed: false as const, retryAfterMs: 10})),
+      consume: vi.fn(() => Promise.resolve({allowed: false as const, retryAfterMs: 10})),
     };
     const res = mockRes();
     const sut = makeRateLimit(limiter, [{name: 'ip', bucket, key: (req) => req.ip}]);
@@ -109,7 +109,7 @@ describe('rate limit middleware', () => {
     // limiter can legitimately report a zero-millisecond deficit right at
     // the moment a bucket refills to exactly the requested cost.
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => ({allowed: false as const, retryAfterMs: 0})),
+      consume: vi.fn(() => Promise.resolve({allowed: false as const, retryAfterMs: 0})),
     };
     const res = mockRes();
     const sut = makeRateLimit(limiter, [{name: 'ip', bucket, key: (req) => req.ip}]);
@@ -158,9 +158,7 @@ describe('rate limit middleware', () => {
     // "never 500s on the limiter's own account" invariant has to hold here
     // too, not only inside that one collaborator.
     const limiter: RateLimiter = {
-      consume: vi.fn(async () => {
-        throw new Error('redis is on fire');
-      }),
+      consume: vi.fn(() => Promise.reject(new Error('redis is on fire'))),
     };
     const next = vi.fn();
     const sut = makeRateLimit(limiter, [{name: 'ip', bucket, key: () => 'ip-key'}]);
@@ -177,9 +175,7 @@ describe('rate limit middleware', () => {
   });
 
   it('preserves the denial when the limiter throws on refund', async () => {
-    const refund = vi.fn(async () => {
-      throw new Error('redis is on fire');
-    });
+    const refund = vi.fn(() => Promise.reject(new Error('redis is on fire')));
     const limiter: RateLimiter = {
       consume: vi
         .fn()
@@ -224,7 +220,7 @@ describe('rate limit middleware', () => {
         name: 'email',
         bucket,
         key: (req) => {
-          const email = (req.body as {email?: unknown}).email;
+          const {email} = req.body as {email?: unknown};
           return typeof email === 'string' ? `email:${email}` : undefined;
         },
       },
@@ -235,7 +231,7 @@ describe('rate limit middleware', () => {
     expect(limiter.consume).toHaveBeenCalledTimes(1);
   });
 
-  it('normalises the email the same way the validation schema does', async () => {
+  it('normalises the email the same way the validation schema does', () => {
     // The middleware runs before validation and sees the raw body, so it has
     // to repeat what account-validation-factory.ts:19 does - otherwise
     // `Bob@X.com ` and `bob@x.com` get separate buckets and the per-email
@@ -243,7 +239,7 @@ describe('rate limit middleware', () => {
     expect(emailKey(request({body: {email: '  Bob@X.com  '}}))).toBe(emailKey(request({body: {email: 'bob@x.com'}})));
   });
 
-  it('derives no email key from a body that has none', async () => {
+  it('derives no email key from a body that has none', () => {
     expect(emailKey(request({body: {}}))).toBeUndefined();
     expect(emailKey(request({body: {email: 42}}))).toBeUndefined();
     expect(emailKey(request({body: {email: '   '}}))).toBeUndefined();
@@ -292,7 +288,7 @@ describe('rate limit middleware', () => {
     expect(new Set(keysSeen).size).toBe(2);
   });
 
-  it('gives two addresses in the same IPv6 /64 the same key', async () => {
+  it('gives two addresses in the same IPv6 /64 the same key', () => {
     // Every major hosting provider and residential ISP routes at least a
     // /64 to one customer, so keying on the full /128 lets one host mint an
     // unlimited number of buckets just by incrementing the interface
@@ -300,23 +296,23 @@ describe('rate limit middleware', () => {
     expect(ipKey(request({ip: '2001:db8:aaaa:1::1'}))).toBe(ipKey(request({ip: '2001:db8:aaaa:1::2'})));
   });
 
-  it('gives two addresses in different IPv6 /64s different keys', async () => {
+  it('gives two addresses in different IPv6 /64s different keys', () => {
     expect(ipKey(request({ip: '2001:db8:aaaa:1::1'}))).not.toBe(ipKey(request({ip: '2001:db8:aaaa:2::1'})));
   });
 
-  it('leaves an IPv4 address unchanged', async () => {
+  it('leaves an IPv4 address unchanged', () => {
     expect(ipKey(request({ip: '203.0.113.9'}))).toBe('ip:203.0.113.9');
   });
 
-  it('treats an IPv4-mapped IPv6 address as its IPv4 form, not truncated', async () => {
+  it('treats an IPv4-mapped IPv6 address as its IPv4 form, not truncated', () => {
     expect(ipKey(request({ip: '::ffff:203.0.113.9'}))).toBe('ip:203.0.113.9');
   });
 
-  it('does not throw on a malformed address', async () => {
+  it('does not throw on a malformed address', () => {
     expect(() => ipKey(request({ip: 'not-an-ip'}))).not.toThrow();
   });
 
-  it('still yields a key when no IP can be derived, rather than exempting the request', async () => {
+  it('still yields a key when no IP can be derived, rather than exempting the request', () => {
     // proxy-addr returns undefined when the socket was already destroyed, so
     // a client that writes a full request and immediately resets the
     // connection must share a bucket with every other unidentifiable
@@ -324,7 +320,7 @@ describe('rate limit middleware', () => {
     expect(ipKey(request({ip: undefined}))).toBe('ip:unknown');
   });
 
-  it('hashes the email into the key rather than storing it in the clear', async () => {
+  it('hashes the email into the key rather than storing it in the clear', () => {
     // This Redis instance also backs BullMQ, so a plaintext
     // `email:bob@example.com` key is readable by SCAN, a leaked RDB, or
     // MONITOR/slowlog output - an enumerable list of every address that has

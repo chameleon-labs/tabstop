@@ -26,7 +26,9 @@ export interface ScoreArcProps {
  * attribute reading a custom property is not reliable across browsers,
  * while `currentColor` inheritance is universally supported.
  */
-export function ScoreArc({score, size = 120}: ScoreArcProps) {
+const toRad = (deg: number): number => (deg * Math.PI) / 180;
+
+export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element {
   const r = size * 0.38;
   const cx = size / 2;
   const cy = size / 2;
@@ -35,8 +37,7 @@ export function ScoreArc({score, size = 120}: ScoreArcProps) {
   const range = endAngle - startAngle;
   const filled = (score / 100) * range;
 
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const arc = (angle: number) => ({
+  const arc = (angle: number): {x: number; y: number} => ({
     x: cx + r * Math.cos(toRad(angle)),
     y: cy + r * Math.sin(toRad(angle)),
   });
@@ -48,12 +49,12 @@ export function ScoreArc({score, size = 120}: ScoreArcProps) {
   const trackP2 = arc(endAngle);
   const trackLarge = range > 180 ? 1 : 0;
 
-  const thresholdClass =
-    score >= 80
-      ? 'landing-page__score-arc--good'
-      : score >= 60
-        ? 'landing-page__score-arc--warn'
-        : 'landing-page__score-arc--bad';
+  let thresholdClass = 'landing-page__score-arc--bad';
+  if (score >= 80) {
+    thresholdClass = 'landing-page__score-arc--good';
+  } else if (score >= 60) {
+    thresholdClass = 'landing-page__score-arc--warn';
+  }
 
   return (
     <svg

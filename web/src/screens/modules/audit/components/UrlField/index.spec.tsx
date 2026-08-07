@@ -123,7 +123,7 @@ describe('UrlField', () => {
     });
   });
 
-  it('cannot be submitted twice while an audit is running', async () => {
+  it('cannot be submitted twice while an audit is running', () => {
     const onSubmit = vi.fn();
     render(<UrlField onSubmit={onSubmit} disabled />);
 

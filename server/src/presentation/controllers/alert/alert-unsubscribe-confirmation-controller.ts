@@ -15,13 +15,14 @@ const escapeAttribute = (value: string): string =>
     .replaceAll('>', '&gt;');
 
 export class AlertUnsubscribeConfirmationController implements Controller<AlertUnsubscribeConfirmationRequest> {
-  async handle(request: AlertUnsubscribeConfirmationRequest): Promise<HttpResponse> {
+  handle(request: AlertUnsubscribeConfirmationRequest): Promise<HttpResponse> {
     if (typeof request.token !== 'string') {
-      return notFound(new Error('Unsubscribe link not found'));
+      return Promise.resolve(notFound(new Error('Unsubscribe link not found')));
     }
 
     const action = `/api/alerts/unsubscribe/${escapeAttribute(request.token)}`;
-    return okHtml(`<!doctype html>
+    return Promise.resolve(
+      okHtml(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -38,6 +39,7 @@ export class AlertUnsubscribeConfirmationController implements Controller<AlertU
     </form>
   </main>
 </body>
-</html>`);
+</html>`),
+    );
   }
 }

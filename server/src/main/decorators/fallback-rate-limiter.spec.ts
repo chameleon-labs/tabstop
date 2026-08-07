@@ -13,7 +13,7 @@ const allowance = (refund = vi.fn().mockResolvedValue(undefined)): RateLimitAllo
 const mockLimiter = (): RateLimiter & {
   consume: ReturnType<typeof vi.fn>;
 } => ({
-  consume: vi.fn(async () => allowance()),
+  consume: vi.fn(() => Promise.resolve(allowance())),
 });
 
 describe('FallbackRateLimiter', () => {
@@ -78,7 +78,9 @@ describe('FallbackRateLimiter', () => {
     primary.consume.mockRejectedValue(new Error('ECONNREFUSED'));
     const sut = new FallbackRateLimiter(primary, mockLimiter());
 
-    for (let i = 0; i < 50; i++) await sut.consume('a', bucket);
+    for (let i = 0; i < 50; i++) {
+      await sut.consume('a', bucket);
+    }
 
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -122,7 +124,9 @@ describe('FallbackRateLimiter', () => {
 
     const first = await sut.consume('first', bucket);
     await sut.consume('second', bucket);
-    if (!first.allowed) throw new Error('expected allowance');
+    if (!first.allowed) {
+      throw new Error('expected allowance');
+    }
     await first.refund();
 
     expect(primaryRefund).toHaveBeenCalledOnce();
@@ -143,7 +147,9 @@ describe('FallbackRateLimiter', () => {
       const first = await sut.consume('ip:1.2.3.4', bucket);
       vi.advanceTimersByTime(5_000);
       await sut.consume('primary-is-healthy-again', bucket);
-      if (!first.allowed) throw new Error('expected allowance');
+      if (!first.allowed) {
+        throw new Error('expected allowance');
+      }
       await first.refund();
 
       expect(fallbackRefund).toHaveBeenCalledOnce();

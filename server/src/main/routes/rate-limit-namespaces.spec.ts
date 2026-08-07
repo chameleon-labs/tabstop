@@ -3,6 +3,7 @@ import type {Router} from 'express';
 import type {BucketConfig, RateLimitAllowance, RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
 import type {AuditJobQueue} from '../../data/protocols/queue/audit-job-queue.js';
 import type {RateLimitRule} from '../middlewares/rate-limit.js';
+import type * as rateLimitMiddleware from '../middlewares/rate-limit.js';
 import {RATE_LIMITS} from '../config/rate-limits.js';
 
 /**
@@ -42,7 +43,7 @@ const recorded: RateLimitRule[] = [];
 const recordedLimiters: RateLimiter[] = [];
 
 vi.mock('../middlewares/rate-limit.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../middlewares/rate-limit.js')>();
+  const actual = await importOriginal<typeof rateLimitMiddleware>();
   return {
     ...actual,
     makeRateLimit: (limiter: Parameters<typeof actual.makeRateLimit>[0], rules: RateLimitRule[]) => {
@@ -70,18 +71,18 @@ const recordingRouter = (): Router => {
 const allowed: RateLimitAllowance = {
   allowed: true,
   remaining: 1,
-  refund: async () => undefined,
+  refund: () => Promise.resolve(undefined),
 };
 
 const rateLimiter: RateLimiter = {
-  consume: async () => allowed,
+  consume: () => Promise.resolve(allowed),
 };
 
 const auditQueue: AuditJobQueue = {
-  enqueueOnce: async () => undefined,
-  has: async () => false,
-  isPending: async () => false,
-  backlogCount: async () => 0,
+  enqueueOnce: () => Promise.resolve(undefined),
+  has: () => Promise.resolve(false),
+  isPending: () => Promise.resolve(false),
+  backlogCount: () => Promise.resolve(0),
 };
 
 /**
@@ -95,17 +96,19 @@ const collectRules = async (): Promise<RateLimitRule[]> => {
   recordedLimiters.length = 0;
 
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
 
   const database = await import('../config/database.js');
   database.connectDatabase(url);
 
   try {
-    const accountRoutes = (await import('./account-routes.js')).default;
-    const auditRoutes = (await import('./audit-routes.js')).default;
-    const healthCheckRoutes = (await import('./health-check-routes.js')).default;
-    const pageRoutes = (await import('./page-routes.js')).default;
-    const alertRoutes = (await import('./alert-routes.js')).default;
+    const accountRoutes = (await import('./account-routes.js')).setupAccountRoutes;
+    const auditRoutes = (await import('./audit-routes.js')).setupAuditRoutes;
+    const healthCheckRoutes = (await import('./health-check-routes.js')).setupHealthCheckRoutes;
+    const pageRoutes = (await import('./page-routes.js')).setupPageRoutes;
+    const alertRoutes = (await import('./alert-routes.js')).setupAlertRoutes;
 
     accountRoutes(recordingRouter(), rateLimiter);
     auditRoutes(recordingRouter(), rateLimiter, auditQueue);
@@ -147,8 +150,10 @@ describe('rate limit namespaces', () => {
     const byName = new Map<string, BucketConfig>();
 
     for (const rule of await collectRules()) {
-      const seen = byName.get(rule.name);
-      if (seen !== undefined) expect(rule.bucket).toEqual(seen);
+      // A name's first bucket is compared with itself, so the assertion can
+      // stay unconditional; only a genuine collision can differ.
+      const seen = byName.get(rule.name) ?? rule.bucket;
+      expect(rule.bucket).toEqual(seen);
       byName.set(rule.name, rule.bucket);
     }
   });

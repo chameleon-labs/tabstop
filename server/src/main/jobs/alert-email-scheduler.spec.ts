@@ -15,7 +15,9 @@ describe('registerAlertEmailDispatcher', () => {
 
   it('upserts one UTC minute schedule carrying a dispatch payload and retries', async () => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
     queue = makeQueue(`alert-schedule-${randomUUID()}`, redisUrl);
 
     await registerAlertEmailDispatcher(queue);

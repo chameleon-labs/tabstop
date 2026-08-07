@@ -30,8 +30,12 @@ const eventually = async (assertion: () => Promise<void>): Promise<void> => {
       await assertion();
       return;
     } catch (error) {
-      if (Date.now() >= deadline) throw error;
-      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      if (Date.now() >= deadline) {
+        throw error;
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 25);
+      });
     }
   }
 };
@@ -62,7 +66,9 @@ describe('alert email delivery pipeline', () => {
   });
 
   afterEach(async () => {
-    if (worker !== null) await worker.close();
+    if (worker !== null) {
+      await worker.close();
+    }
     await queue.obliterate({force: true});
     await queue.close();
     await db.destroy();
@@ -139,7 +145,9 @@ describe('alert email delivery pipeline', () => {
     mode: AlertDispatchMode = 'delivery',
   ): Promise<DbDispatchPendingAlertEmails> => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
     const repository = new PostgresAlertEventRepository(db);
     const dispatchAlerts = makeScopedPendingAlertEventsRepository(alertEventId);
     const send = new DbSendAlertEmail(
@@ -175,7 +183,9 @@ describe('alert email delivery pipeline', () => {
 
   const makeScopedPendingAlertEventsRepository = (alertEventId: string): LoadPendingAlertEventsRepository => ({
     loadPendingAlertEventIds: async (afterId, limit, mode) => {
-      if (limit <= 0) return [];
+      if (limit <= 0) {
+        return [];
+      }
 
       const event = await db
         .selectFrom('alert_events')
@@ -190,11 +200,21 @@ describe('alert email delivery pipeline', () => {
         .where('alert_events.id', '=', alertEventId)
         .executeTakeFirst();
 
-      if (event === undefined) return [];
-      if (afterId !== null && event.id <= afterId) return [];
-      if (event.emailed_at !== null || event.failed_at !== null) return [];
-      if (!event.alerts_enabled) return [];
-      if (mode === 'preview' && event.previewed_at !== null) return [];
+      if (event === undefined) {
+        return [];
+      }
+      if (afterId !== null && event.id <= afterId) {
+        return [];
+      }
+      if (event.emailed_at !== null || event.failed_at !== null) {
+        return [];
+      }
+      if (!event.alerts_enabled) {
+        return [];
+      }
+      if (mode === 'preview' && event.previewed_at !== null) {
+        return [];
+      }
 
       return [event.id];
     },
@@ -268,7 +288,9 @@ describe('alert email delivery pipeline', () => {
     const paused = await queue.getJob(`alert-email-${alertEventId}`);
     expect(paused?.attemptsMade).toBe(0);
 
-    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 250);
+    });
     expect(sender.send).toHaveBeenCalledOnce();
     expect((await queue.getJob(`alert-email-${alertEventId}`))?.attemptsMade).toBe(0);
 
@@ -377,8 +399,9 @@ describe('alert email delivery pipeline', () => {
     const send = makePreviewSender(sender);
 
     const first = send.send(alertEventId);
-    await eventually(async () => {
+    await eventually(() => {
       expect(sender.send).toHaveBeenCalledOnce();
+      return Promise.resolve();
     });
 
     const second = send.send(alertEventId);

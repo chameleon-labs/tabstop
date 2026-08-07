@@ -15,7 +15,7 @@ const install = (axe: unknown): void => {
   globals.axe = axe;
 };
 
-const axeReturning = (result: unknown) => ({run: async () => result});
+const axeReturning = (result: unknown) => ({run: () => Promise.resolve(result)});
 
 const validResult = {
   testEngine: {version: '4.12.1'},

@@ -34,7 +34,7 @@ const filesIn = async (folder: string): Promise<string[]> => {
 };
 
 const componentFolders = async (): Promise<string[]> =>
-  (await Promise.all((await componentRoots()).map(foldersIn))).flat().sort();
+  (await Promise.all((await componentRoots()).map(foldersIn))).flat().toSorted();
 
 /**
  * The layout rules, enforced instead of remembered.
@@ -69,8 +69,12 @@ describe('the component folder convention', () => {
 
     for (const folder of await componentFolders()) {
       const files = await filesIn(folder);
-      if (!files.includes('index.tsx')) offenders.push(`${folder}: no index.tsx`);
-      if (!files.includes('index.spec.tsx')) offenders.push(`${folder}: no index.spec.tsx`);
+      if (!files.includes('index.tsx')) {
+        offenders.push(`${folder}: no index.tsx`);
+      }
+      if (!files.includes('index.spec.tsx')) {
+        offenders.push(`${folder}: no index.spec.tsx`);
+      }
     }
 
     expect(offenders).toEqual([]);
@@ -108,7 +112,9 @@ describe('the component folder convention', () => {
     const offenders = folders.flatMap((folder) => {
       const prefix = `src/${folder}/`;
       const candidates = tracked.filter((path) => path.toLowerCase().startsWith(prefix.toLowerCase()));
-      if (candidates.length === 0) return [`${folder}: nothing tracked`];
+      if (candidates.length === 0) {
+        return [`${folder}: nothing tracked`];
+      }
       return candidates.filter((path) => !path.startsWith(prefix));
     });
 

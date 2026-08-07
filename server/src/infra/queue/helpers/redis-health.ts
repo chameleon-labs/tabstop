@@ -63,7 +63,9 @@ export const watchRedis = (url: string, report: ReportLine): RedisWatcher => {
   let reachable: boolean | null = null;
 
   const transition = (next: boolean, message: string): void => {
-    if (reachable === next) return;
+    if (reachable === next) {
+      return;
+    }
     reachable = next;
     report(message);
   };
@@ -94,11 +96,12 @@ export const watchRedis = (url: string, report: ReportLine): RedisWatcher => {
   });
 
   return {
-    close: async () => {
+    close: () => {
       client.removeAllListeners();
       // `disconnect` rather than `quit`: quit writes a command, and a client
       // that never connected has nowhere to write it.
       client.disconnect();
+      return Promise.resolve();
     },
   };
 };

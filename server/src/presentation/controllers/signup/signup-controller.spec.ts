@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {SignupController} from './signup-controller.js';
-import {mockAccountModel, mockAddAccount, mockValidation} from '../../test/mock-account.js';
+import {mockAddAccount, mockValidation} from '../../test/mock-account.js';
 
 const request = {email: 'a@b.co', password: 'correct horse battery staple'};
 

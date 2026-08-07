@@ -13,7 +13,9 @@ const toCountsByImpact = (raw: Partial<Record<Impact, number>>): CountsByImpact 
   const counts: CountsByImpact = {minor: 0, moderate: 0, serious: 0, critical: 0};
   for (const impact of IMPACTS) {
     const value = raw[impact];
-    if (value !== undefined) counts[impact] = value;
+    if (value !== undefined) {
+      counts[impact] = value;
+    }
   }
   return counts;
 };

@@ -6,10 +6,12 @@ import type {LoadViolationsByAuditIdRepository} from '../../protocols/db/violati
 
 const makeSut = () => {
   const audits = {
-    loadByPublicUuid: vi.fn<LoadAuditByPublicUuidRepository['loadByPublicUuid']>(async () => mockAuditModel()),
+    loadByPublicUuid: vi.fn<LoadAuditByPublicUuidRepository['loadByPublicUuid']>(() =>
+      Promise.resolve(mockAuditModel()),
+    ),
   };
   const violations = {
-    loadByAuditId: vi.fn<LoadViolationsByAuditIdRepository['loadByAuditId']>(async () => []),
+    loadByAuditId: vi.fn<LoadViolationsByAuditIdRepository['loadByAuditId']>(() => Promise.resolve([])),
   };
   return {sut: new DbLoadAuditResult(audits, violations), audits, violations};
 };

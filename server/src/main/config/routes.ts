@@ -1,9 +1,9 @@
 import {Router, type Express} from 'express';
-import setupAccountRoutes from '../routes/account-routes.js';
-import setupAuditRoutes from '../routes/audit-routes.js';
-import setupHealthCheckRoutes from '../routes/health-check-routes.js';
-import setupPageRoutes from '../routes/page-routes.js';
-import setupAlertRoutes from '../routes/alert-routes.js';
+import {setupAccountRoutes} from '../routes/account-routes.js';
+import {setupAuditRoutes} from '../routes/audit-routes.js';
+import {setupHealthCheckRoutes} from '../routes/health-check-routes.js';
+import {setupPageRoutes} from '../routes/page-routes.js';
+import {setupAlertRoutes} from '../routes/alert-routes.js';
 import type {AppDependencies} from './app-dependencies.js';
 
 export const setupRoutes = (app: Express, dependencies: AppDependencies): void => {

@@ -5,10 +5,12 @@ import type {LoadAuditResult} from '../../../domain/usecases/load-audit-result.j
 
 const makeSut = () => {
   const loadAuditResult = {
-    load: vi.fn<LoadAuditResult['load']>(async () => ({
-      audit: mockAuditModel(),
-      violations: [],
-    })),
+    load: vi.fn<LoadAuditResult['load']>(() =>
+      Promise.resolve({
+        audit: mockAuditModel(),
+        violations: [],
+      }),
+    ),
   };
   return {sut: new LoadAuditResultController(loadAuditResult), loadAuditResult};
 };

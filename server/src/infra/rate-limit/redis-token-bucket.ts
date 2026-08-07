@@ -116,7 +116,9 @@ export class RedisTokenBucket implements RateLimiter {
    * window and a second on the way out is not worth racing listeners over.
    */
   private async awaitConnection(): Promise<void> {
-    if (this.redis.status === 'ready') return;
+    if (this.redis.status === 'ready') {
+      return;
+    }
     if (this.redis.status === 'end') {
       throw new Error('Rate limiter connection is closed');
     }

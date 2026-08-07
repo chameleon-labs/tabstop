@@ -1,5 +1,4 @@
-import type {AddAccountParams} from '../../../domain/usecases/add-account.js';
-import type {AddAccount} from '../../../domain/usecases/add-account.js';
+import type {AddAccountParams, AddAccount} from '../../../domain/usecases/add-account.js';
 import {EmailInUseError} from '../../errors/email-in-use-error.js';
 import {toAccountView} from '../../helpers/account-view.js';
 import {badRequest, conflict, created, serverError} from '../../helpers/http/http-helper.js';
@@ -18,12 +17,16 @@ export class SignupController implements Controller {
   async handle(request: unknown): Promise<HttpResponse> {
     try {
       const validated = this.validation.validate(request);
-      if ('error' in validated) return badRequest(validated.error);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
       const session = await this.addAccount.add(validated.data);
       // Null means the email is taken - including when a concurrent signup won
       // the race, which the repository turns into the same outcome.
-      if (session === null) return conflict(new EmailInUseError());
+      if (session === null) {
+        return conflict(new EmailInUseError());
+      }
 
       return created(toAccountView(session.account), setSessionCookie(this.sessionCookieName, session));
     } catch (error) {

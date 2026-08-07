@@ -66,10 +66,12 @@ const offendingImports = async (directory: string, isAllowed: (specifier: string
   const offences: string[] = [];
   for (const path of await sourceFiles(directory)) {
     for (const specifier of await importsOf(path)) {
-      if (!isAllowed(specifier)) offences.push(`${path} -> ${specifier}`);
+      if (!isAllowed(specifier)) {
+        offences.push(`${path} -> ${specifier}`);
+      }
     }
   }
-  return offences.sort();
+  return offences.toSorted();
 };
 
 const isRelative = (specifier: string): boolean => specifier.startsWith('.');
@@ -252,12 +254,14 @@ describe('layer dependencies', () => {
     for (const directory of ['domain', 'data']) {
       for (const path of await specs(directory)) {
         for (const specifier of await importsOf(path)) {
-          if (!outward(specifier)) offences.push(`${path} -> ${specifier}`);
+          if (!outward(specifier)) {
+            offences.push(`${path} -> ${specifier}`);
+          }
         }
       }
     }
 
-    expect(offences.sort()).toEqual([]);
+    expect(offences.toSorted()).toEqual([]);
   });
 
   it('keeps presentation/ off data/, infra/ and main/', async () => {
@@ -293,7 +297,7 @@ describe('layer dependencies', () => {
       }
     }
 
-    expect(importers.sort()).toEqual([
+    expect(importers.toSorted()).toEqual([
       'presentation/helpers/account-view.ts',
       'presentation/helpers/audit-view.ts',
       // Not a view of a resource, but a view of a response all the same: the
@@ -309,7 +313,7 @@ describe('layer dependencies', () => {
     // Each of these should exist in exactly one place, so swapping it is a
     // file rather than an excavation. main/ is the composition root and is
     // allowed to name anything it wires.
-    const vendors = ['playwright', 'kysely', 'pg', 'bullmq', 'express', 'zod'];
+    const vendors = new Set(['playwright', 'kysely', 'pg', 'bullmq', 'express', 'zod']);
     const found = new Map<string, string[]>();
 
     for (const directory of ['domain', 'data', 'presentation', 'infra']) {
@@ -317,15 +321,19 @@ describe('layer dependencies', () => {
         for (const specifier of await importsOf(path)) {
           // Resolved to the package, so `kysely/migration` counts as kysely.
           const vendor = vendorRoot(specifier);
-          if (!vendors.includes(vendor)) continue;
+          if (!vendors.has(vendor)) {
+            continue;
+          }
           const paths = found.get(vendor) ?? [];
           // A file importing both `kysely` and `kysely/migration` is one file.
-          if (!paths.includes(path)) found.set(vendor, [...paths, path]);
+          if (!paths.includes(path)) {
+            found.set(vendor, [...paths, path]);
+          }
         }
       }
     }
 
-    expect(Object.fromEntries([...found].map(([vendor, paths]) => [vendor, paths.sort()]))).toEqual({
+    expect(Object.fromEntries([...found].map(([vendor, paths]) => [vendor, paths.toSorted()]))).toEqual({
       playwright: ['infra/audit/playwright-axe-auditor.ts'],
       kysely: [
         'infra/db/postgres/account/account-mapper.ts',

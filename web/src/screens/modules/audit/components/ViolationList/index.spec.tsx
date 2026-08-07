@@ -46,7 +46,7 @@ describe('ViolationList', () => {
       // shipping one inside an accessibility report would be quotable.
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />);
 
-      const button = screen.getAllByRole('button')[0];
+      const [button] = screen.getAllByRole('button');
 
       expect(button).toHaveAttribute('aria-expanded', 'false');
       await userEvent.click(button as HTMLElement);
@@ -109,7 +109,7 @@ describe('ViolationList', () => {
   });
 
   describe('what an expanded finding shows', () => {
-    it('renders the HTML snippet as TEXT, never as markup', async () => {
+    it('renders the HTML snippet as TEXT, never as markup', () => {
       // `node.html` is attacker-controlled: a snippet captured from an
       // arbitrary third-party page, and this product exists to visit pages
       // nobody vetted. The instinct to "show the HTML properly" is the instinct
@@ -139,7 +139,7 @@ describe('ViolationList', () => {
       expect(screen.getByText('html > body > div')).toBeVisible();
     });
 
-    it('links to the rule help with a name that survives being read alone', async () => {
+    it('links to the rule help with a name that survives being read alone', () => {
       // A list of links all reading "How to fix this" is useless in a screen
       // reader's link list. The rule id disambiguates without adding visual
       // noise.

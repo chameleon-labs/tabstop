@@ -6,7 +6,7 @@ describe('the API client', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => jsonResponse(200, {ok: true}));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(200, {ok: true})));
     vi.stubGlobal('fetch', fetchMock);
   });
 

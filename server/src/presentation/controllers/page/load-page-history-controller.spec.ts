@@ -65,7 +65,7 @@ describe('LoadPageHistoryController', () => {
     const {sut} = makeSut();
 
     const response = await sut.handle({id: 'any-page-id', userId: 'user-1'});
-    const points = (response.body as {points: Array<Record<string, unknown>>}).points;
+    const {points} = response.body as {points: Record<string, unknown>[]};
 
     expect(points.map((point) => point.axeVersion)).toEqual(['4.12.1', null, '4.12.1']);
   });
@@ -74,11 +74,13 @@ describe('LoadPageHistoryController', () => {
     const {sut} = makeSut();
 
     const response = await sut.handle({id: 'any-page-id', userId: 'user-1'});
-    const points = (response.body as {points: Array<Record<string, unknown>>}).points;
+    const {points} = response.body as {points: Record<string, unknown>[]};
 
     // Every point is addressed by its public uuid, the same id the share page
     // (#23) uses. `any-audit-id` is what the mock's internal id is.
-    for (const point of points) expect(point.auditId).not.toBe('any-audit-id');
+    for (const point of points) {
+      expect(point.auditId).not.toBe('any-audit-id');
+    }
   });
 
   it('echoes back the window the server actually used', async () => {

@@ -71,7 +71,9 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 type Attempt = {url: string; method: string; headers: Record<string, string>; data?: Buffer};
 
 const followRedirect = (attempt: Attempt, status: number, url: string): Attempt => {
-  if (METHOD_PRESERVING_REDIRECTS.has(status)) return {...attempt, url};
+  if (METHOD_PRESERVING_REDIRECTS.has(status)) {
+    return {...attempt, url};
+  }
 
   // Demoted to GET, so the body goes and the headers describing it go with it -
   // a content-length left on a bodyless GET is its own source of confusion.
@@ -89,11 +91,21 @@ const followRedirect = (attempt: Attempt, status: number, url: string): Attempt 
  */
 const abortCodeFor = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
-  if (/ECONNREFUSED/.test(message)) return 'connectionrefused';
-  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(message)) return 'namenotresolved';
-  if (/ETIMEDOUT|timeout/i.test(message)) return 'timedout';
-  if (/ECONNRESET/.test(message)) return 'connectionreset';
-  if (/EHOSTUNREACH|ENETUNREACH/.test(message)) return 'addressunreachable';
+  if (/ECONNREFUSED/.test(message)) {
+    return 'connectionrefused';
+  }
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/.test(message)) {
+    return 'namenotresolved';
+  }
+  if (/ETIMEDOUT|timeout/i.test(message)) {
+    return 'timedout';
+  }
+  if (/ECONNRESET/.test(message)) {
+    return 'connectionreset';
+  }
+  if (/EHOSTUNREACH|ENETUNREACH/.test(message)) {
+    return 'addressunreachable';
+  }
   return 'connectionfailed';
 };
 
@@ -113,7 +125,9 @@ const fulfilAndDispose = async (route: RouteLike, response: FetchedResponse): Pr
 export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFAULT_URL_POLICY) => {
   const isAddressSafe = async (url: URL): Promise<boolean> => {
     const host = bareHostname(url);
-    if (policy.isIpLiteral(host)) return !policy.isBlockedAddress(host);
+    if (policy.isIpLiteral(host)) {
+      return !policy.isBlockedAddress(host);
+    }
 
     const addresses = await resolver.resolve(host);
     // Empty means resolution failed: fail closed. And EVERY address has to be
@@ -151,7 +165,9 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
     };
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      if (!(await isSafe(attempt.url))) return await route.abort('blockedbyclient');
+      if (!(await isSafe(attempt.url))) {
+        return await route.abort('blockedbyclient');
+      }
 
       let response: FetchedResponse;
       try {
@@ -163,7 +179,9 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
       const status = response.status();
       if (!REDIRECT_STATUSES.has(status)) {
         // The chain ended here. If it never moved, serve what we fetched.
-        if (attempt.url === originalUrl) return await fulfilAndDispose(route, response);
+        if (attempt.url === originalUrl) {
+          return await fulfilAndDispose(route, response);
+        }
 
         // Fulfilling this body against the original request would collapse
         // the chain: Playwright copies status, headers and body onto the FIRST
@@ -181,8 +199,10 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
         });
       }
 
-      const location = response.headers().location;
-      if (location === undefined) return await fulfilAndDispose(route, response);
+      const {location} = response.headers();
+      if (location === undefined) {
+        return await fulfilAndDispose(route, response);
+      }
 
       // An intermediate hop's body is never served, so it is dead weight the
       // moment its status and Location have been read.

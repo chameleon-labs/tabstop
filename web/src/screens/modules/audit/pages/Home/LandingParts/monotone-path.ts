@@ -65,15 +65,20 @@ function segment(x0: number, y0: number, x1: number, y1: number, t0: number, t1:
  * order); this does not sort them.
  */
 export function monotoneLinePath(points: readonly Point[]): string {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M${points[0]!.x},${points[0]!.y}`;
+  if (points.length === 0) {
+    return '';
+  }
+  if (points.length === 1) {
+    return `M${points[0]!.x},${points[0]!.y}`;
+  }
   if (points.length === 2) {
     const [p0, p1] = points as [Point, Point];
     return `M${p0.x},${p0.y}L${p1.x},${p1.y}`;
   }
 
   const n = points.length;
-  const tangents: number[] = new Array(n);
+  // Zero-seeded only to fix the length; every slot is overwritten below.
+  const tangents: number[] = Array.from({length: n}, () => 0);
 
   // Interior tangents first — each needs both neighbours.
   for (let i = 1; i < n - 1; i += 1) {

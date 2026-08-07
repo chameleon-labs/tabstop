@@ -24,7 +24,9 @@ describe('PostgresAuditRepository completion', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
     sut = new PostgresAuditRepository(db);
   });
@@ -63,7 +65,9 @@ describe('PostgresAuditRepository completion', () => {
   };
 
   const storeViolations = async (auditId: string, violations: readonly SnapshotViolation[]): Promise<void> => {
-    if (violations.length === 0) return;
+    if (violations.length === 0) {
+      return;
+    }
 
     await db
       .insertInto('violations')
@@ -138,7 +142,9 @@ describe('PostgresAuditRepository completion', () => {
       .returning('id')
       .executeTakeFirstOrThrow();
     const claimedAt = await sut.claimForRun(row.id);
-    if (claimedAt === null) throw new Error('fixture failed to claim audit');
+    if (claimedAt === null) {
+      throw new Error('fixture failed to claim audit');
+    }
     return {id: row.id, claimedAt};
   };
 

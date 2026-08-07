@@ -122,7 +122,9 @@ export const summariseViolations = (violations: readonly ScoredViolation[]): Aud
     // A violation with no severity has no bucket, and inventing one would
     // corrupt the comparison regression detection makes between audits. It
     // still deducts, and it is still in the violation list.
-    if (rule.impact === null) continue;
+    if (rule.impact === null) {
+      continue;
+    }
     countsByImpact[rule.impact] += rule.nodeCount;
   }
 

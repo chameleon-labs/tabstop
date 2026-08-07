@@ -4,7 +4,9 @@ import {connectDatabase, disconnectDatabase, getDatabase} from './database.js';
 
 const connectionString = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 

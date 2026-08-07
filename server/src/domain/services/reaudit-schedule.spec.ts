@@ -100,7 +100,9 @@ describe('reauditDelayMs', () => {
   it('honours a caller that narrows the window', () => {
     const delays = pageIds(50).map((pageId) => reauditDelayMs('example.test', pageId, 60_000, 1000));
 
-    for (const delay of delays) expect(delay).toBeLessThan(60_000);
+    for (const delay of delays) {
+      expect(delay).toBeLessThan(60_000);
+    }
   });
 
   it('survives a window narrower than one stagger step', () => {

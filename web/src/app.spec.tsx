@@ -1,6 +1,7 @@
 import {render, screen} from '@testing-library/react';
 import {StrictMode} from 'react';
 import {createBrowserRouter, createMemoryRouter} from 'react-router';
+import type * as reactRouter from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {App} from './app';
 import {makeQueryClient} from './api/query-client';
@@ -11,7 +12,7 @@ import {routes} from './routes';
  * the screens import must stay real, or this stops being a test of the app.
  */
 vi.mock('react-router', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react-router')>();
+  const actual = await importOriginal<typeof reactRouter>();
   return {...actual, createBrowserRouter: vi.fn(actual.createBrowserRouter)};
 });
 
@@ -29,12 +30,13 @@ describe('App', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(
-      async () =>
+    fetchMock = vi.fn(() =>
+      Promise.resolve(
         new Response(JSON.stringify({error: 'Unauthorized'}), {
           status: 401,
           headers: {'content-type': 'application/json'},
         }),
+      ),
     );
     vi.stubGlobal('fetch', fetchMock);
   });

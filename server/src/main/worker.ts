@@ -1,6 +1,6 @@
 import {UnrecoverableError} from 'bullmq';
 import {env} from './config/env.js';
-import {connectDatabase, disconnectDatabase} from './config/database.js';
+import {connectDatabase, disconnectDatabase, getDatabase} from './config/database.js';
 import {
   QUEUE_NAMES,
   type AlertQueuePayload,
@@ -19,7 +19,6 @@ import {runWithTimeout} from '../infra/queue/run-with-timeout.js';
 import {watchRedis} from '../infra/queue/helpers/redis-health.js';
 import {PermanentAuditError} from '../domain/errors/permanent-audit-error.js';
 import {closePageAuditor, makeRunAudit} from './factories/usecases/run-audit/run-audit-factory.js';
-import {getDatabase} from './config/database.js';
 import {PostgresSessionRepository} from '../infra/db/postgres/session/postgres-session-repository.js';
 import {startSessionSweeper} from './maintenance/session-sweeper.js';
 import {
@@ -58,8 +57,9 @@ const redis = watchRedis(env.redisUrl, console.log);
 
 const pingWorker = makeWorker<PingPayload>(QUEUE_NAMES.ping, env.redisUrl, async (job) => {
   // The signal is intentionally unused: this handler has nothing to abort.
-  await runWithTimeout(PING_TIMEOUT_MS, async () => {
+  await runWithTimeout(PING_TIMEOUT_MS, () => {
     console.log(`ping received, requested at ${job.data.requestedAt}`);
+    return Promise.resolve();
   });
 });
 
@@ -89,7 +89,9 @@ const auditWorker = makeWorker<AuditPayload>(
         // The queue's vocabulary stops here. The usecase raises a domain error,
         // and this is the only place that knows how to tell BullMQ to give up -
         // which is what keeps data/ testable with no queue at all.
-        if (error instanceof PermanentAuditError) throw new UnrecoverableError(error.message);
+        if (error instanceof PermanentAuditError) {
+          throw new UnrecoverableError(error.message);
+        }
         throw error;
       }
     });
@@ -174,7 +176,7 @@ const reauditWorker = makeWorker<ReauditPayload>(QUEUE_NAMES.reaudit, env.redisU
       JSON.stringify({
         event: 'reaudit-run',
         outcome: 'aborted',
-        ...(progress ?? {}),
+        ...progress,
         reason: error instanceof Error ? error.message : String(error),
         attempt: job.attemptsMade + 1,
         durationMs: Date.now() - startedAt,
@@ -200,7 +202,9 @@ const reauditWorker = makeWorker<ReauditPayload>(QUEUE_NAMES.reaudit, env.redisU
   // Safe to retry: pages the attempt scheduled are excluded from the
   // eligibility query, so the next one picks up only what is still owed.
   const failure = reauditRunFailure(summary, reauditShutdown.signal.aborted);
-  if (failure !== null) throw new Error(failure);
+  if (failure !== null) {
+    throw new Error(failure);
+  }
 });
 
 // AlertEvent is the durable outbox; Redis is only its delivery mechanism.

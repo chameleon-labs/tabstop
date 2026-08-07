@@ -1,7 +1,6 @@
 import {DbLoadAuditResult} from '../../../../data/usecases/load-audit-result/db-load-audit-result.js';
 import {DbRequestAudit} from '../../../../data/usecases/request-audit/db-request-audit.js';
 import type {LoadAuditResult} from '../../../../domain/usecases/load-audit-result.js';
-import type {RequestAudit} from '../../../../domain/usecases/request-audit.js';
 import {PostgresAuditRepository} from '../../../../infra/db/postgres/audit/postgres-audit-repository.js';
 import {PostgresViolationRepository} from '../../../../infra/db/postgres/violation/postgres-violation-repository.js';
 import {NodeDnsResolver} from '../../../../infra/net/node-dns-resolver.js';

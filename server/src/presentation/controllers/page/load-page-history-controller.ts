@@ -39,9 +39,13 @@ export class LoadPageHistoryController implements Controller<LoadPageHistoryRequ
   async handle(request: LoadPageHistoryRequest): Promise<HttpResponse> {
     try {
       const validated = this.validation.validate(request);
-      if ('error' in validated) return badRequest(validated.error);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
-      if (typeof request.id !== 'string') return notFound(new PageNotFoundError());
+      if (typeof request.id !== 'string') {
+        return notFound(new PageNotFoundError());
+      }
 
       const history = await this.loadPageHistory.load({
         pageId: request.id,
@@ -51,7 +55,9 @@ export class LoadPageHistoryController implements Controller<LoadPageHistoryRequ
 
       // Same conflation as every other page route: somebody else's page and a
       // page that never existed are one answer.
-      if (history === null) return notFound(new PageNotFoundError());
+      if (history === null) {
+        return notFound(new PageNotFoundError());
+      }
 
       return okCacheable(toPageHistoryView(history, validated.data.days), CACHE_CONTROL, 'Cookie');
     } catch (error) {

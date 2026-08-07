@@ -33,13 +33,17 @@ export class PostgresViolationRepository implements ReplaceViolationsRepository,
         .forUpdate()
         .executeTakeFirst();
 
-      if (owned === undefined) return;
+      if (owned === undefined) {
+        return;
+      }
 
       await trx.deleteFrom('violations').where('audit_id', '=', auditId).execute();
 
       // Kysely throws on an empty VALUES list, and a clean page is the most
       // common case, so this guard is load-bearing rather than an optimisation.
-      if (violations.length === 0) return;
+      if (violations.length === 0) {
+        return;
+      }
 
       await trx
         .insertInto('violations')

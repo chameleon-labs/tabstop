@@ -11,7 +11,9 @@ export class ZodValidationAdapter<T> implements Validation<T> {
 
   validate(input: unknown): ValidationResult<T> {
     const result = this.schema.safeParse(input);
-    if (result.success) return {data: result.data};
+    if (result.success) {
+      return {data: result.data};
+    }
 
     const message = result.error.issues
       .map((issue) => {

@@ -1,4 +1,4 @@
-import {AddPageController, type AddPageRequest} from '../../../../presentation/controllers/page/add-page-controller.js';
+import {AddPageController} from '../../../../presentation/controllers/page/add-page-controller.js';
 import {
   DeletePageController,
   type DeletePageRequest,

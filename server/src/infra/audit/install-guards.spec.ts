@@ -48,7 +48,9 @@ describe('installGuards', () => {
     const context = makeContext();
     await installGuards(context as unknown as GuardedContext, noopGuard);
     const handler = context.routeWebSocket.mock.calls[0]?.[1];
-    if (handler === undefined) throw new Error('no WebSocket handler registered');
+    if (handler === undefined) {
+      throw new Error('no WebSocket handler registered');
+    }
     const socket = {close: vi.fn()};
 
     handler(socket);
@@ -76,7 +78,9 @@ describe('installGuards', () => {
 
     await installGuards(context as unknown as GuardedContext, guard);
     const handler = context.route.mock.calls[0]?.[1];
-    if (handler === undefined) throw new Error('no route handler registered');
+    if (handler === undefined) {
+      throw new Error('no route handler registered');
+    }
     handler({marker: true});
 
     expect(guard).toHaveBeenCalledWith({marker: true});

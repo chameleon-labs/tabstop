@@ -1,5 +1,5 @@
 import {CompiledQuery, Kysely, PostgresDialect} from 'kysely';
-import pg from 'pg';
+import {Pool} from 'pg';
 import type {Database} from '../database.js';
 
 /**
@@ -17,7 +17,9 @@ export type IssuedQuery = {sql: string; parameters: readonly unknown[]};
 
 const connectionUrl = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -30,7 +32,7 @@ const connectionUrl = (): string => {
  */
 export const makeRecordingDatabase = (sink: IssuedQuery[]): Kysely<Database> =>
   new Kysely<Database>({
-    dialect: new PostgresDialect({pool: new pg.Pool({connectionString: connectionUrl()})}),
+    dialect: new PostgresDialect({pool: new Pool({connectionString: connectionUrl()})}),
     log: (event) => {
       if (event.level === 'query') {
         sink.push({sql: event.query.sql, parameters: event.query.parameters});
@@ -84,7 +86,9 @@ const rowsReadFrom = (relation: string, node: unknown): number => {
   if (Array.isArray(node)) {
     return node.reduce<number>((total, child) => total + rowsReadFrom(relation, child), 0);
   }
-  if (typeof node !== 'object' || node === null) return 0;
+  if (typeof node !== 'object' || node === null) {
+    return 0;
+  }
 
   const fields: Record<string, unknown> = {...node};
   // Only scan nodes carry `Relation Name`, so descending everywhere cannot
@@ -113,7 +117,9 @@ export const explainRowsRead = async (db: Kysely<Database>, query: IssuedQuery, 
     CompiledQuery.raw(`explain (analyze, format json) ${query.sql}`, [...query.parameters]),
   );
 
-  if (explained.rows.length === 0) throw new Error('EXPLAIN returned no plan');
+  if (explained.rows.length === 0) {
+    throw new Error('EXPLAIN returned no plan');
+  }
   // Fed the whole result rather than reached into by key: the walk narrows as
   // it goes, so it does not need a type for the planner's document.
   return rowsReadFrom(relation, explained.rows);

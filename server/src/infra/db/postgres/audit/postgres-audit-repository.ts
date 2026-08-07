@@ -48,7 +48,12 @@ export const claimLeaseFor = (jobTimeoutMs: number, unwindGraceMs: number): numb
 /** Safe for the largest job budget the environment schema allows. */
 const DEFAULT_STALE_CLAIM_AFTER_MS = claimLeaseFor(600_000, 15_000);
 
-const writeDone = async (db: Kysely<Database>, auditId: string, claimedAt: Date, result: CompleteAuditParams) =>
+const writeDone = async (
+  db: Kysely<Database>,
+  auditId: string,
+  claimedAt: Date,
+  result: CompleteAuditParams,
+): Promise<{page_id: string | null; created_at: Date} | undefined> =>
   await db
     .updateTable('audits')
     .set({
@@ -130,7 +135,9 @@ export class PostgresAuditRepository
   }
 
   async loadByPublicUuid(publicUuid: string): Promise<AuditModel | null> {
-    if (!UUID_PATTERN.test(publicUuid)) return null;
+    if (!UUID_PATTERN.test(publicUuid)) {
+      return null;
+    }
 
     const row = await this.db.selectFrom('audits').selectAll().where('public_uuid', '=', publicUuid).executeTakeFirst();
 
@@ -191,7 +198,9 @@ export class PostgresAuditRepository
       // the current attempt owns neither the result nor an alert derived from
       // it, so every read and insert below is skipped.
       const current = await writeDone(trx, auditId, claimedAt, result);
-      if (current === undefined || current.page_id === null) return;
+      if (current === undefined || current.page_id === null) {
+        return;
+      }
 
       const account = await trx
         .selectFrom('pages')
@@ -203,7 +212,9 @@ export class PostgresAuditRepository
 
       // Unsubscribe is alerts-only: daily audits and history continue, but no
       // new outbox event is created after the preference changes.
-      if (!account.alerts_enabled) return;
+      if (!account.alerts_enabled) {
+        return;
+      }
 
       // "Previous" is chronological, not whichever audit happened to finish
       // most recently. Two jobs may complete out of order; allowing an audit
@@ -253,7 +264,9 @@ export class PostgresAuditRepository
         account.alert_threshold,
       );
 
-      if (regression.kind === 'none') return;
+      if (regression.kind === 'none') {
+        return;
+      }
 
       // The expression is the existing unique index's exact target. `do
       // nothing` turns the expected race into a normal outcome without

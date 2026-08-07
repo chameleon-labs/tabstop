@@ -35,7 +35,11 @@ export const ANNOUNCE_DELAY_MS = 100;
 const listeners = new Set<() => void>();
 
 export const documentTitleSet = (): void => {
-  for (const listener of [...listeners]) listener();
+  // A snapshot, so a listener that unsubscribes - or subscribes another -
+  // during dispatch cannot change who this pass notifies.
+  for (const listener of Array.from(listeners)) {
+    listener();
+  }
 };
 
 export const onDocumentTitleSet = (listener: () => void): (() => void) => {

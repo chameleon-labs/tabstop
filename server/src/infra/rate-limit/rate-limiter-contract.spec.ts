@@ -13,7 +13,9 @@ let redis: Redis;
 
 beforeAll(() => {
   const url = process.env.REDIS_URL;
-  if (url === undefined) throw new Error('REDIS_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('REDIS_URL not set by globalSetup');
+  }
   redis = new Redis(url);
 });
 
@@ -40,7 +42,9 @@ describe.each<[string, () => RateLimiter]>([
     const k = key();
 
     const results = [];
-    for (let i = 0; i < 4; i++) results.push(await sut.consume(k, frozen));
+    for (let i = 0; i < 4; i++) {
+      results.push(await sut.consume(k, frozen));
+    }
 
     expect(results.map((result) => result.allowed)).toEqual([true, true, true, false]);
   });
@@ -59,11 +63,15 @@ describe.each<[string, () => RateLimiter]>([
   it('reports a wait scaled to the deficit rather than a constant', async () => {
     const sut = make();
     const k = key();
-    for (let i = 0; i < 3; i++) await sut.consume(k, frozen);
+    for (let i = 0; i < 3; i++) {
+      await sut.consume(k, frozen);
+    }
 
     const denied = await sut.consume(k, frozen);
 
-    if (denied.allowed) throw new Error('expected the bucket to be empty');
+    if (denied.allowed) {
+      throw new Error('expected the bucket to be empty');
+    }
     // One token per hour, so one token of deficit is most of an hour.
     expect(denied.retryAfterMs).toBeGreaterThan(3_000_000);
     expect(denied.retryAfterMs).toBeLessThanOrEqual(3_600_000);
@@ -80,8 +88,12 @@ describe.each<[string, () => RateLimiter]>([
     const sut = make();
     const slowKey = key();
     const fastKey = key();
-    for (let i = 0; i < 3; i++) await sut.consume(slowKey, frozen);
-    for (let i = 0; i < 3; i++) await sut.consume(fastKey, quadRefill);
+    for (let i = 0; i < 3; i++) {
+      await sut.consume(slowKey, frozen);
+    }
+    for (let i = 0; i < 3; i++) {
+      await sut.consume(fastKey, quadRefill);
+    }
 
     const slowDenied = await sut.consume(slowKey, frozen);
     const fastDenied = await sut.consume(fastKey, quadRefill);
@@ -97,10 +109,14 @@ describe.each<[string, () => RateLimiter]>([
   it('refills over elapsed time', async () => {
     const sut = make();
     const k = key();
-    for (let i = 0; i < 3; i++) await sut.consume(k, fast);
+    for (let i = 0; i < 3; i++) {
+      await sut.consume(k, fast);
+    }
     expect((await sut.consume(k, fast)).allowed).toBe(false);
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
 
     expect((await sut.consume(k, fast)).allowed).toBe(true);
   });
@@ -108,7 +124,9 @@ describe.each<[string, () => RateLimiter]>([
   it('keeps buckets separate per key', async () => {
     const sut = make();
     const exhausted = key();
-    for (let i = 0; i < 3; i++) await sut.consume(exhausted, frozen);
+    for (let i = 0; i < 3; i++) {
+      await sut.consume(exhausted, frozen);
+    }
 
     expect((await sut.consume(key(), frozen)).allowed).toBe(true);
   });
@@ -117,8 +135,12 @@ describe.each<[string, () => RateLimiter]>([
     const sut = make();
     const k = key();
     const first = await sut.consume(k, frozen);
-    if (!first.allowed) throw new Error('expected allowance');
-    for (let i = 0; i < 2; i++) await sut.consume(k, frozen);
+    if (!first.allowed) {
+      throw new Error('expected allowance');
+    }
+    for (let i = 0; i < 2; i++) {
+      await sut.consume(k, frozen);
+    }
 
     await first.refund();
 
@@ -129,7 +151,9 @@ describe.each<[string, () => RateLimiter]>([
     const sut = make();
     const k = key();
     const first = await sut.consume(k, oneFrozen);
-    if (!first.allowed) throw new Error('expected allowance');
+    if (!first.allowed) {
+      throw new Error('expected allowance');
+    }
 
     await first.refund();
     expect((await sut.consume(k, oneFrozen)).allowed).toBe(true);

@@ -12,7 +12,7 @@ import {makeRateLimit, emailKey, ipKey} from '../middlewares/rate-limit.js';
 import {RATE_LIMITS} from '../config/rate-limits.js';
 import type {RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
 
-export default (router: Router, rateLimiter: RateLimiter): void => {
+export const setupAccountRoutes = (router: Router, rateLimiter: RateLimiter): void => {
   router.post(
     '/signup',
     makeRateLimit(rateLimiter, [{name: 'signup', bucket: RATE_LIMITS.signup, key: ipKey}]),

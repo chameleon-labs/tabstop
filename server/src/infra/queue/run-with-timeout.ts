@@ -76,7 +76,9 @@ export const runWithTimeout = async <T>(
       }),
     ]);
   } catch (error) {
-    if (!timedOut) throw error;
+    if (!timedOut) {
+      throw error;
+    }
 
     // Report the timeout only once the handler has stopped working - or the
     // grace has run out, which means it is ignoring its signal and waiting

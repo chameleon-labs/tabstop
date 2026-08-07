@@ -1,8 +1,7 @@
 import type {AuditModel, AuditStatus} from '../../domain/models/audit.js';
 import type {CountsByImpact} from '../../domain/models/impact.js';
-import type {PageSummary} from '../../domain/models/page.js';
+import type {PageSummary, PageModel} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
-import type {PageModel} from '../../domain/models/page.js';
 
 /**
  * A page as the API reports it.
@@ -59,7 +58,7 @@ export type PageSummaryView = PageView & {
   score: number | null;
   previousScore: number | null;
   /** Oldest first, bounded, finished audits only. The sparkline (#20). */
-  history: Array<{score: number; at: string}>;
+  history: {score: number; at: string}[];
 };
 
 const toLatestAuditView = (audit: AuditModel): LatestAuditView => ({

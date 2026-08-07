@@ -10,7 +10,7 @@ describe('useSession', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => jsonResponse(200, account));
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(200, account)));
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -31,7 +31,7 @@ describe('useSession', () => {
     // "Nobody is signed in" is exactly what the caller asked. Leaving it as an
     // error would make `RequireAuth` unable to tell it apart from a backend it
     // could not reach.
-    fetchMock.mockImplementation(async () => jsonResponse(401, {error: 'Unauthorized'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
 
     const {result} = renderHook(() => useSession(), {wrapper});
 
@@ -43,7 +43,7 @@ describe('useSession', () => {
   });
 
   it('keeps a 500 an error, so an outage never reads as signed out', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(500, {error: 'Internal server error'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
     const {result} = renderHook(() => useSession(), {wrapper});
 
@@ -54,7 +54,7 @@ describe('useSession', () => {
   });
 
   it('keeps a 403 an error too - only 401 means no session', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(403, {error: 'Forbidden'}));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(403, {error: 'Forbidden'})));
 
     const {result} = renderHook(() => useSession(), {wrapper});
 

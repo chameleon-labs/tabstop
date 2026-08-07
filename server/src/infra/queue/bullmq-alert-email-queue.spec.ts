@@ -10,7 +10,9 @@ describe('BullMqAlertEmailQueue', () => {
 
   beforeEach(() => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
     queue = makeQueue(`alert-email-${randomUUID()}`, redisUrl);
     worker = null;
   });
@@ -36,10 +38,10 @@ describe('BullMqAlertEmailQueue', () => {
 
   it('revives an exhausted job so an unsent database event cannot stay blocked by retention', async () => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
-    worker = makeWorker(queue.name, redisUrl, async () => {
-      throw new Error('provider unavailable');
-    });
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
+    worker = makeWorker(queue.name, redisUrl, () => Promise.reject(new Error('provider unavailable')));
     await worker.waitUntilReady();
     await queue.add(
       'send',
@@ -67,8 +69,10 @@ describe('BullMqAlertEmailQueue', () => {
 
   it('revives a completed console preview when the real provider is enabled later', async () => {
     const redisUrl = process.env.REDIS_URL;
-    if (redisUrl === undefined) throw new Error('REDIS_URL not set by globalSetup');
-    worker = makeWorker(queue.name, redisUrl, async () => {});
+    if (redisUrl === undefined) {
+      throw new Error('REDIS_URL not set by globalSetup');
+    }
+    worker = makeWorker(queue.name, redisUrl, () => Promise.resolve());
     await worker.waitUntilReady();
     await queue.add(
       'send',

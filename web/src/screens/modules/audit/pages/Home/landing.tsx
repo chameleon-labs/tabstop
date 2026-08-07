@@ -84,7 +84,7 @@ const TRUST_STATS = [
 // not get wrong, and would be wrong even if the number happened to be close.
 // `.example` is reserved for documentation (RFC 2606), so it cannot ever
 // resolve to somebody's actual page.
-const VIOLATIONS: ReadonlyArray<{impact: Impact; count: number; rule: string; desc: string}> = [
+const VIOLATIONS: readonly {impact: Impact; count: number; rule: string; desc: string}[] = [
   {
     impact: 'critical',
     count: 2,
@@ -202,7 +202,7 @@ const V1_OUT = [
 
 const FOOTER_LINKS = ['DECISIONS.md', 'GitHub', 'How it works', 'Score formula'];
 
-function Section({id, className, children}: {id?: string; className?: string; children: ReactNode}) {
+function Section({id, className, children}: {id?: string; className?: string; children: ReactNode}): React.JSX.Element {
   const cls = ['landing-page__section', className].filter((value): value is string => Boolean(value)).join(' ');
   return (
     <section id={id} className={cls}>
@@ -211,7 +211,7 @@ function Section({id, className, children}: {id?: string; className?: string; ch
   );
 }
 
-function ImpactBadge({impact, count}: {impact: Impact; count?: number}) {
+function ImpactBadge({impact, count}: {impact: Impact; count?: number}): React.JSX.Element {
   const Icon = IMPACT_ICON[impact];
   return (
     <Badge variant={impact as BadgeVariant}>
@@ -225,7 +225,7 @@ function ImpactBadge({impact, count}: {impact: Impact; count?: number}) {
 // highlighted row (`.landing-page__why-grid`'s `[data-highlight='true']`
 // descendant rule); X stays muted at 30% opacity in every row regardless —
 // see the CSS for why an absent feature never competes with a present one.
-function BoolCell({value}: {value: boolean}) {
+function BoolCell({value}: {value: boolean}): React.JSX.Element {
   return (
     <Td className="landing-page__bool-cell">
       {value ? (
@@ -238,7 +238,7 @@ function BoolCell({value}: {value: boolean}) {
   );
 }
 
-const Nav = memo(function Nav() {
+const Nav = memo(() => {
   const [isDark, setIsDark] = useState(true);
 
   return (
@@ -279,7 +279,7 @@ const Nav = memo(function Nav() {
   );
 });
 
-function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}) {
+function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}): React.JSX.Element {
   return (
     <Section id="audit" className="landing-page__hero">
       <div className="landing-page__hero-grid">
@@ -396,41 +396,37 @@ function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}) {
   );
 }
 
-const TrustBar = memo(function TrustBar() {
-  return (
-    <div className="landing-page__trust-bar">
-      <Section className="landing-page__trust-bar-inner">
-        {TRUST_STATS.map((s) => (
-          <Stat key={s.label} value={s.value} label={s.label} sub={s.sub} className="landing-page__trust-stat" />
-        ))}
-      </Section>
-    </div>
-  );
-});
-
-const HowItWorks = memo(function HowItWorks() {
-  return (
-    <Section id="how" className="landing-page__how">
-      <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
-        How it works
-      </Eyebrow>
-      <h2 className="landing-page__heading landing-page__heading--how">Zero setup. Baseline in thirty seconds.</h2>
-
-      <div className="landing-page__steps">
-        {STEPS.map((s) => (
-          <Card key={s.n}>
-            <CardBody>
-              <span className="landing-page__step-index">{s.n}</span>
-              <h3 className="landing-page__step-title">{s.title}</h3>
-              <p className="landing-page__step-body">{s.body}</p>
-              <p className="landing-page__step-detail">{s.detail}</p>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+const TrustBar = memo(() => (
+  <div className="landing-page__trust-bar">
+    <Section className="landing-page__trust-bar-inner">
+      {TRUST_STATS.map((s) => (
+        <Stat key={s.label} value={s.value} label={s.label} sub={s.sub} className="landing-page__trust-stat" />
+      ))}
     </Section>
-  );
-});
+  </div>
+));
+
+const HowItWorks = memo(() => (
+  <Section id="how" className="landing-page__how">
+    <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
+      How it works
+    </Eyebrow>
+    <h2 className="landing-page__heading landing-page__heading--how">Zero setup. Baseline in thirty seconds.</h2>
+
+    <div className="landing-page__steps">
+      {STEPS.map((s) => (
+        <Card key={s.n}>
+          <CardBody>
+            <span className="landing-page__step-index">{s.n}</span>
+            <h3 className="landing-page__step-title">{s.title}</h3>
+            <p className="landing-page__step-body">{s.body}</p>
+            <p className="landing-page__step-detail">{s.detail}</p>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
+  </Section>
+));
 
 /**
  * Ported from the source bundle's Recharts `<LineChart>` as inline SVG —
@@ -447,171 +443,164 @@ const HowItWorks = memo(function HowItWorks() {
  * hidden `Table` carries every point for anyone who wants more than the
  * headline.
  */
-const ScoreHistory = memo(function ScoreHistory() {
-  return (
-    <Section className="landing-page__score-history">
-      <Card>
-        <CardHeader label="Score history — acme.example">
-          <Badge variant="danger">
-            <TrendingDown size="sm" />
-            −20 pts since Jul 1
-          </Badge>
-        </CardHeader>
-        <CardBody className="landing-page__score-history-body">
-          <Stat
-            value="71"
-            label="Current score"
-            sub="down from 91 on Jul 1"
-            className="landing-page__score-history-stat"
-          />
+const ScoreHistory = memo(() => (
+  <Section className="landing-page__score-history">
+    <Card>
+      <CardHeader label="Score history — acme.example">
+        <Badge variant="danger">
+          <TrendingDown size="sm" />
+          −20 pts since Jul 1
+        </Badge>
+      </CardHeader>
+      <CardBody className="landing-page__score-history-body">
+        <Stat
+          value="71"
+          label="Current score"
+          sub="down from 91 on Jul 1"
+          className="landing-page__score-history-stat"
+        />
 
-          <figure
-            className="landing-page__chart-figure"
-            aria-label="Score history for acme.example: a line chart of nine audits from Jul 1 to Aug 2, trending down 20 points since Jul 1"
-          >
-            <ScoreChart data={SCORE_HISTORY} referenceDate="Jul 21" />
-            <VisuallyHidden>
-              <Table caption="Score history for acme.example, nine audits from Jul 1 to Aug 2" visuallyHiddenCaption>
-                <THead>
-                  <Tr>
-                    <Th scope="col">Date</Th>
-                    <Th scope="col">Score</Th>
-                  </Tr>
-                </THead>
-                <TBody>
-                  {SCORE_HISTORY.map((point) => (
-                    <Tr key={point.date}>
-                      <Th scope="row">{point.date}</Th>
-                      <Td>{point.score}</Td>
-                    </Tr>
-                  ))}
-                </TBody>
-              </Table>
-            </VisuallyHidden>
-          </figure>
-        </CardBody>
-      </Card>
-    </Section>
-  );
-});
-
-const Why = memo(function Why() {
-  return (
-    <Section id="why" className="landing-page__why">
-      <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
-        Why tabstop
-      </Eyebrow>
-
-      <div className="landing-page__why-grid">
-        <div>
-          <h2 className="landing-page__heading landing-page__heading--why">
-            CI catches regressions <br />
-            if you set it up. <br />
-            <span className="landing-page__muted-inline">Nobody sets it up.</span>
-          </h2>
-          <p className="landing-page__muted">
-            I contribute to Ariakit, an accessibility-focused UI component library. This is the monitoring tool I kept
-            wishing the people using it had — zero-setup, monitoring rather than gating.
-          </p>
-          <p className="landing-page__muted">
-            Existing options each miss the mark for small teams: CI tools need engineering buy-in, dashboards need
-            self-hosting, and commercial monitors start with a sales call.
-          </p>
-        </div>
-
-        <Card>
-          <CardBody>
-            <Table caption="How tabstop compares to other accessibility monitoring tools" visuallyHiddenCaption>
+        <figure
+          className="landing-page__chart-figure"
+          aria-label="Score history for acme.example: a line chart of nine audits from Jul 1 to Aug 2, trending down 20 points since Jul 1"
+        >
+          <ScoreChart data={SCORE_HISTORY} referenceDate="Jul 21" />
+          <VisuallyHidden>
+            <Table caption="Score history for acme.example, nine audits from Jul 1 to Aug 2" visuallyHiddenCaption>
               <THead>
                 <Tr>
-                  <Th scope="col">Tool</Th>
-                  <Th scope="col">Setup</Th>
-                  <Th scope="col" className="landing-page__bool-header">
-                    Trend
-                  </Th>
-                  <Th scope="col" className="landing-page__bool-header">
-                    Alerts
-                  </Th>
-                  <Th scope="col" className="landing-page__bool-header">
-                    0-cfg
-                  </Th>
+                  <Th scope="col">Date</Th>
+                  <Th scope="col">Score</Th>
                 </Tr>
               </THead>
               <TBody>
-                {COMPETITORS.map((c) => (
-                  <Tr key={c.name} data-highlight={c.highlight ? 'true' : undefined}>
-                    <Th scope="row">
-                      <span className="landing-page__competitor-name">{c.name}</span>
-                      <span className="landing-page__competitor-cost">{c.cost}</span>
-                    </Th>
-                    <Td>{c.setup}</Td>
-                    <BoolCell value={c.trend} />
-                    <BoolCell value={c.alert} />
-                    <BoolCell value={c.zeroCfg} />
+                {SCORE_HISTORY.map((point) => (
+                  <Tr key={point.date}>
+                    <Th scope="row">{point.date}</Th>
+                    <Td>{point.score}</Td>
                   </Tr>
                 ))}
               </TBody>
             </Table>
-          </CardBody>
-        </Card>
+          </VisuallyHidden>
+        </figure>
+      </CardBody>
+    </Card>
+  </Section>
+));
+
+const Why = memo(() => (
+  <Section id="why" className="landing-page__why">
+    <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
+      Why tabstop
+    </Eyebrow>
+
+    <div className="landing-page__why-grid">
+      <div>
+        <h2 className="landing-page__heading landing-page__heading--why">
+          CI catches regressions <br />
+          if you set it up. <br />
+          <span className="landing-page__muted-inline">Nobody sets it up.</span>
+        </h2>
+        <p className="landing-page__muted">
+          I contribute to Ariakit, an accessibility-focused UI component library. This is the monitoring tool I kept
+          wishing the people using it had — zero-setup, monitoring rather than gating.
+        </p>
+        <p className="landing-page__muted">
+          Existing options each miss the mark for small teams: CI tools need engineering buy-in, dashboards need
+          self-hosting, and commercial monitors start with a sales call.
+        </p>
       </div>
-    </Section>
-  );
-});
 
-const V1Scope = memo(function V1Scope() {
-  return (
-    <Section id="scope" className="landing-page__scope">
-      <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
-        v1 scope
-      </Eyebrow>
-      <h2 className="landing-page__heading landing-page__heading--scope">Deliberately scoped.</h2>
-
-      <div className="landing-page__scope-grid">
-        <Card>
-          <CardHeader label="In v1" />
-          <CardBody>
-            <ul className="landing-page__scope-list">
-              {V1_IN.map((item) => (
-                <li key={item}>
-                  <Check size="md" className="landing-page__check-icon" />
-                  <span>{item}</span>
-                </li>
+      <Card>
+        <CardBody>
+          <Table caption="How tabstop compares to other accessibility monitoring tools" visuallyHiddenCaption>
+            <THead>
+              <Tr>
+                <Th scope="col">Tool</Th>
+                <Th scope="col">Setup</Th>
+                <Th scope="col" className="landing-page__bool-header">
+                  Trend
+                </Th>
+                <Th scope="col" className="landing-page__bool-header">
+                  Alerts
+                </Th>
+                <Th scope="col" className="landing-page__bool-header">
+                  0-cfg
+                </Th>
+              </Tr>
+            </THead>
+            <TBody>
+              {COMPETITORS.map((c) => (
+                <Tr key={c.name} data-highlight={c.highlight ? 'true' : undefined}>
+                  <Th scope="row">
+                    <span className="landing-page__competitor-name">{c.name}</span>
+                    <span className="landing-page__competitor-cost">{c.cost}</span>
+                  </Th>
+                  <Td>{c.setup}</Td>
+                  <BoolCell value={c.trend} />
+                  <BoolCell value={c.alert} />
+                  <BoolCell value={c.zeroCfg} />
+                </Tr>
               ))}
-            </ul>
-          </CardBody>
-        </Card>
+            </TBody>
+          </Table>
+        </CardBody>
+      </Card>
+    </div>
+  </Section>
+));
 
-        <Card>
-          <CardHeader label="Not in v1 — roadmap" />
-          <CardBody>
-            <ul className="landing-page__scope-list landing-page__scope-list--muted">
-              {V1_OUT.map((item) => (
-                <li key={item}>
-                  <ChevronRight size="md" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      </div>
-    </Section>
-  );
-});
+const V1Scope = memo(() => (
+  <Section id="scope" className="landing-page__scope">
+    <Eyebrow rule tone="accent" className="landing-page__section-eyebrow">
+      v1 scope
+    </Eyebrow>
+    <h2 className="landing-page__heading landing-page__heading--scope">Deliberately scoped.</h2>
 
-const CTA = memo(function CTA() {
-  return (
-    <div className="landing-page__cta">
-      <Section className="landing-page__cta-inner">
-        <div className="landing-page__cta-content">
-          <Eyebrow tone="accent" align="center" className="landing-page__cta-eyebrow">
-            Early access — free
-          </Eyebrow>
-          <h2 className="landing-page__heading landing-page__heading--cta">Know the moment you break accessibility.</h2>
-          <p className="landing-page__muted">No account needed to run your first audit.</p>
+    <div className="landing-page__scope-grid">
+      <Card>
+        <CardHeader label="In v1" />
+        <CardBody>
+          <ul className="landing-page__scope-list">
+            {V1_IN.map((item) => (
+              <li key={item}>
+                <Check size="md" className="landing-page__check-icon" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </CardBody>
+      </Card>
 
-          {/*
+      <Card>
+        <CardHeader label="Not in v1 — roadmap" />
+        <CardBody>
+          <ul className="landing-page__scope-list landing-page__scope-list--muted">
+            {V1_OUT.map((item) => (
+              <li key={item}>
+                <ChevronRight size="md" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </CardBody>
+      </Card>
+    </div>
+  </Section>
+));
+
+const CTA = memo(() => (
+  <div className="landing-page__cta">
+    <Section className="landing-page__cta-inner">
+      <div className="landing-page__cta-content">
+        <Eyebrow tone="accent" align="center" className="landing-page__cta-eyebrow">
+          Early access — free
+        </Eyebrow>
+        <h2 className="landing-page__heading landing-page__heading--cta">Know the moment you break accessibility.</h2>
+        <p className="landing-page__muted">No account needed to run your first audit.</p>
+
+        {/*
             Sends people back to the ONE form rather than repeating it. The
             design had a second field here, which works for a static marketing
             page and does not survive the form becoming real: two inputs both
@@ -619,40 +608,40 @@ const CTA = memo(function CTA() {
             navigating by it, and leave a visitor who typed into the lower one
             watching a result appear a screen away.
           */}
-          <Button variant="primary" size="lg" className="landing-page__cta-button" render={<a href="#audit" />}>
-            Audit a page
-            <ArrowRight size="md" aria-hidden="true" />
+        <Button variant="primary" size="lg" className="landing-page__cta-button" render={<a href="#audit" />}>
+          Audit a page
+          <ArrowRight size="md" aria-hidden="true" />
+        </Button>
+
+        <p className="landing-page__meta">MIT licensed · Built in public · Follow DECISIONS.md</p>
+      </div>
+    </Section>
+  </div>
+));
+
+const Footer = memo(() => (
+  <footer className="landing-page__footer">
+    <Section className="landing-page__footer-inner">
+      <div className="landing-page__brand">
+        <span className="landing-page__logo-mark" aria-hidden="true">
+          t/
+        </span>
+        <span className="landing-page__footer-copy">tabstop — MIT license</span>
+      </div>
+
+      <nav className="landing-page__footer-links" aria-label="Footer links">
+        {/* The footer targets do not exist yet; the placeholder keeps these
+              rendering as links so the layout and focus order are final. */}
+        {FOOTER_LINKS.map((label) => (
+          // oxlint-disable-next-line jsx-a11y/anchor-is-valid
+          <Button key={label} variant="link" size="sm" render={<a href="#" />}>
+            {label}
           </Button>
-
-          <p className="landing-page__meta">MIT licensed · Built in public · Follow DECISIONS.md</p>
-        </div>
-      </Section>
-    </div>
-  );
-});
-
-const Footer = memo(function Footer() {
-  return (
-    <footer className="landing-page__footer">
-      <Section className="landing-page__footer-inner">
-        <div className="landing-page__brand">
-          <span className="landing-page__logo-mark" aria-hidden="true">
-            t/
-          </span>
-          <span className="landing-page__footer-copy">tabstop — MIT license</span>
-        </div>
-
-        <nav className="landing-page__footer-links" aria-label="Footer links">
-          {FOOTER_LINKS.map((label) => (
-            <Button key={label} variant="link" size="sm" render={<a href="#" />}>
-              {label}
-            </Button>
-          ))}
-        </nav>
-      </Section>
-    </footer>
-  );
-});
+        ))}
+      </nav>
+    </Section>
+  </footer>
+));
 
 export type LandingProps = {
   /** tabstop's real URL form, wired to the audit flow by `Home`. */
@@ -661,7 +650,7 @@ export type LandingProps = {
   live: ReactNode;
 };
 
-export function Landing({urlField, live}: LandingProps) {
+export function Landing({urlField, live}: LandingProps): React.JSX.Element {
   return (
     <div className="lat-page lat-surface landing-page">
       <Nav />

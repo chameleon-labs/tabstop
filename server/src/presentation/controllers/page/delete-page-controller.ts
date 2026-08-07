@@ -19,7 +19,9 @@ export class DeletePageController implements Controller<DeletePageRequest> {
 
   async handle(request: DeletePageRequest): Promise<HttpResponse> {
     try {
-      if (typeof request.id !== 'string') return notFound(new PageNotFoundError());
+      if (typeof request.id !== 'string') {
+        return notFound(new PageNotFoundError());
+      }
 
       const deleted = await this.deletePage.delete({
         pageId: request.id,
@@ -27,7 +29,9 @@ export class DeletePageController implements Controller<DeletePageRequest> {
       });
 
       // Same answer for somebody else's page as for one that never existed.
-      if (!deleted) return notFound(new PageNotFoundError());
+      if (!deleted) {
+        return notFound(new PageNotFoundError());
+      }
 
       return noContent();
     } catch (error) {

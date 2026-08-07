@@ -12,7 +12,9 @@ describe('MemoryTokenBucket', () => {
       const wide: BucketConfig = {capacity: 10, refillPerHour: 1};
 
       const allowance = await sut.consume('a', frozen);
-      if (!allowance.allowed) throw new Error('expected allowance');
+      if (!allowance.allowed) {
+        throw new Error('expected allowance');
+      }
       vi.advanceTimersByTime(3_600_000);
       await allowance.refund();
 
@@ -36,7 +38,9 @@ describe('MemoryTokenBucket', () => {
 
   it('evicts the least recently used key', async () => {
     const sut = new MemoryTokenBucket(2);
-    for (let i = 0; i < 3; i++) await sut.consume('a', frozen);
+    for (let i = 0; i < 3; i++) {
+      await sut.consume('a', frozen);
+    }
     await sut.consume('b', frozen);
     // Touching 'a' makes 'b' the least recently used.
     await sut.consume('a', frozen);

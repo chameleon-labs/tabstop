@@ -6,7 +6,7 @@ import type {
   ReclaimAbandonedAuditsRepository,
   StaleAudit,
 } from '../protocols/db/audit/reclaim-abandoned-audits-repository.js';
-import type {AuditJob, AuditJobQueue} from '../protocols/queue/audit-job-queue.js';
+import type {AuditJobQueue} from '../protocols/queue/audit-job-queue.js';
 import type {AuditModel} from '../../domain/models/audit.js';
 import type {AuditPageResult, PageAuditor} from '../protocols/audit/page-auditor.js';
 import type {LoadAuditByIdRepository} from '../protocols/db/audit/load-audit-by-id-repository.js';
@@ -57,11 +57,11 @@ export const mockAuditPageResult = (): AuditPageResult => ({
 });
 
 export const mockLoadAuditByIdRepository = () => ({
-  loadById: vi.fn<LoadAuditByIdRepository['loadById']>(async () => mockAuditModel()),
+  loadById: vi.fn<LoadAuditByIdRepository['loadById']>(() => Promise.resolve(mockAuditModel())),
 });
 
 export const mockAuditStatusRepository = () => ({
-  claimForRun: vi.fn<MarkRunningRepository['claimForRun']>(async () => new Date('2026-07-27T10:00:00Z')),
+  claimForRun: vi.fn<MarkRunningRepository['claimForRun']>(() => Promise.resolve(new Date('2026-07-27T10:00:00Z'))),
   releaseClaim: vi.fn<MarkRunningRepository['releaseClaim']>(async () => {
     /* no-op */
   }),
@@ -80,11 +80,11 @@ export const mockReplaceViolationsRepository = () => ({
 });
 
 export const mockPageAuditor = () => ({
-  audit: vi.fn<PageAuditor['audit']>(async () => mockAuditPageResult()),
+  audit: vi.fn<PageAuditor['audit']>(() => Promise.resolve(mockAuditPageResult())),
 });
 
 export const mockAddAuditRepository = () => ({
-  add: vi.fn<AddAuditRepository['add']>(async () => mockAuditModel()),
+  add: vi.fn<AddAuditRepository['add']>(() => Promise.resolve(mockAuditModel())),
 });
 
 /**
@@ -99,13 +99,15 @@ export const mockAddScheduledAuditRepository = () => ({
   // A distinct id per page, because the scheduler's whole job is one audit per
   // page - a shared id would let a spec pass while the run created one audit
   // in total and enqueued it repeatedly.
-  addScheduled: vi.fn<AddScheduledAuditRepository['addScheduled']>(async (params) => ({
-    ...mockAuditModel(),
-    id: `audit-for-${params.pageId}`,
-    pageId: params.pageId,
-  })),
-  loadStaleInFlight: vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(async () => []),
-  markAbandoned: vi.fn<ReclaimAbandonedAuditsRepository['markAbandoned']>(async () => true),
+  addScheduled: vi.fn<AddScheduledAuditRepository['addScheduled']>((params) =>
+    Promise.resolve({
+      ...mockAuditModel(),
+      id: `audit-for-${params.pageId}`,
+      pageId: params.pageId,
+    }),
+  ),
+  loadStaleInFlight: vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(() => Promise.resolve([])),
+  markAbandoned: vi.fn<ReclaimAbandonedAuditsRepository['markAbandoned']>(() => Promise.resolve(true)),
 });
 
 /**
@@ -128,8 +130,10 @@ export const mockStaleAudit = (auditId: string, minutesAgo: number): StaleAudit 
  * would let it pass.
  */
 export const mockPagedStaleAudits = (candidates: StaleAudit[]) =>
-  vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>(async (_olderThan, limit, after) =>
-    candidates.filter((candidate) => after === null || candidate.createdAt > after.createdAt).slice(0, limit),
+  vi.fn<ReclaimAbandonedAuditsRepository['loadStaleInFlight']>((_olderThan, limit, after) =>
+    Promise.resolve(
+      candidates.filter((candidate) => after === null || candidate.createdAt > after.createdAt).slice(0, limit),
+    ),
   );
 
 export const mockDeleteQueuedAuditRepository = () => ({
@@ -144,12 +148,12 @@ export const mockAuditQueue = () => ({
   }),
   // Absent by default: the interesting case is a queue that lost the reply
   // but did accept the job, and each spec opts into that explicitly.
-  has: vi.fn<AuditJobQueue['has']>(async () => false),
+  has: vi.fn<AuditJobQueue['has']>(() => Promise.resolve(false)),
   // Pending by default, which is the opposite default to `has` and for the
   // opposite reason: the reclaim path acts when a job is GONE, so a mock that
   // reported absence would have every spec retiring rows incidentally.
-  isPending: vi.fn<AuditJobQueue['isPending']>(async () => true),
+  isPending: vi.fn<AuditJobQueue['isPending']>(() => Promise.resolve(true)),
   // An empty queue by default: depth is not what most of these specs are
   // about, and a mock that saturated by accident would fail all of them.
-  backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => 0),
+  backlogCount: vi.fn<AuditJobQueue['backlogCount']>(() => Promise.resolve(0)),
 });

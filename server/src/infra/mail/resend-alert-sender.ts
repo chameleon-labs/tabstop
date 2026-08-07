@@ -16,7 +16,9 @@ const providerNameForReason = (name: string | null): string =>
   name !== null && /^[a-z][a-z0-9_]{0,63}$/.test(name) ? name : 'http_error';
 
 const secondsToMilliseconds = (value: string | null): number | null => {
-  if (value === null || !/^\d+$/.test(value)) return null;
+  if (value === null || !/^\d+$/.test(value)) {
+    return null;
+  }
   return Number(value) * 1_000;
 };
 

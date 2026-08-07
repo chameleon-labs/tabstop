@@ -129,7 +129,7 @@ describe('Layout', () => {
       expect(screen.getByRole('link', {name: 'Skip to content'})).toHaveFocus();
     });
 
-    it('points at a target that exists', async () => {
+    it('points at a target that exists', () => {
       // A skip link to a missing id is worse than none: it looks like an
       // affordance and silently does nothing.
       renderLayout();
@@ -141,7 +141,7 @@ describe('Layout', () => {
       expect(document.querySelector(href)).toBe(screen.getByRole('main'));
     });
 
-    it('targets an element that can actually take focus', async () => {
+    it('targets an element that can actually take focus', () => {
       // Without `tabIndex={-1}` the browser scrolls to `#main` but leaves focus
       // where it was, so the next Tab starts from the top of the page again -
       // the link appears to work and does not.
@@ -151,7 +151,7 @@ describe('Layout', () => {
     });
   });
 
-  it('gives the navigation an accessible name', async () => {
+  it('gives the navigation an accessible name', () => {
     // A landmark with no name is one of several identical "navigation" entries
     // in a screen reader's landmark list.
     renderLayout();
@@ -159,7 +159,7 @@ describe('Layout', () => {
     expect(screen.getByRole('navigation', {name: 'Main'})).toBeVisible();
   });
 
-  it('carries the route announcer, since only the shell renders once', async () => {
+  it('carries the route announcer, since only the shell renders once', () => {
     // It has to persist ACROSS navigations. Mounted per screen, the region
     // would be new each time and a new region's content is initial content -
     // announced by nothing.
@@ -168,7 +168,7 @@ describe('Layout', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('offers a way home from every page', async () => {
+  it('offers a way home from every page', () => {
     renderLayout();
 
     expect(screen.getByRole('link', {name: 'tabstop'})).toHaveAttribute('href', '/');

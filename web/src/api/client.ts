@@ -46,9 +46,13 @@ const errorMessage = (body: unknown, response: Response): string => {
 };
 
 const readBody = async (response: Response): Promise<unknown> => {
-  if (response.status === 204) return null;
+  if (response.status === 204) {
+    return null;
+  }
   const type = response.headers.get('content-type') ?? '';
-  if (!type.includes('application/json')) return null;
+  if (!type.includes('application/json')) {
+    return null;
+  }
   // A malformed body must not become a different, more confusing error than
   // the status the caller already has to handle.
   return await response.json().catch(() => null);
@@ -66,7 +70,9 @@ const readBody = async (response: Response): Promise<unknown> => {
  */
 const headersFor = (init: RequestInit): Headers => {
   const headers = new Headers({accept: 'application/json'});
-  if (init.body !== undefined) headers.set('content-type', 'application/json');
+  if (init.body !== undefined) {
+    headers.set('content-type', 'application/json');
+  }
 
   new Headers(init.headers).forEach((value, name) => {
     headers.set(name, value);
@@ -90,7 +96,9 @@ export const request = async <T>(path: string, init: RequestInit = {}): Promise<
   });
 
   const body = await readBody(response);
-  if (!response.ok) throw new ApiError(response.status, errorMessage(body, response), body);
+  if (!response.ok) {
+    throw new ApiError(response.status, errorMessage(body, response), body);
+  }
 
   return body as T;
 };
@@ -114,10 +122,16 @@ const isPositiveInteger = (value: unknown): value is number =>
 const isTimestamp = (value: unknown): value is string => typeof value === 'string' && !Number.isNaN(Date.parse(value));
 
 export const rateLimitOf = (error: unknown): RateLimitedBody | null => {
-  if (!isApiError(error) || error.status !== 429) return null;
-  const body = error.body;
-  if (!isRecord(body)) return null;
-  if (!isPositiveInteger(body['retryAfter']) || !isTimestamp(body['resetAt'])) return null;
+  if (!isApiError(error) || error.status !== 429) {
+    return null;
+  }
+  const {body} = error;
+  if (!isRecord(body)) {
+    return null;
+  }
+  if (!isPositiveInteger(body['retryAfter']) || !isTimestamp(body['resetAt'])) {
+    return null;
+  }
   return {error: error.message, retryAfter: body['retryAfter'], resetAt: body['resetAt']};
 };
 
@@ -127,9 +141,13 @@ export const rateLimitOf = (error: unknown): RateLimitedBody | null => {
  * Null for a plain 409, which is only ever displayed.
  */
 export const conflictOf = (error: unknown): CodedConflictBody | null => {
-  if (!isApiError(error) || error.status !== 409) return null;
-  const body = error.body;
-  if (!isRecord(body) || typeof body['code'] !== 'string') return null;
+  if (!isApiError(error) || error.status !== 409) {
+    return null;
+  }
+  const {body} = error;
+  if (!isRecord(body) || typeof body['code'] !== 'string') {
+    return null;
+  }
   return {code: body['code'], error: error.message};
 };
 
@@ -146,16 +164,20 @@ export const conflictOf = (error: unknown): CodedConflictBody | null => {
  */
 export const pageConflictOf = (error: unknown): PageConflictBody | null => {
   const conflict = conflictOf(error);
-  if (conflict === null || !isApiError(error) || !isRecord(error.body)) return null;
+  if (conflict === null || !isApiError(error) || !isRecord(error.body)) {
+    return null;
+  }
 
   if (conflict.code === 'page_already_tracked') {
     return {code: 'page_already_tracked', error: conflict.error};
   }
 
   if (conflict.code === 'page_limit_reached') {
-    const limit = error.body['limit'];
+    const {limit} = error.body;
     // Guessing a limit would put a wrong number in front of a person.
-    if (!isPositiveInteger(limit)) return null;
+    if (!isPositiveInteger(limit)) {
+      return null;
+    }
     return {code: 'page_limit_reached', error: conflict.error, limit};
   }
 

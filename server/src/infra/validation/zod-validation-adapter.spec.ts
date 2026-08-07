@@ -28,11 +28,11 @@ describe('ZodValidationAdapter', () => {
   it('reports every failing field with its path', () => {
     const result = makeSut().validate({email: 'nope', password: 'short'});
 
-    expect('error' in result).toBe(true);
-    if ('error' in result) {
-      expect(result.error.message).toContain('email');
-      expect(result.error.message).toContain('password');
+    if (!('error' in result)) {
+      throw new Error('expected a validation error');
     }
+    expect(result.error.message).toContain('email');
+    expect(result.error.message).toContain('password');
   });
 
   it('strips unknown keys, so a body cannot smuggle extra fields through', () => {

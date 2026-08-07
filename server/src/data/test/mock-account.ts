@@ -37,11 +37,11 @@ export const mockAuthenticatedSession = (): AuthenticatedSession => ({
  * which would make every failure case unmockable.
  */
 export const mockHasher = () => ({
-  hash: vi.fn<Hasher['hash']>(async () => 'hashed'),
+  hash: vi.fn<Hasher['hash']>(() => Promise.resolve('hashed')),
 });
 
 export const mockHashComparer = () => ({
-  compare: vi.fn<HashComparer['compare']>(async () => true),
+  compare: vi.fn<HashComparer['compare']>(() => Promise.resolve(true)),
 });
 
 export const mockSessionIdGenerator = () => ({
@@ -49,27 +49,33 @@ export const mockSessionIdGenerator = () => ({
 });
 
 export const mockAddAccountRepository = () => ({
-  add: vi.fn<AddAccountRepository['add']>(async () => mockAccountModel()),
+  add: vi.fn<AddAccountRepository['add']>(() => Promise.resolve(mockAccountModel())),
 });
 
 export const mockLoadAccountByEmailRepository = () => ({
-  loadByEmail: vi.fn<LoadAccountByEmailRepository['loadByEmail']>(async () => ({
-    account: mockAccountModel(),
-    passwordDigest: 'stored-digest',
-  })),
+  loadByEmail: vi.fn<LoadAccountByEmailRepository['loadByEmail']>(() =>
+    Promise.resolve({
+      account: mockAccountModel(),
+      passwordDigest: 'stored-digest',
+    }),
+  ),
 });
 
 export const mockLoadAccountBySessionIdRepository = () => ({
-  loadBySessionId: vi.fn<LoadAccountBySessionIdRepository['loadBySessionId']>(async () => mockAccountModel()),
+  loadBySessionId: vi.fn<LoadAccountBySessionIdRepository['loadBySessionId']>(() =>
+    Promise.resolve(mockAccountModel()),
+  ),
 });
 
 export const mockAddSessionRepository = () => ({
-  add: vi.fn<AddSessionRepository['add']>(async (params) => ({
-    id: params.id,
-    userId: params.userId,
-    createdAt: new Date('2026-07-26T00:00:00Z'),
-    expiresAt: params.expiresAt,
-  })),
+  add: vi.fn<AddSessionRepository['add']>((params) =>
+    Promise.resolve({
+      id: params.id,
+      userId: params.userId,
+      createdAt: new Date('2026-07-26T00:00:00Z'),
+      expiresAt: params.expiresAt,
+    }),
+  ),
 });
 
 export const mockDeleteSessionRepository = () => ({
@@ -79,9 +85,11 @@ export const mockDeleteSessionRepository = () => ({
 });
 
 export const mockStartSession = () => ({
-  start: vi.fn<StartSession['start']>(async (account) => ({
-    account,
-    sessionId: 'any-session-id',
-    expiresAt: new Date('2026-08-25T00:00:00Z'),
-  })),
+  start: vi.fn<StartSession['start']>((account) =>
+    Promise.resolve({
+      account,
+      sessionId: 'any-session-id',
+      expiresAt: new Date('2026-08-25T00:00:00Z'),
+    }),
+  ),
 });

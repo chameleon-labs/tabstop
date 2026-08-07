@@ -24,7 +24,9 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
 
     for (;;) {
       const ids = await this.alerts.loadPendingAlertEventIds(afterId, this.batchSize, this.mode);
-      if (ids.length === 0) break;
+      if (ids.length === 0) {
+        break;
+      }
 
       for (const alertEventId of ids) {
         await this.queue.enqueueOnce({alertEventId});
@@ -32,7 +34,9 @@ export class DbDispatchPendingAlertEmails implements DispatchPendingAlertEmails 
       }
 
       afterId = ids[ids.length - 1] ?? null;
-      if (ids.length < this.batchSize) break;
+      if (ids.length < this.batchSize) {
+        break;
+      }
     }
 
     return {processed};

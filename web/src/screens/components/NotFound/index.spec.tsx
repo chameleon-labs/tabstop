@@ -17,7 +17,7 @@ describe('NotFound', () => {
     expect(await screen.findByRole('heading', {level: 1, name: 'Page not found'})).toBeVisible();
   });
 
-  it('names the likeliest cause rather than blaming the visitor', async () => {
+  it('names the likeliest cause rather than blaming the visitor', () => {
     // The common case is a shared audit link that has since expired, and the
     // person holding it did nothing wrong.
     renderNotFound();
@@ -25,7 +25,7 @@ describe('NotFound', () => {
     expect(screen.getByText(/share link that has since expired/)).toBeVisible();
   });
 
-  it('leaves a way out', async () => {
+  it('leaves a way out', () => {
     renderNotFound();
 
     expect(screen.getByRole('link', {name: 'Back to the start'})).toHaveAttribute('href', '/');

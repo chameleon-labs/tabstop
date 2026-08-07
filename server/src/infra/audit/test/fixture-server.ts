@@ -110,7 +110,9 @@ export type FixtureServer = {
 export const startFixtureServer = async (): Promise<FixtureServer> => {
   const server: Server = createServer((request, response) => {
     // Deliberately never responds, which is what keeps the network busy.
-    if (request.url === '/slow') return;
+    if (request.url === '/slow') {
+      return;
+    }
 
     if (request.url === '/never-idle') {
       response.writeHead(200, {'content-type': 'text/html'});
@@ -224,7 +226,11 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
-          error === undefined ? resolve() : reject(error);
+          if (error === undefined) {
+            resolve();
+          } else {
+            reject(error);
+          }
         });
       });
     },

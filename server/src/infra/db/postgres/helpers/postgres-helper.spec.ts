@@ -5,7 +5,9 @@ import type {Database} from '../database.js';
 
 const connectionString = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -31,19 +33,19 @@ describe('makeDatabase', () => {
       await sql`select 1`.execute(destroyed);
       await destroyed.destroy();
 
-      await expect(sql`select 1`.execute(destroyed)).rejects.toThrow();
+      await expect(sql`select 1`.execute(destroyed)).rejects.toThrow(Error);
     } finally {
       // destroy() throws if the pool was already destroyed above; that's
       // expected on the happy path, so swallow it here - this is only a
       // safety net for a failure before the intentional destroy() runs.
-      await destroyed.destroy().catch(() => {});
+      await destroyed.destroy().catch(() => undefined);
     }
   });
 
   it('survives an idle backend being terminated instead of crashing the process', async () => {
     const primary = makeDatabase(connectionString());
     const terminator = makeDatabase(connectionString());
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     try {
       const pidResult = await sql<{pid: number}>`select pg_backend_pid() as pid`.execute(primary);

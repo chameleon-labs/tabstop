@@ -37,7 +37,9 @@ export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, 
     // `runningSince === null`, a second audit inherited the first one's epoch
     // and opened on "Scoring" - phases counted from a job that had already
     // finished, possibly minutes earlier.
-    if (status === 'running') setRunningSince(Date.now());
+    if (status === 'running') {
+      setRunningSince(Date.now());
+    }
   }
 
   // Falls back to `startedAt` when the transition was never observed - a reload
@@ -57,16 +59,20 @@ export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, 
    * while the retained status still says `running`.
    */
   useEffect(() => {
-    if (!active || since === null) return;
+    if (!active || since === null) {
+      return;
+    }
     const timer = setInterval(() => {
       setNow(Date.now());
     }, TICK_MS);
-    return () => {
+    return (): void => {
       clearInterval(timer);
     };
   }, [active, since]);
 
-  if (!active || since === null) return null;
+  if (!active || since === null) {
+    return null;
+  }
 
   // Computed during render, so it can never be a tick behind the epoch. A
   // freshly moved epoch with a stale `now` reads as slightly negative, which

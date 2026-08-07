@@ -5,7 +5,9 @@ import {connectDatabase, disconnectDatabase} from './database.js';
 import {closeRateLimiter} from '../factories/middlewares/rate-limit-factory.js';
 import {MemoryTokenBucket} from '../../infra/rate-limit/memory-token-bucket.js';
 import type {AuditJobQueue} from '../../data/protocols/queue/audit-job-queue.js';
+import type * as envModule from './env.js';
 
+// oxlint-disable-next-line no-constant-condition -- a compile-only assertion; the block must never run
 if (false) {
   // @ts-expect-error partial composition must not fall through to globals
   setupApp({rateLimiter: new MemoryTokenBucket()});
@@ -16,7 +18,9 @@ if (false) {
 // has to exist before setupApp() is called.
 const connectionString = (): string => {
   const url = process.env.DATABASE_URL;
-  if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+  if (url === undefined) {
+    throw new Error('DATABASE_URL not set by globalSetup');
+  }
   return url;
 };
 
@@ -37,7 +41,7 @@ describe('setupApp', () => {
     // rate limiter through x-forwarded-for, so 0 is no longer what the real
     // env resolves to in this suite.
     vi.resetModules();
-    const actual = await vi.importActual<typeof import('./env.js')>('./env.js');
+    const actual = await vi.importActual<typeof envModule>('./env.js');
     vi.doMock('./env.js', () => ({...actual, env: {...actual.env, trustProxyHops: 0}}));
 
     const database = await import('./database.js');
@@ -67,7 +71,7 @@ describe('setupApp', () => {
     // composition - which reaches for scryptCost, sessionTtlDays, and so on
     // while building controllers - keeps working.
     vi.resetModules();
-    const actual = await vi.importActual<typeof import('./env.js')>('./env.js');
+    const actual = await vi.importActual<typeof envModule>('./env.js');
     vi.doMock('./env.js', () => ({...actual, env: {...actual.env, trustProxyHops: 3}}));
 
     const database = await import('./database.js');
@@ -91,10 +95,10 @@ describe('setupApp', () => {
     const rateLimiter = new MemoryTokenBucket();
     const consume = vi.spyOn(rateLimiter, 'consume');
     const auditQueue: AuditJobQueue = {
-      enqueueOnce: async () => undefined,
-      has: async () => false,
-      isPending: async () => false,
-      backlogCount: async () => 0,
+      enqueueOnce: () => Promise.resolve(undefined),
+      has: () => Promise.resolve(false),
+      isPending: () => Promise.resolve(false),
+      backlogCount: () => Promise.resolve(0),
     };
 
     connectDatabase(connectionString());

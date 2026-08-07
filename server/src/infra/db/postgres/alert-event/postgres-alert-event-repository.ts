@@ -39,8 +39,12 @@ export class PostgresAlertEventRepository
       .orderBy('alert_events.id')
       .limit(limit);
 
-    if (mode === 'preview') query = query.where('alert_events.previewed_at', 'is', null);
-    if (afterId !== null) query = query.where('alert_events.id', '>', afterId);
+    if (mode === 'preview') {
+      query = query.where('alert_events.previewed_at', 'is', null);
+    }
+    if (afterId !== null) {
+      query = query.where('alert_events.id', '>', afterId);
+    }
 
     return (await query.execute()).map(({id}) => id);
   }
@@ -72,7 +76,9 @@ export class PostgresAlertEventRepository
       .where('alert_events.id', '=', alertEventId)
       .executeTakeFirst();
 
-    if (row === undefined) return null;
+    if (row === undefined) {
+      return null;
+    }
     if (row.current_score === null || row.previous_score === null) {
       throw new Error(`Alert event ${alertEventId} refers to an audit without a score`);
     }

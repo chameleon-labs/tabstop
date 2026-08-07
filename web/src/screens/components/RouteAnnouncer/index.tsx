@@ -29,7 +29,9 @@ export const RouteAnnouncer = (): React.JSX.Element => {
   const announcedFor = useRef(pathname);
 
   useEffect(() => {
-    if (announcedFor.current === pathname) return;
+    if (announcedFor.current === pathname) {
+      return;
+    }
     announcedFor.current = pathname;
 
     /**
@@ -65,7 +67,7 @@ export const RouteAnnouncer = (): React.JSX.Element => {
       }, ANNOUNCE_DELAY_MS);
     });
 
-    return () => {
+    return (): void => {
       stop();
       clearTimeout(timer);
     };

@@ -29,9 +29,13 @@ export class UpdatePageController implements Controller<UpdatePageRequest> {
   async handle(request: UpdatePageRequest): Promise<HttpResponse> {
     try {
       const validated = this.validation.validate(request);
-      if ('error' in validated) return badRequest(validated.error);
+      if ('error' in validated) {
+        return badRequest(validated.error);
+      }
 
-      if (typeof request.id !== 'string') return notFound(new PageNotFoundError());
+      if (typeof request.id !== 'string') {
+        return notFound(new PageNotFoundError());
+      }
 
       const page = await this.updatePage.update({
         pageId: request.id,
@@ -41,7 +45,9 @@ export class UpdatePageController implements Controller<UpdatePageRequest> {
 
       // 404, not 403. A page owned by somebody else and a page that does not
       // exist have to be the same answer, or the status code confirms the row.
-      if (page === null) return notFound(new PageNotFoundError());
+      if (page === null) {
+        return notFound(new PageNotFoundError());
+      }
 
       return ok(toPageView(page));
     } catch (error) {

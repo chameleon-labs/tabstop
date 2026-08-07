@@ -20,7 +20,9 @@ export class DbAddAccount implements AddAccount {
       email: params.email,
       passwordDigest,
     });
-    if (account === null) return null;
+    if (account === null) {
+      return null;
+    }
 
     return await this.startSession.start(account);
   }

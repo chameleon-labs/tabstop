@@ -15,7 +15,9 @@ export const reauditRunFailure = (summary: ReauditRunSummary, shuttingDown: bool
   // A run cut short by shutdown is not a failure. The process is going away,
   // so failing the job would only spend its attempts on retries this worker
   // cannot serve - and the pages it did not reach are simply due tomorrow.
-  if (shuttingDown) return null;
+  if (shuttingDown) {
+    return null;
+  }
 
   if (summary.failed > 0) {
     return `Re-audit run could not schedule ${summary.failed} page(s)`;

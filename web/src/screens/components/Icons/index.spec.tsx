@@ -6,7 +6,9 @@ import {AlertCircle, Check, Globe, type IconProps} from './index';
 const svgOf = (element: React.JSX.Element): SVGSVGElement => {
   const {container} = render(element);
   const svg = container.querySelector('svg');
-  if (svg === null) throw new Error('no svg rendered');
+  if (svg === null) {
+    throw new Error('no svg rendered');
+  }
   return svg;
 };
 

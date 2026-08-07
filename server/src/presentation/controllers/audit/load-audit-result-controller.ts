@@ -25,12 +25,16 @@ export class LoadAuditResultController implements Controller<LoadAuditResultRequ
 
   async handle(request: LoadAuditResultRequest): Promise<HttpResponse> {
     try {
-      if (typeof request.uuid !== 'string') return notFound(new AuditNotFoundError());
+      if (typeof request.uuid !== 'string') {
+        return notFound(new AuditNotFoundError());
+      }
 
       const result = await this.loadAuditResult.load(request.uuid);
       // Unknown and malformed are the same answer: a malformed uuid cannot
       // match a row, so it is a miss rather than an error.
-      if (result === null) return notFound(new AuditNotFoundError());
+      if (result === null) {
+        return notFound(new AuditNotFoundError());
+      }
 
       return okCacheable(toAuditResultResponse(result), cacheControlFor(result.audit.status));
     } catch (error) {

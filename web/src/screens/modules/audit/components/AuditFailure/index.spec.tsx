@@ -66,7 +66,7 @@ describe('AuditFailure', () => {
   });
 
   describe('check-url', () => {
-    it('does not offer a retry that is guaranteed to fail identically', async () => {
+    it('does not offer a retry that is guaranteed to fail identically', () => {
       // A 400 is a property of the URL. A button that cannot work is worse than
       // no button.
       show({message: "That address can't be audited", action: 'check-url', source: 'request'});
@@ -84,7 +84,7 @@ describe('AuditFailure', () => {
       rateLimit: {error: 'Too many requests', retryAfter: 45, resetAt: '2026-08-03T10:00:00Z'},
     };
 
-    it('reads as an offer rather than a failure', async () => {
+    it('reads as an offer rather than a failure', () => {
       // Someone who has audited enough pages to exhaust the anonymous limit has
       // demonstrated the product's value more convincingly than any landing
       // page could. Framing that as a failure would be the most expensive copy
@@ -95,7 +95,7 @@ describe('AuditFailure', () => {
       expect(screen.getByRole('link', {name: 'Create an account'})).toBeVisible();
     });
 
-    it('still says how long the wait is', async () => {
+    it('still says how long the wait is', () => {
       // An offer that hides the free alternative is a dark pattern, and this
       // product cannot afford one.
       show(limited);
@@ -103,7 +103,7 @@ describe('AuditFailure', () => {
       expect(screen.getByText(/wait 45 seconds/)).toBeVisible();
     });
 
-    it('omits the wait when the server did not give a usable one', async () => {
+    it('omits the wait when the server did not give a usable one', () => {
       show({message: 'Too many requests', action: 'signup', source: 'request'});
 
       expect(screen.queryByText(/wait/)).not.toBeInTheDocument();

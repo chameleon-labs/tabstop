@@ -26,7 +26,7 @@ const makeSut = (addresses: string[] = ['93.184.216.34']) => {
   const audits = mockAddAuditRepository();
   const deletes = mockDeleteQueuedAuditRepository();
   const queue = mockAuditQueue();
-  const resolver = {resolve: vi.fn<DnsResolver['resolve']>(async () => addresses)};
+  const resolver = {resolve: vi.fn<DnsResolver['resolve']>(() => Promise.resolve(addresses))};
   const sut = new DbRequestAudit(audits, deletes, queue, resolver, stubPolicy);
   return {sut, audits, deletes, queue, resolver};
 };
@@ -43,14 +43,14 @@ describe('DbRequestAudit queue depth', () => {
   const deepQueue = (backlog: number) => {
     const queue = mockAuditQueue();
     return Object.assign(queue, {
-      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => backlog),
+      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(() => Promise.resolve(backlog)),
     });
   };
 
   const sutWith = (queue: ReturnType<typeof deepQueue>, maxDepth = 100) => {
     const audits = mockAddAuditRepository();
     const deletes = mockDeleteQueuedAuditRepository();
-    const resolver = {resolve: vi.fn<DnsResolver['resolve']>(async () => ['93.184.216.34'])};
+    const resolver = {resolve: vi.fn<DnsResolver['resolve']>(() => Promise.resolve(['93.184.216.34']))};
     const sut = new DbRequestAudit(audits, deletes, queue, resolver, stubPolicy, maxDepth);
     return {sut, audits, deletes, queue};
   };
@@ -82,9 +82,7 @@ describe('DbRequestAudit queue depth', () => {
     // unmeasurable queue indistinguishable from a full one.
     const queue = mockAuditQueue();
     const failing = Object.assign(queue, {
-      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(async () => {
-        throw new Error('redis unreachable');
-      }),
+      backlogCount: vi.fn<AuditJobQueue['backlogCount']>(() => Promise.reject(new Error('redis unreachable'))),
     });
     const {sut, audits} = sutWith(failing, 100);
 
@@ -159,6 +157,7 @@ describe('DbRequestAudit', () => {
     const cases = [
       ['file:///etc/passwd', 'blocked-scheme'],
       ['data:text/html,<h1>x', 'blocked-scheme'],
+      // oxlint-disable-next-line no-script-url -- the blocked input under test
       ['javascript:alert(1)', 'blocked-scheme'],
       ['http://169.254.169.254/', 'blocked-address'],
       ['http://127.0.0.1/', 'blocked-address'],
@@ -305,8 +304,18 @@ describe('DbRequestAudit', () => {
     // hangs. Measured at five minutes. Without a bound the request never
     // answers and none of the recovery above is reachable.
     const {sut, queue, deletes} = makeSut();
-    queue.enqueueOnce.mockImplementation(async () => await new Promise<never>(() => {}));
-    queue.has.mockImplementation(async () => await new Promise<never>(() => {}));
+    queue.enqueueOnce.mockImplementation(
+      async () =>
+        await new Promise<never>(() => {
+          /* never settles */
+        }),
+    );
+    queue.has.mockImplementation(
+      async () =>
+        await new Promise<never>(() => {
+          /* never settles */
+        }),
+    );
 
     const result = await sut.request({url: 'https://example.com/a'});
 

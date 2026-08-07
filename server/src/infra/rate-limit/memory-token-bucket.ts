@@ -26,7 +26,7 @@ export class MemoryTokenBucket implements RateLimiter {
     return this.buckets.size;
   }
 
-  async consume(key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
+  consume(key: string, bucket: BucketConfig, cost = 1): Promise<RateLimitDecision> {
     const refillPerMs = bucket.refillPerHour / MS_PER_HOUR;
     const tokens = this.refilled(key, bucket, refillPerMs);
 
@@ -38,14 +38,17 @@ export class MemoryTokenBucket implements RateLimiter {
       // exact-boundary deficits (e.g. capacity 3, refillPerHour 1). Deriving
       // the deficit straight from refillPerHour keeps it to one division.
       const retryAfterMs = ((cost - tokens) * MS_PER_HOUR) / bucket.refillPerHour;
-      return {allowed: false, retryAfterMs: Math.ceil(retryAfterMs)};
+      return Promise.resolve({allowed: false, retryAfterMs: Math.ceil(retryAfterMs)});
     }
 
     const remaining = Math.min(bucket.capacity, tokens - cost);
     this.store(key, {tokens: remaining, updated: Date.now()});
-    return makeRateLimitAllowance(Math.floor(remaining), async () => {
-      this.returnTokens(key, bucket, cost);
-    });
+    return Promise.resolve(
+      makeRateLimitAllowance(Math.floor(remaining), () => {
+        this.returnTokens(key, bucket, cost);
+        return Promise.resolve();
+      }),
+    );
   }
 
   private returnTokens(key: string, bucket: BucketConfig, amount: number): void {
@@ -58,7 +61,9 @@ export class MemoryTokenBucket implements RateLimiter {
 
   private refilled(key: string, bucket: BucketConfig, refillPerMs: number): number {
     const existing = this.buckets.get(key);
-    if (existing === undefined) return bucket.capacity;
+    if (existing === undefined) {
+      return bucket.capacity;
+    }
 
     const elapsed = Date.now() - existing.updated;
     return Math.min(bucket.capacity, existing.tokens + elapsed * refillPerMs);
@@ -72,7 +77,9 @@ export class MemoryTokenBucket implements RateLimiter {
 
     while (this.buckets.size > this.maxKeys) {
       const oldest = this.buckets.keys().next();
-      if (oldest.done === true) break;
+      if (oldest.done === true) {
+        break;
+      }
       this.buckets.delete(oldest.value);
     }
   }

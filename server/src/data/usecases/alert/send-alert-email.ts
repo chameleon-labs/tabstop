@@ -40,7 +40,9 @@ const worsenedViolations = (delivery: AlertDelivery): WorsenedViolation[] => {
     ...diff.added.map((current) => ({current, previous: null})),
     ...diff.unchanged.flatMap((current) => {
       const previous = previousByRule.get(current.ruleId);
-      if (previous === undefined) return [];
+      if (previous === undefined) {
+        return [];
+      }
       const impactWorsened =
         current.impact !== null &&
         (previous.impact === null || impactRank[current.impact] > impactRank[previous.impact]);
@@ -75,7 +77,7 @@ const renderAlertEmail = (
   const subject =
     delivery.kind === 'score_drop'
       ? `${label} dropped ${delta} ${unit} (${delivery.previous.score} → ${delivery.current.score})`
-      : `${label} has a new serious accessibility issue ` + `(${delivery.previous.score} → ${delivery.current.score})`;
+      : `${label} has a new serious accessibility issue (${delivery.previous.score} → ${delivery.current.score})`;
   const details = worsenedViolations(delivery);
   const detailLines =
     details.length === 0
@@ -123,7 +125,7 @@ export class DbSendAlertEmail implements SendAlertEmail {
     private readonly frontendOrigin: string,
     private readonly publicApiOrigin: string,
     private readonly mode: AlertDispatchMode,
-    private readonly now: () => Date = () => new Date(),
+    private readonly now: () => Date = (): Date => new Date(),
   ) {}
 
   async send(alertEventId: string): Promise<SendAlertEmailOutcome> {

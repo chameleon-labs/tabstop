@@ -27,8 +27,12 @@ export const RouteError = (): React.JSX.Element => {
   // threw one, and a router `ErrorResponse` when a loader or the router itself
   // produced it. Checking only the first would render "something went wrong"
   // for half of the cases this exists to handle.
-  if (error instanceof ApiError && error.status === 404) return <NotFound />;
-  if (isRouteErrorResponse(error) && error.status === 404) return <NotFound />;
+  if (error instanceof ApiError && error.status === 404) {
+    return <NotFound />;
+  }
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <NotFound />;
+  }
 
   return <ErrorPage error={error} />;
 };
@@ -42,12 +46,16 @@ export const RouteError = (): React.JSX.Element => {
  * Only errors that carry a message meant for a person are shown.
  */
 const messageOf = (error: unknown): string | null => {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    return error.message;
+  }
   // Empty is not a message. `new Response(null, { status: 503 })` has no status
   // text at all, and HTTP/2 carries no reason phrase, so this is the common
   // case rather than a corner of it - returning `''` here passes the null check
   // below and renders an empty paragraph where the explanation should be.
-  if (isRouteErrorResponse(error)) return error.statusText === '' ? null : error.statusText;
+  if (isRouteErrorResponse(error)) {
+    return error.statusText === '' ? null : error.statusText;
+  }
   return null;
 };
 

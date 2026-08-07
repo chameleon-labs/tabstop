@@ -46,7 +46,9 @@ export const makeRateLimiter = (): RateLimiter => {
  * no equivalent of disconnectDatabase() to call from its own shutdown path.
  */
 export const closeRateLimiter = async (): Promise<void> => {
-  if (redisClient === null) return;
+  if (redisClient === null) {
+    return;
+  }
 
   try {
     // Graceful: waits for in-flight replies before closing the socket.

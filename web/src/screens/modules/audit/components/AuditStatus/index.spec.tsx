@@ -105,7 +105,9 @@ describe('AuditStatus', () => {
 
     const seen: string[] = [];
     const drain = (records: MutationRecord[]): void => {
-      for (const record of records) seen.push(record.oldValue ?? '');
+      for (const record of records) {
+        seen.push(record.oldValue ?? '');
+      }
     };
     const observer = new MutationObserver(drain);
     observer.observe(region(), {
@@ -115,7 +117,9 @@ describe('AuditStatus', () => {
       subtree: true,
     });
 
-    for (let i = 0; i < 5; i += 1) rerender(<AuditStatus message="Scoring" />);
+    for (let i = 0; i < 5; i += 1) {
+      rerender(<AuditStatus message="Scoring" />);
+    }
     settle();
     drain(observer.takeRecords());
     observer.disconnect();

@@ -13,7 +13,9 @@ describe('PostgresAuditRepository', () => {
 
   beforeAll(() => {
     const url = process.env.DATABASE_URL;
-    if (url === undefined) throw new Error('DATABASE_URL not set by globalSetup');
+    if (url === undefined) {
+      throw new Error('DATABASE_URL not set by globalSetup');
+    }
     db = makeDatabase(url);
     sut = new PostgresAuditRepository(db);
   });
@@ -256,7 +258,9 @@ describe('PostgresAuditRepository', () => {
     const cursorFor = async (auditId: string, olderThan: Date): Promise<StaleAudit> => {
       const rows = await sut.loadStaleInFlight(olderThan, 10_000, null);
       const found = rows.find((row) => row.auditId === auditId);
-      if (found === undefined) throw new Error(`${auditId} was not offered as a candidate`);
+      if (found === undefined) {
+        throw new Error(`${auditId} was not offered as a candidate`);
+      }
       return found;
     };
 
@@ -315,11 +319,15 @@ describe('PostgresAuditRepository', () => {
         await inFlightAudit('queued', sharedAt),
         await inFlightAudit('queued', sharedAt),
       ];
-      if (first === undefined) return;
+      if (first === undefined) {
+        return;
+      }
 
       const after = await staleIds(hoursAgo(550), 1000, await cursorFor(first, hoursAgo(550)));
 
-      for (const auditId of rest) expect(after).toContain(auditId);
+      for (const auditId of rest) {
+        expect(after).toContain(auditId);
+      }
       expect(after).not.toContain(first);
     });
 
@@ -394,7 +402,9 @@ describe('PostgresAuditRepository', () => {
     const makeClaimedAudit = async (): Promise<{id: string; claimedAt: Date}> => {
       const id = await makeQueuedAudit();
       const claimedAt = await sut.claimForRun(id);
-      if (claimedAt === null) throw new Error('fixture failed to claim');
+      if (claimedAt === null) {
+        throw new Error('fixture failed to claim');
+      }
       return {id, claimedAt};
     };
 
@@ -492,7 +502,9 @@ describe('PostgresAuditRepository', () => {
         .where('id', '=', id)
         .execute();
       const newOwner = await sut.claimForRun(id);
-      if (newOwner === null) throw new Error('fixture failed to reclaim');
+      if (newOwner === null) {
+        throw new Error('fixture failed to reclaim');
+      }
       await complete(id, newOwner, {
         score: 100,
         countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
@@ -514,7 +526,9 @@ describe('PostgresAuditRepository', () => {
       // - which arrives seconds later - can never claim it.
       const id = await makeQueuedAudit();
       const claimedAt = await sut.claimForRun(id);
-      if (claimedAt === null) throw new Error('fixture failed to claim');
+      if (claimedAt === null) {
+        throw new Error('fixture failed to claim');
+      }
 
       await sut.releaseClaim(id, claimedAt);
 
@@ -525,7 +539,9 @@ describe('PostgresAuditRepository', () => {
     it('ignores a release from an attempt that no longer holds the claim', async () => {
       const id = await makeQueuedAudit();
       const stale = await sut.claimForRun(id);
-      if (stale === null) throw new Error('fixture failed to claim');
+      if (stale === null) {
+        throw new Error('fixture failed to claim');
+      }
       await sut.releaseClaim(id, stale);
       const current = await sut.claimForRun(id);
 
@@ -642,7 +658,9 @@ describe('PostgresAuditRepository', () => {
       for (const advance of ['running', 'done', 'failed'] as const) {
         const audit = await sut.add({url: `https://${randomUUID()}.test/x`, pageId: null});
         const claimedAt = await sut.claimForRun(audit.id);
-        if (claimedAt === null) throw new Error('fixture failed to claim');
+        if (claimedAt === null) {
+          throw new Error('fixture failed to claim');
+        }
 
         if (advance === 'done') {
           await complete(audit.id, claimedAt, {
