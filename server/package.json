@@ -7,7 +7,8 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "concurrently --kill-others --names api,worker --prefix-colors blue,magenta \"pnpm run dev:api\" \"pnpm run dev:worker\"",
+    "dev": "pnpm run dev:services && concurrently --kill-others --names api,worker --prefix-colors blue,magenta \"pnpm run dev:api\" \"pnpm run dev:worker\"",
+    "dev:services": "docker compose up -d --wait",
     "dev:api": "tsx watch --env-file=.env src/main/server.ts",
     "dev:worker": "tsx watch --env-file=.env src/main/worker.ts",
     "build:browser": "tsc -b src/infra/audit/browser",
