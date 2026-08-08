@@ -4,6 +4,16 @@ import {injectMarkup} from './inject';
 const template = '<!doctype html><html><body><div id="root"></div></body></html>';
 
 describe('injectMarkup', () => {
+  it('preserves replacement patterns in the rendered markup', () => {
+    // Dollar signs and ampersands are common in rendered content (prices, entities).
+    // String.replace() with a string argument interprets $& and $$ as replacement
+    // patterns, which silently corrupts the output. This test ensures they are
+    // preserved literally.
+    const htmlWithPatterns = '<p>Price: $& off, $$ special</p>';
+    const result = injectMarkup(template, '/', htmlWithPatterns);
+    expect(result).toContain('Price: $& off, $$ special');
+  });
+
   it('fills the root element with the rendered markup', () => {
     expect(injectMarkup(template, '/', '<p>hello</p>')).toContain('<p>hello</p>');
   });

@@ -13,5 +13,5 @@ export const injectMarkup = (template: string, path: string, html: string): stri
     throw new Error(`the built index.html no longer contains ${ROOT}; nothing was prerendered`);
   }
 
-  return template.replace(ROOT, `<div id="root" data-prerendered="${path}">${html}</div>`);
+  return template.replace(ROOT, () => `<div id="root" data-prerendered="${path}">${html}</div>`);
 };
