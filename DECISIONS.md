@@ -6,6 +6,55 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-08 — the landing page is prerendered at build time, not server-rendered
+
+The home page was blank until ~115 kB of JavaScript, gzipped, arrived: `index.html` was
+`<div id="root"></div>` with no stylesheet applied, so the first paint was white
+rather than unstyled. At ~40 kB/s that is about three seconds of nothing.
+
+**Build-time prerendering.** `vite build` runs twice — once for the browser,
+once for an SSR entry — and a Node script renders `/` with the app's own route
+table and injects the result into the built `index.html`. The landing page is
+built from compile-time constants, so there is nothing to fetch and nothing to
+personalise; rendering it once at build time produces the same bytes rendering
+it per request would. Measured: 28,898 bytes of HTML, 4,677 gzipped, against
+~115 kB of JavaScript, gzipped, it no longer waits for. `dist/index.html` went
+from 485 bytes to 29,434.
+
+**Rejected: request-time SSR.** The goal was explicitly perceived load, not SEO
+or link previews — which is most of what per-request rendering buys. It would
+also commit the project to running a Node process for the frontend, and `web/`
+has no deployment at all yet.
+
+**Rejected: React Router framework mode**, which has `prerender` built in and
+would be the right answer for a greenfield app. It replaces the Vite plugin,
+the entry and the route config wholesale, and the reasoning in `main.tsx` about
+`createBrowserRouter` outside `StrictMode` stops being ours to keep.
+
+**Rejected: a skeleton in `index.html`.** Cheaper and robust, but it paints a
+placeholder rather than the page, and this page is static enough not to need one.
+
+**Hydration is conditional, and that is the part worth remembering.** The
+prerenderer stamps `data-prerendered="/"` on the root element and the client
+hydrates only when that matches `location.pathname`; anything else clears and
+client-renders. Unconditional `hydrateRoot` is correct only while the host
+serves each file for the path it was rendered for, and getting that wrong is
+silent — `/dashboard` handed landing-page HTML mismatches and re-renders rather
+than failing. Correctness therefore lives in the app, and `_redirects` is an
+optimisation.
+
+**Non-landing screens became lazy routes** in the same change, and the split is
+real but the saving today is close to nothing: the entry chunk went from
+365.52 kB (115.25 kB gzip) to 365.38 kB (115.25 kB gzip), and the four routes it
+shed — `Dashboard`, `PageDetail`, `Share`, `Signup` — are still stubs, 74 lines
+between them, each landing at 0.18–0.21 kB gzip of its own. The split is correct
+rather than premature: it costs nothing to have made now, and every line those
+screens gain from here is a line `/` no longer pays for, without anyone having
+to come back and redo this. That costs a direct visit to `/dashboard` a
+sequential chunk fetch before `GET /api/me` can start; the root route carries a
+`hydrateFallbackElement` for that beat, matching `RequireAuth`'s existing
+argument that nothing beats a spinner that lives for 80ms.
+
 ## 2026-08-02 — the frontend shares a type-only contract package, not the server's internals
 
 `web/` exists, and with it the question the backlog had been deferring: three surfaces consume the audit response — live progress, audit detail and the share page — and none of them may keep their own copy of its shape.
