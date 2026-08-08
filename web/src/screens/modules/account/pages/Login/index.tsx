@@ -64,13 +64,7 @@ export const Login = (): React.JSX.Element => {
       }
     >
       {login.error === null ? null : (
-        <Callout
-          ref={alertRef}
-          tabIndex={-1}
-          variant="danger"
-          icon={<AlertCircle size="sm" />}
-          live="assertive"
-        >
+        <Callout ref={alertRef} tabIndex={-1} variant="danger" icon={<AlertCircle size="sm" />} live="assertive">
           {authFailureMessage(login.error)}
         </Callout>
       )}

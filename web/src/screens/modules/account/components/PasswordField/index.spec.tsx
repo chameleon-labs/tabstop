@@ -31,4 +31,11 @@ describe('PasswordField', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(input).toHaveAccessibleDescription('Password is required');
   });
+
+  it('disables both the input and reveal action', () => {
+    render(<PasswordField label="Password" disabled />);
+
+    expect(screen.getByLabelText('Password')).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
+  });
 });

@@ -4,7 +4,7 @@ import {Eye, EyeOff} from '@/screens/components/Icons';
 
 export type PasswordFieldProps = Omit<TextFieldProps, 'type' | 'addonEnd'>;
 
-export const PasswordField = ({size = 'md', ...props}: PasswordFieldProps): React.JSX.Element => {
+export const PasswordField = ({size = 'md', disabled = false, ...props}: PasswordFieldProps): React.JSX.Element => {
   const [revealed, setRevealed] = useState(false);
   const label = revealed ? 'Hide password' : 'Show password';
   const Icon = revealed ? EyeOff : Eye;
@@ -13,12 +13,14 @@ export const PasswordField = ({size = 'md', ...props}: PasswordFieldProps): Reac
     <TextField
       {...props}
       size={size}
+      disabled={disabled}
       type={revealed ? 'text' : 'password'}
       addonEnd={
         <Button
           type="button"
           variant="ghost"
           size={size}
+          disabled={disabled}
           aria-label={label}
           onClick={() => setRevealed((value) => !value)}
         >

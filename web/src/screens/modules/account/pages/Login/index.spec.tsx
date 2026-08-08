@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {render, screen, waitFor} from '@testing-library/react';
+import {act, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -125,9 +125,12 @@ describe('Login', () => {
 
   it('locks the form while the login request is pending', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
-      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    fetchMock.mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'})).mockImplementationOnce(
+      () =>
+        new Promise<Response>(() => {
+          // Keep the mutation pending so every form control can be inspected in that state.
+        }),
+    );
     await openLogin();
     await enterCredentials(user);
 
@@ -137,6 +140,7 @@ describe('Login', () => {
       expect(screen.getByLabelText('Email address')).toBeDisabled();
     });
     expect(screen.getByLabelText('Password')).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
     expect(screen.getByRole('button', {name: 'Log in'})).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -166,6 +170,38 @@ describe('Login', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/me', expect.objectContaining({credentials: 'include'}));
   });
 
+  it('replaces the login history entry after a successful standalone login', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, account)).mockResolvedValueOnce(jsonResponse(200, account));
+    const router = createMemoryRouter(
+      [
+        {path: '/before-login', element: <h1>Before login</h1>},
+        {path: '/login', element: <Login />},
+        {path: '/dashboard', element: <h1>Dashboard</h1>},
+      ],
+      {initialEntries: ['/before-login', '/login'], initialIndex: 1},
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: {queries: {retry: false}, mutations: {retry: false}},
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await enterCredentials(user);
+
+    await user.click(screen.getByRole('button', {name: 'Log in'}));
+    expect(await screen.findByRole('heading', {name: 'Dashboard'})).toBeVisible();
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(await screen.findByRole('heading', {name: 'Before login'})).toBeVisible();
+    expect(router.state.location.pathname).toBe('/before-login');
+  });
+
   it('returns to the full recorded destination after confirming the session', async () => {
     const user = userEvent.setup();
     succeedLogin();
@@ -182,9 +218,7 @@ describe('Login', () => {
 
   it('chooses the recorded destination instead of relying on the anonymous-route fallback', async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, account))
-      .mockResolvedValueOnce(jsonResponse(200, account));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, account)).mockResolvedValueOnce(jsonResponse(200, account));
     const router = createMemoryRouter(
       [
         {path: '/login', element: <Login />},
