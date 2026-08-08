@@ -267,6 +267,14 @@
     },
     {
       "files": [
+        "web/scripts/**"
+      ],
+      "env": {
+        "node": true
+      }
+    },
+    {
+      "files": [
         "server/src/infra/audit/browser/**"
       ],
       "env": {

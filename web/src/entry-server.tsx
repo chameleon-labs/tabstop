@@ -29,3 +29,7 @@ export const render = async (url: string): Promise<string> => {
     </QueryClientProvider>,
   );
 };
+
+// Re-exported so `scripts/prerender.ts` has a single built artefact to import,
+// rather than resolving TypeScript out of `src/` at build time.
+export {injectMarkup} from './prerender/inject';
