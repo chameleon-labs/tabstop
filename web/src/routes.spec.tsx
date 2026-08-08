@@ -127,6 +127,11 @@ describe('what may be split out of the initial chunk', () => {
   });
 
   it('loads every other screen lazily', () => {
+    // Guards the guard: `inner` is derived positionally from the route tree,
+    // so a shape change that left it `[]` would make `eager` vacuously `[]`
+    // too, passing with nothing checked.
+    expect(inner.length).toBeGreaterThan(0);
+
     const eager = inner.filter((route) => route.index !== true && route.path !== '*' && route.lazy === undefined);
 
     expect(eager).toEqual([]);
