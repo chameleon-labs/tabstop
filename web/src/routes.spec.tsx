@@ -83,6 +83,24 @@ describe('the route table', () => {
     expect(screen.getByRole('link', {name: 'tabstop'})).toBeVisible();
   });
 
+  it('keeps the shell visible while a lazy route’s chunk is still loading, on a direct visit', async () => {
+    // The window this closes: `renderAt` mounts the router synchronously, and
+    // the dynamic import behind `lazy` cannot resolve inside that same
+    // synchronous act() - so these first assertions run DURING the root's
+    // `hydrateFallbackElement`, before Signup's chunk has loaded, not after.
+    // An empty fallback passes the later assertions and fails these ones; only
+    // observing the resolved state below would pass either way and prove
+    // nothing.
+    renderAt('/signup');
+
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+  });
+
   it('keeps the shell when a screen fails', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
