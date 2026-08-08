@@ -20,6 +20,16 @@ describe('validateLogin', () => {
 });
 
 describe('validateSignup', () => {
+  it('requires an email address', () => {
+    expect(validateSignup({email: '', password: 'x'.repeat(12)})).toEqual({email: 'Enter your email address'});
+  });
+
+  it('rejects malformed email addresses', () => {
+    expect(validateSignup({email: 'not-an-email', password: 'x'.repeat(12)})).toEqual({
+      email: 'Enter a valid email address',
+    });
+  });
+
   it('rejects passwords shorter than twelve characters', () => {
     expect(validateSignup({email: 'person@example.com', password: 'x'.repeat(11)})).toEqual({
       password: 'Use at least 12 characters',

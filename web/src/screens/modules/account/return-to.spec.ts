@@ -11,6 +11,10 @@ describe('destinationFrom', () => {
     expect(destinationFrom({[RETURN_TO_KEY]: '//evil.example/path'})).toBe('/dashboard');
   });
 
+  it('rejects browser-normalized external destinations', () => {
+    expect(destinationFrom({[RETURN_TO_KEY]: '/\\evil.example/path'})).toBe('/dashboard');
+  });
+
   it('rejects absolute destinations', () => {
     expect(destinationFrom({[RETURN_TO_KEY]: 'https://evil.example'})).toBe('/dashboard');
   });
