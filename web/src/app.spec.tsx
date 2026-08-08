@@ -69,8 +69,9 @@ describe('App', () => {
 
     renderApp();
 
-    // The 401 sends the gate home, which is reachable only by having asked.
-    expect(await screen.findByRole('heading', {level: 1})).toHaveTextContent('Accessibility monitoring');
+    // The 401 sends the gate to the real login route, which is reachable only
+    // by having asked through the query provider.
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
     expect(fetchMock).toHaveBeenCalled();
   });
 

@@ -2,6 +2,7 @@ import type {RouteObject} from 'react-router';
 import {Layout} from './screens/components/Layout';
 import {NotFound} from './screens/components/NotFound';
 import {RequireAuth} from './screens/modules/account/components/RequireAuth';
+import {RequireAnonymous} from './screens/modules/account/components/RequireAnonymous';
 import {RouteError} from './screens/components/RouteError';
 import {Home} from './screens/modules/audit/pages/Home';
 
@@ -49,6 +50,19 @@ export const routes: RouteObject[] = [
                   <RequireAuth>
                     <Dashboard />
                   </RequireAuth>
+                ),
+              };
+            },
+          },
+          {
+            path: 'login',
+            lazy: async () => {
+              const {Login} = await import('./screens/modules/account/pages/Login');
+              return {
+                element: (
+                  <RequireAnonymous>
+                    <Login />
+                  </RequireAnonymous>
                 ),
               };
             },

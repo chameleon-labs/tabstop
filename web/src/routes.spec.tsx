@@ -56,11 +56,26 @@ describe('the route table', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('resolves /login for a signed-out visitor', async () => {
+    renderAt('/login');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
+  });
+
+  it('redirects a signed-in visitor away from /login', async () => {
+    withSession();
+
+    renderAt('/login');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(screen.queryByRole('heading', {level: 1, name: 'Log in'})).not.toBeInTheDocument();
+  });
+
   it('sends a signed-out visitor away from a guarded route', async () => {
     renderAt('/dashboard');
 
-    // Landed on home, not on the dashboard behind a spinner.
-    expect(await screen.findByRole('heading', {level: 1})).toHaveTextContent('Accessibility monitoring');
+    // Landed on login, not on the dashboard behind a spinner.
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
     expect(screen.queryByRole('heading', {name: 'Dashboard'})).not.toBeInTheDocument();
   });
 
@@ -112,5 +127,12 @@ describe('what may be split out of the initial chunk', () => {
     const eager = inner.filter((route) => route.index !== true && route.path !== '*' && route.lazy === undefined);
 
     expect(eager).toEqual([]);
+  });
+
+  it('keeps the login screen in a lazy route', () => {
+    const login = inner.find((route) => route.path === 'login');
+
+    expect(login?.lazy).toBeTypeOf('function');
+    expect(login?.element).toBeUndefined();
   });
 });

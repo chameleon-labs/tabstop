@@ -1,5 +1,6 @@
-import {Navigate} from 'react-router';
+import {Navigate, useLocation} from 'react-router';
 import {useSession} from '../../session';
+import {destinationFrom} from '../../return-to';
 
 export type RequireAnonymousProps = {
   children: React.ReactNode;
@@ -7,6 +8,7 @@ export type RequireAnonymousProps = {
 
 export const RequireAnonymous = ({children}: RequireAnonymousProps): React.JSX.Element => {
   const {data: account, isPending, error} = useSession();
+  const location = useLocation();
 
   if (error !== null) {
     throw error;
@@ -15,5 +17,5 @@ export const RequireAnonymous = ({children}: RequireAnonymousProps): React.JSX.E
     return <></>;
   }
 
-  return account === null ? <>{children}</> : <Navigate to="/dashboard" replace />;
+  return account === null ? <>{children}</> : <Navigate to={destinationFrom(location.state)} replace />;
 };

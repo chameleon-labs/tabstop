@@ -7,7 +7,7 @@ import {jsonResponse} from '@/test/http';
 
 const account = {id: '1', email: 'a@b.co', alertThreshold: 5};
 
-const renderGate = (): ReturnType<typeof createMemoryRouter> => {
+const renderGate = (state?: unknown): ReturnType<typeof createMemoryRouter> => {
   const router = createMemoryRouter(
     [
       {path: '/start', element: <h1>Where they came from</h1>},
@@ -20,8 +20,9 @@ const renderGate = (): ReturnType<typeof createMemoryRouter> => {
         ),
       },
       {path: '/dashboard', element: <h1>Dashboard</h1>},
+      {path: '/pages/:id', element: <h1>Recorded page</h1>},
     ],
-    {initialEntries: ['/start', '/login'], initialIndex: 1},
+    {initialEntries: ['/start', {pathname: '/login', state}], initialIndex: 1},
   );
 
   render(
@@ -86,6 +87,17 @@ describe('RequireAnonymous', () => {
 
     expect(await screen.findByRole('heading', {name: 'Where they came from'})).toBeVisible();
     expect(router.state.location.pathname).toBe('/start');
+  });
+
+  it('uses a safe recorded destination when the session appears on the login route', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, account)));
+
+    const router = renderGate({from: '/pages/42?days=30#history'});
+
+    expect(await screen.findByRole('heading', {name: 'Recorded page'})).toBeVisible();
+    expect(router.state.location.pathname).toBe('/pages/42');
+    expect(router.state.location.search).toBe('?days=30');
+    expect(router.state.location.hash).toBe('#history');
   });
 
   it('rethrows a real session failure to the route boundary', async () => {
