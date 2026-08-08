@@ -15,6 +15,10 @@ describe('destinationFrom', () => {
     expect(destinationFrom({[RETURN_TO_KEY]: '/\\evil.example/path'})).toBe('/dashboard');
   });
 
+  it('rejects destinations that normalize to the sentinel origin', () => {
+    expect(destinationFrom({[RETURN_TO_KEY]: '/\\tabstop.invalid/path'})).toBe('/dashboard');
+  });
+
   it('rejects absolute destinations', () => {
     expect(destinationFrom({[RETURN_TO_KEY]: 'https://evil.example'})).toBe('/dashboard');
   });
