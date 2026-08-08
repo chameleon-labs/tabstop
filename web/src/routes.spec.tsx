@@ -2,6 +2,7 @@ import {screen, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {jsonResponse} from './test/http';
 import {renderAt} from './test/render';
+import {routes} from './routes';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
 
@@ -91,5 +92,25 @@ describe('the route table', () => {
       expect(screen.getByRole('heading', {name: 'Something went wrong'})).toBeVisible();
     });
     expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+  });
+});
+
+describe('what may be split out of the initial chunk', () => {
+  const inner = routes[0]?.children?.[0]?.children ?? [];
+
+  it('keeps the index route eager, because it is the prerendered one', () => {
+    // The invariant the prerendering rests on. A lazy Home would leave
+    // prerendered markup in index.html with nothing to hydrate it until a
+    // second round trip - undoing the change without failing anything else.
+    const index = inner.find((route) => route.index === true);
+
+    expect(index?.element).toBeDefined();
+    expect(index?.lazy).toBeUndefined();
+  });
+
+  it('loads every other screen lazily', () => {
+    const eager = inner.filter((route) => route.index !== true && route.path !== '*' && route.lazy === undefined);
+
+    expect(eager).toEqual([]);
   });
 });
