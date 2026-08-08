@@ -116,4 +116,21 @@ describe('refreshSession', () => {
 
     await expect(refreshSession(queryClient)).rejects.toBeInstanceOf(ApiError);
   });
+
+  it('rejects with the original TypeError when the refresh request cannot reach the server', async () => {
+    const networkError = new TypeError('Failed to fetch');
+    fetchMock.mockRejectedValue(networkError);
+    const queryClient = refreshQueryClient();
+
+    await expect(refreshSession(queryClient)).rejects.toBe(networkError);
+  });
+
+  it('rejects with an ApiError for a 403 refresh response', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(403, {error: 'Forbidden'})));
+    const queryClient = refreshQueryClient();
+    const refresh = refreshSession(queryClient);
+
+    await expect(refresh).rejects.toBeInstanceOf(ApiError);
+    await expect(refresh).rejects.toMatchObject({status: 403});
+  });
 });
