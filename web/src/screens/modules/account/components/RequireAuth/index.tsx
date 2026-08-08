@@ -10,7 +10,7 @@ export type RequireAuthProps = {
  * carried under. Exported so a login screen (#24) reads the same names this
  * writes, rather than a pair of string literals that have to match by luck.
  */
-export const SIGNED_OUT_REDIRECT = '/';
+export const SIGNED_OUT_REDIRECT = '/login';
 export const RETURN_TO_KEY = 'from';
 
 /**
@@ -44,7 +44,8 @@ export const RequireAuth = ({children}: RequireAuthProps): React.JSX.Element => 
   if (account === null) {
     // `replace`, so Back does not land on the gate again and bounce; `state`
     // so a login screen can return the visitor where they were going.
-    return <Navigate to={SIGNED_OUT_REDIRECT} replace state={{[RETURN_TO_KEY]: location.pathname}} />;
+    const destination = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={SIGNED_OUT_REDIRECT} replace state={{[RETURN_TO_KEY]: destination}} />;
   }
 
   return <>{children}</>;
