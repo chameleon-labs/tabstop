@@ -2,6 +2,7 @@ import {screen, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {jsonResponse} from './test/http';
 import {renderAt} from './test/render';
+import {routes} from './routes';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
 
@@ -82,6 +83,24 @@ describe('the route table', () => {
     expect(screen.getByRole('link', {name: 'tabstop'})).toBeVisible();
   });
 
+  it('keeps the shell visible while a lazy route’s chunk is still loading, on a direct visit', async () => {
+    // The window this closes: `renderAt` mounts the router synchronously, and
+    // the dynamic import behind `lazy` cannot resolve inside that same
+    // synchronous act() - so these first assertions run DURING the root's
+    // `hydrateFallbackElement`, before Signup's chunk has loaded, not after.
+    // An empty fallback passes the later assertions and fails these ones; only
+    // observing the resolved state below would pass either way and prove
+    // nothing.
+    renderAt('/signup');
+
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+    expect(screen.getByRole('banner')).toBeInTheDocument();
+  });
+
   it('keeps the shell when a screen fails', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Internal server error'})));
 
@@ -91,5 +110,30 @@ describe('the route table', () => {
       expect(screen.getByRole('heading', {name: 'Something went wrong'})).toBeVisible();
     });
     expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+  });
+});
+
+describe('what may be split out of the initial chunk', () => {
+  const inner = routes[0]?.children?.[0]?.children ?? [];
+
+  it('keeps the index route eager, because it is the prerendered one', () => {
+    // The invariant the prerendering rests on. A lazy Home would leave
+    // prerendered markup in index.html with nothing to hydrate it until a
+    // second round trip - undoing the change without failing anything else.
+    const index = inner.find((route) => route.index === true);
+
+    expect(index?.element).toBeDefined();
+    expect(index?.lazy).toBeUndefined();
+  });
+
+  it('loads every other screen lazily', () => {
+    // Guards the guard: `inner` is derived positionally from the route tree,
+    // so a shape change that left it `[]` would make `eager` vacuously `[]`
+    // too, passing with nothing checked.
+    expect(inner.length).toBeGreaterThan(0);
+
+    const eager = inner.filter((route) => route.index !== true && route.path !== '*' && route.lazy === undefined);
+
+    expect(eager).toEqual([]);
   });
 });

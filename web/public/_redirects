@@ -1,0 +1,12 @@
+# Every other path falls through to app.html, NOT index.html. index.html is
+# `/`'s prerendered markup, stamped data-prerendered="/" - sending every route
+# to it would hand `/dashboard` etc. that stamp, which hydrate.ts compares
+# against the URL, finds mismatched, and throws away. app.html is the same
+# template with an empty <div id="root">, so those routes render like an
+# ordinary SPA. Static prerendered files (currently just index.html) still take
+# precedence over this catch-all without needing their own line here.
+#
+# Do not add "!" to force this rule: that would override the static-file
+# precedence above, shadowing index.html too and disabling prerendering
+# entirely.
+/*    /app.html   200

@@ -3,11 +3,7 @@ import {Layout} from './screens/components/Layout';
 import {NotFound} from './screens/components/NotFound';
 import {RequireAuth} from './screens/modules/account/components/RequireAuth';
 import {RouteError} from './screens/components/RouteError';
-import {Dashboard} from './screens/modules/audit/pages/Dashboard';
 import {Home} from './screens/modules/audit/pages/Home';
-import {PageDetail} from './screens/modules/audit/pages/PageDetail';
-import {Share} from './screens/modules/audit/pages/Share';
-import {Signup} from './screens/modules/account/pages/Signup';
 
 /**
  * Exported as data rather than JSX so a spec can mount it with
@@ -31,6 +27,22 @@ export const routes: RouteObject[] = [
     path: '/',
     element: <Layout />,
     errorElement: <RouteError />,
+    // Rendered while a lazy route's chunk is in flight on a DIRECT visit.
+    // `<Layout />`, not empty: a fallback declared on the ROOT route replaces
+    // what that route renders, not just the page inside it - `RequireAuth`'s
+    // "beat of nothing" is a different case, because it renders INSIDE an
+    // already-painted shell. Empty here instead means no skip link, no header,
+    // no route announcer for the whole window before the chunk resolves, on
+    // every one of the four lazy routes - the exact failure prerendering exists
+    // to remove.
+    //
+    // `Layout` degrades correctly in this position: `useMatches()` is still
+    // populated from the router's matched-but-unloaded routes, none of the four
+    // lazy routes sets `handle: {ownChrome: true}`, so `useOwnChrome` reads
+    // false and the header renders; `Outlet` then renders `null` for the
+    // unresolved child, leaving header + an empty `<main id="main">` until the
+    // chunk loads.
+    hydrateFallbackElement: <Layout />,
     children: [
       {
         errorElement: <RouteError />,
@@ -41,27 +53,49 @@ export const routes: RouteObject[] = [
           {index: true, element: <Home />, handle: {ownChrome: true}},
           {
             path: 'dashboard',
-            element: (
-              <RequireAuth>
-                <Dashboard />
-              </RequireAuth>
-            ),
+            lazy: async () => {
+              const {Dashboard} = await import('./screens/modules/audit/pages/Dashboard');
+              return {
+                element: (
+                  <RequireAuth>
+                    <Dashboard />
+                  </RequireAuth>
+                ),
+              };
+            },
           },
           {
             path: 'pages/:id',
-            element: (
-              <RequireAuth>
-                <PageDetail />
-              </RequireAuth>
-            ),
+            lazy: async () => {
+              const {PageDetail} = await import('./screens/modules/audit/pages/PageDetail');
+              return {
+                element: (
+                  <RequireAuth>
+                    <PageDetail />
+                  </RequireAuth>
+                ),
+              };
+            },
           },
           // Public and unauthenticated. The uuid is the only credential, which
           // is what makes the link shareable at all.
-          {path: 'r/:uuid', element: <Share />},
+          {
+            path: 'r/:uuid',
+            lazy: async () => {
+              const {Share} = await import('./screens/modules/audit/pages/Share');
+              return {element: <Share />};
+            },
+          },
           // Public: the rate-limit offer on the home screen links here, and it
           // is the one link this app shows to someone who is not signed in and
           // has just been told to stop.
-          {path: 'signup', element: <Signup />},
+          {
+            path: 'signup',
+            lazy: async () => {
+              const {Signup} = await import('./screens/modules/account/pages/Signup');
+              return {element: <Signup />};
+            },
+          },
           {path: '*', element: <NotFound />},
         ],
       },

@@ -1,8 +1,8 @@
 import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
 import {createBrowserRouter} from 'react-router';
 import {App} from './app';
 import {makeQueryClient} from './api/query-client';
+import {mountApp} from './hydrate';
 import {routes} from './routes';
 // Tokens before components, and both before the app's own sheet. `lattice.css`
 // declares the custom properties `styles.css` reads, so the reverse order
@@ -27,8 +27,10 @@ if (container === null) {
  */
 const router = createBrowserRouter(routes);
 
-createRoot(container).render(
+mountApp(
+  container,
   <StrictMode>
     <App queryClient={makeQueryClient()} router={router} />
   </StrictMode>,
+  window.location.pathname,
 );
