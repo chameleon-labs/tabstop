@@ -18,8 +18,10 @@ const withoutTrailingSlash = (path: string): string => (path !== '/' && path.end
  * production, so correctness is kept here rather than in deployment config,
  * which then becomes an optimisation.
  *
- * The same branch covers a stale `index.html` served from a cache after a
- * deploy, and a `dist-ssr/` that drifted from `dist/`.
+ * The stamp compares PATHS, not builds. Markup that is stale for the same path
+ * - a cached `index.html`, a prerender run against a different bundle - carries
+ * the right stamp and is hydrated; React's own mismatch recovery handles those,
+ * at the cost of a discarded paint.
  */
 export const mountApp = (container: HTMLElement, tree: React.ReactNode, pathname: string): Root => {
   const stamp = container.dataset.prerendered;
