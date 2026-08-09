@@ -10,7 +10,7 @@ export const RequireAnonymous = ({children}: RequireAnonymousProps): React.JSX.E
   const {data: account, isPending, error} = useSession();
   const location = useLocation();
 
-  if (error !== null) {
+  if (error !== null && account === undefined) {
     throw error;
   }
   if (isPending) {

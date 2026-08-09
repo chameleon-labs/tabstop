@@ -2,10 +2,12 @@ export type Credentials = {email: string; password: string};
 export type CredentialErrors = Partial<Record<keyof Credentials, string>>;
 
 const emailError = (email: string): string | undefined => {
-  if (email === '') {
+  const normalized = email.trim();
+
+  if (normalized === '') {
     return 'Enter your email address';
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     return 'Enter a valid email address';
   }
   return undefined;

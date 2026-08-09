@@ -94,7 +94,7 @@ export const Login = (): React.JSX.Element => {
           }}
         />
         <Button type="submit" variant="primary" disabled={login.isPending}>
-          Log in
+          {login.isPending ? 'Logging in…' : 'Log in'}
         </Button>
       </form>
     </AuthShell>

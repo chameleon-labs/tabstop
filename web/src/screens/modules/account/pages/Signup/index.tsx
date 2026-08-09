@@ -93,7 +93,7 @@ export const Signup = (): React.JSX.Element => {
           }}
         />
         <Button type="submit" variant="primary" disabled={signup.isPending}>
-          Create account
+          {signup.isPending ? 'Creating account…' : 'Create account'}
         </Button>
       </form>
     </AuthShell>

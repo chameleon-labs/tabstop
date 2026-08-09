@@ -17,6 +17,10 @@ describe('validateLogin', () => {
   it('accepts valid login credentials', () => {
     expect(validateLogin({email: 'person@example.com', password: 'x'})).toEqual({});
   });
+
+  it('accepts surrounding email whitespace that the server trims', () => {
+    expect(validateLogin({email: ' person@example.com ', password: 'x'})).toEqual({});
+  });
 });
 
 describe('validateSignup', () => {
@@ -38,6 +42,10 @@ describe('validateSignup', () => {
 
   it('accepts a twelve-character password', () => {
     expect(validateSignup({email: 'person@example.com', password: 'x'.repeat(12)})).toEqual({});
+  });
+
+  it('accepts surrounding email whitespace that the server trims', () => {
+    expect(validateSignup({email: ' person@example.com ', password: 'x'.repeat(12)})).toEqual({});
   });
 
   it('accepts a two-hundred-character password', () => {

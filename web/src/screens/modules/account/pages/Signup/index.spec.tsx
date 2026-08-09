@@ -153,6 +153,25 @@ describe('Signup', () => {
     expect(screen.getByLabelText('Password')).toHaveValue(credentials.password);
   });
 
+  it('keeps the form when session confirmation cannot be reached after signup', async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
+      .mockResolvedValueOnce(jsonResponse(201, account))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await openSignup();
+    await enterCredentials(user);
+
+    await user.click(screen.getByRole('button', {name: 'Create account'}));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not reach tabstop. Check your connection and try again');
+    expect(alert).toHaveFocus();
+    expect(screen.getByLabelText('Email address')).toHaveValue(credentials.email);
+    expect(screen.getByLabelText('Password')).toHaveValue(credentials.password);
+    expect(screen.getByRole('button', {name: 'Create account'})).toBeEnabled();
+  });
+
   it('locks every form control while the signup request is pending', async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'})).mockImplementationOnce(
@@ -171,7 +190,8 @@ describe('Signup', () => {
     });
     expect(screen.getByLabelText('Password')).toBeDisabled();
     expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
-    expect(screen.getByRole('button', {name: 'Create account'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Creating account…'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Create account'})).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

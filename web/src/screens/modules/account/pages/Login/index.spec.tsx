@@ -123,6 +123,25 @@ describe('Login', () => {
     expect(screen.getByLabelText('Password')).toHaveValue(credentials.password);
   });
 
+  it('keeps the form when session confirmation fails after accepted credentials', async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
+      .mockResolvedValueOnce(jsonResponse(200, account))
+      .mockResolvedValueOnce(jsonResponse(500, {error: 'Session confirmation failed'}));
+    await openLogin();
+    await enterCredentials(user);
+
+    await user.click(screen.getByRole('button', {name: 'Log in'}));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Session confirmation failed');
+    expect(alert).toHaveFocus();
+    expect(screen.getByLabelText('Email address')).toHaveValue(credentials.email);
+    expect(screen.getByLabelText('Password')).toHaveValue(credentials.password);
+    expect(screen.getByRole('button', {name: 'Log in'})).toBeEnabled();
+  });
+
   it('locks the form while the login request is pending', async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'})).mockImplementationOnce(
@@ -141,7 +160,8 @@ describe('Login', () => {
     });
     expect(screen.getByLabelText('Password')).toBeDisabled();
     expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
-    expect(screen.getByRole('button', {name: 'Log in'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Logging in…'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Log in'})).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
