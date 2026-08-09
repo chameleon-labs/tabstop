@@ -35,6 +35,7 @@ import {
 import type {IconProps} from '@/screens/components/Icons';
 import {ScoreArc} from './LandingParts/score-arc';
 import {ScoreChart} from './LandingParts/score-chart';
+import './landing.css';
 
 /**
  * The tabstop landing page, rebuilt from Lattice components alone.

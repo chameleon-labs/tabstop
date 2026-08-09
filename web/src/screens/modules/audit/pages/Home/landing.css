@@ -1,0 +1,1737 @@
+/*
+ * Layout for the full-page stories under Pages/*.
+ *
+ * Registered in src/styles.css alongside every component family, so it ships
+ * with the package — there is no separate story-only stylesheet. Its classes
+ * are never part of the component contract; they style page chrome no
+ * exported component models — a sidebar, a topbar, a section head, a sticky
+ * nav — for the `SystemPage` and `LandingPage` stories, and any sibling
+ * full-page story built the same way.
+ *
+ * Its rules are grid/flex/gap/padding/position shells. Anywhere a rule below
+ * reaches past layout into appearance — colour, border, radius, type — the
+ * value is a `var(--lat-*)` reference, never a literal: the page exists to
+ * prove the token, not to restate the Figma bundle's own hard-coded hex
+ * values.
+ *
+ * The one deliberate exception is the `display` role (48px): it has no
+ * bare-element rule in base.css and no component of its own, so a page
+ * headline builds it directly from `--lat-text-display-*`, same as the
+ * h1–h4 rules base.css already ships. The recipe lives once, in
+ * `.lat-page__display` below, and both pages compose it onto their `<h1>`
+ * alongside a page-owned class that carries only `margin-block-end` — the
+ * one declaration that legitimately differs per page, being page layout
+ * rather than part of the display role itself. (It briefly existed as two
+ * copies, `.system-page__display` and `.landing-page__display`, because the
+ * landing page's task could touch this file but not `system-page.tsx`'s
+ * markup; folded into one class once both pages could be edited together.)
+ */
+
+/* The shared display-role recipe — see the file header comment. Compose with
+   a page-owned class (`.system-page__display`, `.landing-page__display`)
+   that supplies only `margin-block-end`. */
+.lat-page__display {
+  font-family: var(--lat-text-display-font-family);
+  font-size: var(--lat-text-display-font-size);
+  font-weight: var(--lat-text-display-font-weight);
+  letter-spacing: var(--lat-text-display-letter-spacing);
+  line-height: var(--lat-text-display-line-height);
+}
+
+.system-page {
+  display: flex;
+  min-block-size: 100vh;
+}
+
+/* ─── Sidebar ──────────────────────────────────────────────────────────── */
+
+.system-page__sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 14rem;
+  position: sticky;
+  inset-block-start: 0;
+  block-size: 100vh;
+  overflow-y: auto;
+  background: var(--lat-bg-raised);
+  border-inline-end: 1px solid var(--lat-border);
+}
+
+.system-page__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-2);
+  padding: var(--lat-space-5);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+.system-page__logo-mark {
+  display: block;
+  inline-size: var(--lat-space-5);
+  block-size: var(--lat-space-5);
+  background: var(--lat-accent-solid);
+  border-radius: var(--lat-radius-none);
+}
+
+.system-page__logo-text {
+  font-weight: var(--lat-font-weight-bold);
+}
+
+.system-page__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-1);
+  flex: 1;
+  padding: var(--lat-space-3);
+  overflow-y: auto;
+}
+
+.system-page__nav-item {
+  justify-content: flex-start;
+  inline-size: 100%;
+}
+
+.system-page__resources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-2);
+  padding: var(--lat-space-5) var(--lat-space-2) 0;
+}
+
+.system-page__resource {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-2);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+}
+
+.system-page__sidebar-footer {
+  padding: var(--lat-space-4) var(--lat-space-5);
+  border-block-start: 1px solid var(--lat-border);
+}
+
+/* ─── Topbar + content shell ──────────────────────────────────────────── */
+
+.system-page__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.system-page__topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  position: sticky;
+  inset-block-start: 0;
+  padding: var(--lat-space-3) var(--lat-space-8);
+  background: var(--lat-bg);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+.system-page__crumb {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.system-page__topbar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  margin-inline-start: auto;
+}
+
+.system-page__content {
+  padding: var(--lat-space-8) var(--lat-space-12);
+  max-inline-size: var(--lat-container-wide);
+}
+
+.system-page__section {
+  margin-block-end: var(--lat-space-16);
+}
+
+.system-page__panel {
+  margin-block-end: var(--lat-space-4);
+}
+
+.system-page__section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  margin-block-end: var(--lat-space-6);
+}
+
+.system-page__section-index {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* ─── Overview ─────────────────────────────────────────────────────────── */
+
+.system-page__overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--lat-space-6);
+  margin-block-end: var(--lat-space-4);
+}
+
+.system-page__hero {
+  grid-column: span 3;
+}
+
+.system-page__stats {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--lat-space-3);
+}
+
+.system-page__badge-row {
+  display: flex;
+  gap: var(--lat-space-2);
+  margin-block-end: var(--lat-space-4);
+}
+
+.system-page__display {
+  margin-block-end: var(--lat-space-4);
+}
+
+.system-page__display-accent {
+  color: var(--lat-accent-solid);
+}
+
+.system-page__lede {
+  max-inline-size: 24rem;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+}
+
+/* ─── Tokens ───────────────────────────────────────────────────────────── */
+
+.system-page__swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--lat-space-3);
+}
+
+.system-page__swatch-color {
+  block-size: var(--lat-space-12);
+}
+
+.system-page__swatch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lat-space-2);
+}
+
+.system-page__swatch-label {
+  font-family: var(--lat-text-ui-font-family);
+  font-size: var(--lat-text-ui-font-size);
+}
+
+.system-page__swatch-token {
+  display: block;
+  margin-block-start: var(--lat-space-1);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.system-page__spacing-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-3);
+}
+
+.system-page__spacing-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-4);
+}
+
+.system-page__spacing-name {
+  flex: 0 0 8rem;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.system-page__spacing-bar {
+  block-size: var(--lat-space-3);
+  background: var(--lat-accent-tint);
+  border: 1px solid var(--lat-accent-tint-border);
+}
+
+.system-page__spacing-px {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* ─── Typography ───────────────────────────────────────────────────────── */
+
+.system-page__type-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-5);
+}
+
+.system-page__type-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lat-space-6);
+}
+
+.system-page__type-meta {
+  flex: 0 0 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-1);
+}
+
+.system-page__type-name {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.system-page__type-desc {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-font-size-3xs);
+}
+
+.system-page__type-sample {
+  flex: 1;
+  margin: 0;
+}
+
+.system-page__type-display {
+  font-family: var(--lat-text-display-font-family);
+  font-size: var(--lat-text-display-font-size);
+  font-weight: var(--lat-text-display-font-weight);
+  line-height: var(--lat-text-display-line-height);
+}
+
+.system-page__type-small {
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  font-weight: var(--lat-text-small-font-weight);
+  line-height: var(--lat-text-small-line-height);
+}
+
+.system-page__type-mono {
+  font-family: var(--lat-text-code-font-family);
+  font-size: var(--lat-text-code-font-size);
+  line-height: var(--lat-text-code-line-height);
+}
+
+/* ─── Components ───────────────────────────────────────────────────────── */
+
+.system-page__row-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lat-space-3);
+}
+
+.system-page__two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--lat-space-4);
+  margin-block-end: var(--lat-space-4);
+}
+
+.system-page__field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-4);
+}
+
+.system-page__anatomy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--lat-space-3);
+}
+
+.system-page__anatomy-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-block-end: var(--lat-space-3);
+}
+
+.system-page__anatomy-title {
+  margin: 0 0 var(--lat-space-1);
+}
+
+.system-page__anatomy-desc {
+  margin: 0;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+}
+
+/* The three "tone" accents on Circle/Square/Triangle in the Card anatomy demo
+   and the highlighted row in the Command Palette pattern — Lattice's own
+   accent, info and chart-3 roles standing in for the bundle's primary/
+   chart-2/chart-3 icon colours. */
+.system-page__tone[data-tone='primary'] {
+  color: var(--lat-accent-solid);
+}
+.system-page__tone[data-tone='info'] {
+  color: var(--lat-info-solid);
+}
+.system-page__tone[data-tone='accent'] {
+  color: var(--lat-chart-3);
+}
+
+/* ─── Patterns ─────────────────────────────────────────────────────────── */
+
+.system-page__palette {
+  border: 1px solid var(--lat-accent-tint-border);
+}
+
+.system-page__palette-search {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  padding: var(--lat-space-3) var(--lat-space-4);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+.system-page__palette-placeholder {
+  color: var(--lat-text);
+  font-family: var(--lat-text-code-font-family);
+  font-size: var(--lat-text-code-font-size);
+}
+
+.system-page__palette-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  padding: var(--lat-space-2) var(--lat-space-4);
+}
+
+/*
+ * `[data-active]` deliberately carries no background of its own. Two things
+ * tried here first, both wrong for the same underlying reason:
+ *
+ * 1. `--lat-accent-tint` — the tint half of the accent tinted triple, built
+ *    to pair with `--lat-solid` as text (that pairing is measured: the
+ *    ledger's "accent text on its tint" row). The default `Badge` inside
+ *    this row reads `--lat-text-subtle`, a colour sized for Lattice's
+ *    *neutral* surfaces, not an accent wash — a pairing no ledger row,
+ *    chromatic triple or severity triple measures. Contrast 2.2:1.
+ * 2. `--lat-wash` — the same neutral overlay the default Badge's own tint
+ *    already uses, on the theory that stacking two instances of the same
+ *    token would land on the pairing the severity-minor tint row measures.
+ *    It does not: the row's wash and the Badge's own wash compound into a
+ *    *third*, still-unmeasured surface, better but still novel. Contrast
+ *    2.85:1.
+ *
+ * Both are instances of one rule: a neutral-variant component placed on
+ * *any* added tint is an unmeasured pairing, because the ledger measures
+ * token pairs, not page compositions, and cannot enumerate every surface a
+ * composition might invent. The only pairing this row's `Badge` is
+ * guaranteed to match a ledger row on is the one every other default
+ * `Badge` on this page already uses: `--lat-text-subtle` directly on the
+ * `Card`'s own `--lat-bg-raised`, no overlay in between — "muted-foreground
+ * on card" (3.67:1, an accepted, documented failure).
+ *
+ * "Active" still reads without it: the source bundle's own primary signal is
+ * the `ChevronRight` turning accent-coloured (`system-page.tsx`), which
+ * this page already does and the `Tag`/`Badge` never picks up in the
+ * source either, active row or not.
+ */
+
+.system-page__palette-spacer {
+  display: inline-block;
+  inline-size: 11px;
+}
+
+.system-page__palette-name {
+  flex: 1;
+  color: var(--lat-text);
+  font-family: var(--lat-text-code-font-family);
+  font-size: var(--lat-text-code-font-size);
+}
+
+/* ─── Motion ───────────────────────────────────────────────────────────── */
+
+.system-page__motion-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-1);
+}
+
+.system-page__motion-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-5);
+  padding: var(--lat-space-3) 0;
+}
+
+.system-page__motion-label {
+  flex: 0 0 6rem;
+  font-family: var(--lat-text-ui-font-family);
+  font-size: var(--lat-text-ui-font-size);
+}
+
+.system-page__motion-track {
+  position: relative;
+  flex: 1;
+  block-size: 1px;
+  background: var(--lat-border);
+}
+
+/* Each duration preset reads its own `--lat-duration-*` token, and every
+   preset but Instant reads an easing token too — the row plays Lattice's
+   real motion scale rather than the bundle's arbitrary millisecond list. */
+.system-page__motion-dot {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0;
+  transform: translateY(-50%);
+  inline-size: var(--lat-space-3);
+  block-size: var(--lat-space-3);
+  border-radius: var(--lat-radius-full);
+  background: var(--lat-accent-solid);
+  transition-property: inset-inline-start;
+  transition-timing-function: var(--lat-easing-out);
+}
+
+.system-page__motion-dot[data-duration='instant'] {
+  transition-duration: var(--lat-duration-instant);
+}
+.system-page__motion-dot[data-duration='swift'] {
+  transition-duration: var(--lat-duration-swift);
+}
+.system-page__motion-dot[data-duration='default'] {
+  transition-duration: var(--lat-duration-default);
+}
+.system-page__motion-dot[data-duration='deliberate'] {
+  transition-duration: var(--lat-duration-deliberate);
+}
+.system-page__motion-dot[data-duration='expressive'] {
+  transition-duration: var(--lat-duration-expressive);
+}
+.system-page__motion-dot[data-easing='in-out'] {
+  transition-timing-function: var(--lat-easing-in-out);
+}
+
+.system-page__motion-dot[data-playing] {
+  inset-inline-start: calc(100% - var(--lat-space-3));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Landing (the tabstop marketing page)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.landing-page {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+}
+
+/* `px-6 md:px-10 lg:px-12`: the gutter widens in two steps as the viewport
+   grows past Tailwind's `md`/`lg` breakpoints, which is why `--lat-space-6`
+   alone only matches the source below 48rem. */
+/* `box-sizing: border-box` — Tailwind's preflight sets it globally, so the
+   source's `max-w-5xl` already nets its own padding out of the cap. Nothing
+   in this package resets `box-sizing`, and a page-wide reset would need a
+   universal selector the stylesheet contract forbids, so it is declared
+   directly on the one rule here that combines a `max-inline-size` with
+   `padding-inline` — content-box would render this row wider than the
+   source's by twice the gutter. */
+.landing-page__section {
+  box-sizing: border-box;
+  padding-inline: var(--lat-space-6);
+  max-inline-size: var(--lat-container-content);
+  margin-inline: auto;
+}
+
+@media (width >= 48rem) {
+  .landing-page__section,
+  .landing-page__nav-inner {
+    padding-inline: var(--lat-space-10);
+  }
+}
+
+@media (width >= 64rem) {
+  .landing-page__section,
+  .landing-page__nav-inner {
+    padding-inline: var(--lat-space-12);
+  }
+}
+
+/* ─── Nav ──────────────────────────────────────────────────────────────── */
+
+/*
+ * The stacking order for every sticky chrome element on these pages.
+ *
+ * `position: sticky` alone is not enough. A sticky element with `z-index: auto`
+ * paints in DOM order against other positioned elements, so anything later in
+ * the document that is merely `position: relative` — the hero's audit card, for
+ * one — scrolls straight over it. The Figma bundle's own header carries `z-50` for
+ * exactly this reason.
+ *
+ * 50 rather than 1 so page content can still be layered beneath deliberately
+ * without colliding, and it matches the source's value. This is a page concern:
+ * no component in the library positions itself, so the token package has no
+ * layering scale to draw on.
+ */
+.landing-page__nav,
+.system-page__sidebar,
+.system-page__topbar {
+  z-index: 50;
+}
+
+.landing-page__nav {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--lat-bg);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+/* `h-14`: a fixed-height row with its content centred, not a padded one — no
+   `padding-block` here, unlike every other section-level `*-inner` on this
+   page, because the source nav has no vertical padding class either. */
+.landing-page__nav-inner {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-4);
+  block-size: 3.5rem;
+  padding-inline: var(--lat-space-6);
+  max-inline-size: var(--lat-container-content);
+  margin-inline: auto;
+}
+
+.landing-page__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-2);
+  margin-inline-end: auto;
+}
+
+.landing-page__logo-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--lat-space-6);
+  block-size: var(--lat-space-6);
+  background: var(--lat-accent-solid);
+  color: var(--lat-on-solid);
+  border-radius: var(--lat-radius-none);
+  font-family: var(--lat-text-code-font-family);
+  /* `text-[11px]` — the meta role's own primitive size, not the nearest
+       eyebrow/meta *role* token (which pairs 11px with mono, tracking and a
+       muted colour this mark doesn't want). `--lat-font-size-2xs` is the exact
+       match here, unlike the `3xs` (10px) stand-ins used elsewhere in this
+       file for literal 9px/10px sizes with no rung of their own. */
+  font-size: var(--lat-font-size-2xs);
+  font-weight: var(--lat-font-weight-bold);
+}
+
+/* `font-bold text-sm … tracking-tight` (14px/700/-0.35px) — the ambient
+   body size (16px, no tracking) everywhere this text isn't overridden. */
+.landing-page__logo-text {
+  font-size: var(--lat-font-size-sm);
+  font-weight: var(--lat-font-weight-bold);
+  letter-spacing: var(--lat-letter-spacing-tight);
+}
+
+/* The nav's "beta" `Badge` is `text-[9px] tracking-widest px-1.5 py-0.5`
+   (padding `--lat-space-1-5`/`--lat-space-0-5`, both exact rungs) against
+   `Badge`'s own structural default (10px, `--lat-letter-spacing-wide`,
+   `--lat-space-0-5`/`--lat-space-2` — a wider horizontal pad and a lighter
+   tracking). 9px sits on no `--lat-font-size-*` rung (same one-px-short
+   accepted case as the audit card's "audited 4 min ago"); `3xs` (10px) is
+   the nearest. Scoped to the brand mark specifically — `.landing-page__brand`
+   also wraps the footer's logo mark, which carries no `Badge`, so this never
+   reaches there. Qualified with `[data-variant='default']` (the only variant
+   this instance renders) rather than a bare `.lat-badge`, for the same
+   false-positive reason as the link-`Button` overrides elsewhere in this
+   file. */
+.landing-page__brand .lat-badge[data-variant='default'] {
+  padding: var(--lat-space-0-5) var(--lat-space-1-5);
+  font-size: var(--lat-font-size-3xs);
+  letter-spacing: var(--lat-letter-spacing-wider);
+}
+
+/* The source's own nav links (`DECISIONS.md`, `How it works`) are
+   `hidden sm:block` — invisible below Tailwind's `sm`, 640px. Below that
+   width the header has no room for both the links and the CTA: the CTA
+   wraps to two lines and roughly triples the header's height, which is the
+   actual mobile bug this rule exists to prevent.
+
+   640px (40rem) sits on no rung of this package's own `BREAKPOINTS` scale
+   (`sm` 30rem/480px, `md` 48rem/768px) — the same gap `TYPOGRAPHY_BREAKPOINT_REM`
+   in `@chameleon-labs/lattice-tokens` already hit for this identical source
+   breakpoint (the hero heading's `md:text-6xl` step) and resolved the same
+   way: a one-off `40rem` literal rather than a new rung on the shared scale,
+   because minting a named breakpoint token for a value only Tailwind's own
+   `sm` ever needs, with a single consumer here and a single (unrelated)
+   consumer there, is the premature-abstraction case this package elsewhere
+   avoids for a single-consumer construction. Restated as the same literal
+   here rather than expanding `BREAKPOINTS`, whose four rungs are otherwise
+   the ones every other responsive rule on this page composes with. */
+.landing-page__nav-links {
+  display: none;
+  align-items: center;
+  gap: var(--lat-space-3);
+}
+
+@media (width >= 40rem) {
+  .landing-page__nav-links {
+    display: flex;
+  }
+}
+
+/* `Button` has no icon-only square treatment — its three sizes all pair a
+   larger inline padding with a smaller block one (`sm`: `--lat-space-1`
+   `--lat-space-3`, 4px/12px), right for text-plus-icon content but not for
+   the source's theme toggle, which is icon-only and `p-2` (8px) on every
+   side: `rounded-sm border border-border`, no size class, so the CSS in
+   `button.css` never overrides its own padding for this case, only pages.css
+   here can. Uniform padding plus the shared 1px border and the 13px icon
+   `Nav()` already passes nets out to the source's exact 31×31 square
+   (8 + 13 + 8 + 1 + 1 = 31 on each axis) without stating a width or height
+   directly — the source markup carries no responsive class on this button
+   either, so the square treatment applies at every viewport, not only
+   mobile. Compounded onto `.lat-button` rather than standing alone: a bare
+   `.landing-page__theme-toggle` is (0,1,0), lower specificity than
+   `.lat-button[data-size='sm']`'s own (0,2,0) padding rule in `button.css`
+   and would lose to it regardless of import order; the compound selector
+   ties at (0,2,0), and `pages.css` loading after `button.css` in
+   `styles.css` settles the tie in this rule's favour. */
+.lat-button.landing-page__theme-toggle {
+  padding: var(--lat-space-2);
+}
+
+/* The source's nav CTA is `py-1.5 px-4` (6px/16px) — between `Button`'s own
+   `sm` (`--lat-space-1`/`--lat-space-3`, 4px/12px) and `md`
+   (`--lat-space-2`/`--lat-space-4`, 8px/16px) rungs, an exact match on
+   neither axis to either size alone. Both halves land on existing spacing
+   rungs regardless (`--lat-space-1-5` is 6px, `--lat-space-4` is 16px), so
+   this restates the pairing directly rather than picking whichever named
+   size is closer. Compounded onto `.lat-button` for the same specificity
+   reason as the theme toggle above.
+
+   117×34 against the source's 115×32 — 1px per side left over on each axis.
+   The source button carries no border at all (`border: 0`); `Button`'s own
+   base rule gives every variant a structural `border: 1px solid transparent`
+   regardless (`button.css`), reserved so `:focus-visible`'s border-colour
+   swap never shifts a button's box size. That reservation is shared by every
+   button on both pages, not a choice this instance could opt out of alone
+   without losing the same focus treatment every other button keeps, so the
+   2px is accepted here rather than special-cased. */
+.lat-button.landing-page__nav-cta {
+  padding: var(--lat-space-1-5) var(--lat-space-4);
+}
+
+/* The source's own nav links are bare `<a>` tags — `font-mono text-[11px]`,
+   no padding — against `Button`'s structural `data-size` padding and 14px
+   sans UI-role font. Same footprint as the audit card and footer link
+   overrides above. Qualified with `[data-variant='link']` (every nav link
+   renders as one) rather than a bare `.lat-button`, for the same reason the
+   audit footer's own override below is: an unqualified descendant selector
+   ending `.lat-button {` false-triggers the stylesheet contract test's
+   "block declared twice" scan, which matches that substring wherever it
+   falls, not just at an actual rule's own selector. */
+.landing-page__nav-links .lat-button[data-variant='link'] {
+  padding: 0;
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+}
+
+/* ─── Hero ─────────────────────────────────────────────────────────────── */
+
+/* `pt-20 pb-24`: asymmetric, not the even `padding-block` every other
+   section on this page uses. */
+.landing-page__hero {
+  padding-block: var(--lat-space-20) var(--lat-space-24);
+}
+
+.landing-page__hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--lat-space-12);
+  align-items: center;
+}
+
+.landing-page__hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  margin-block-end: var(--lat-space-8);
+}
+
+/* The source's own eyebrow-style label here is `tracking-widest` (0.1em),
+   not the `tracking-[0.2em]` every other eyebrow on the page uses — one
+   instance where the source departs from its own eyebrow convention.
+   `Eyebrow` never exposes its inner `__text` span's className, so the
+   override reaches it by descendant selector rather than a prop.
+   The trailing `[class]` is an always-true qualifier — the span always
+   carries one — added only so the selector's own text doesn't end with the
+   component rule's exact opening (the class name directly followed by a
+   brace): a companion spec elsewhere in this package scans the whole
+   assembled stylesheet for exactly one occurrence of that exact substring,
+   to guard the eyebrow role's tracking value having a single home, and
+   matches it wherever it falls textually, comments included, not only at
+   the real component rule. */
+.landing-page__hero-kicker .lat-eyebrow__text[class] {
+  letter-spacing: var(--lat-letter-spacing-wider);
+}
+
+.landing-page__hero-dot {
+  display: block;
+  inline-size: var(--lat-space-1);
+  block-size: var(--lat-space-1);
+  background: var(--lat-accent-solid);
+  border-radius: var(--lat-radius-full);
+}
+
+.landing-page__hero-kicker-sub {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* The display role's own `line-height` is `none` (1) — right for the system
+   page's shorter headline, but the source hero's is `leading-[1.05]` at both
+   the narrow and wide size. Overridden here rather than in the shared
+   `.lat-page__display` recipe, which the system page also composes and
+   which is correct as `none` there.
+
+   The size itself climbs past the display role too: `text-5xl md:text-6xl`,
+   48px below the `md` breakpoint and 60px at/above it. Below `md` the
+   role's own 48px (`--lat-text-display-font-size`) already matches, so only
+   the wide step needs a rule — see the `@media` block below. */
+.landing-page__display {
+  margin-block-end: var(--lat-space-6);
+  line-height: var(--lat-line-height-tight);
+}
+
+@media (width >= 48rem) {
+  .landing-page__display {
+    font-size: var(--lat-font-size-6xl);
+  }
+}
+
+.landing-page__accent-text {
+  color: var(--lat-accent-solid);
+}
+
+.landing-page__lede {
+  max-inline-size: 26rem;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+  margin-block-end: var(--lat-space-8);
+}
+
+.landing-page__url-row {
+  display: flex;
+  gap: var(--lat-space-2);
+}
+
+/* `Input`'s own wrapper (`.lat-input-field`) already supplies the field's
+   chrome — background, border, radius and the focus ring that now encloses
+   the Globe addon along with the text. The two rules below only correct
+   sizing: the source's field (`px-4` and `gap-3` on the wrapper, `py-3` on
+   the control) runs roomier than the compact spacing `.lat-input-field`/
+   `.lat-input` default to elsewhere in the bundle. */
+.landing-page__url-field {
+  flex: 1;
+  min-inline-size: 0;
+  padding-inline: var(--lat-space-4);
+  gap: var(--lat-space-3);
+}
+
+.landing-page__url-input {
+  padding-block: var(--lat-space-3);
+  /* `.lat-input` sets no inline padding of its own — the browser's UA
+       default for `<input>` (2px each side in Chromium) otherwise leaks
+       through unreset, nudging the text off the source's flush-left
+       alignment against the Globe icon. */
+  padding-inline: 0;
+}
+
+.landing-page__meta {
+  margin-block-start: var(--lat-space-3);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* Hero mock audit card */
+
+/* The glow and the card share a stacking context: the glow is a sibling,
+   not a Card child, so Card's own `overflow: hidden` (the hairline's square
+   corners) never clips it. */
+.landing-page__audit-wrap {
+  position: relative;
+}
+
+.landing-page__audit-glow {
+  position: absolute;
+  inset: calc(var(--lat-space-8) * -1);
+  background: color-mix(in oklch, var(--lat-solid) 5%, transparent);
+  border-radius: var(--lat-radius-full);
+  filter: blur(64px);
+  pointer-events: none;
+}
+
+.landing-page__audit-card {
+  position: relative;
+}
+
+/* Browser chrome, not `CardHeader` — see the comment at the call site. */
+.landing-page__audit-header {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-3);
+  padding: 0.875rem var(--lat-space-5);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+.landing-page__audit-dots {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--lat-space-1-5);
+}
+
+.landing-page__audit-dot {
+  display: block;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: var(--lat-radius-full);
+}
+
+.landing-page__audit-dot--critical {
+  background: color-mix(in oklch, var(--lat-severity-critical) 60%, transparent);
+}
+.landing-page__audit-dot--serious {
+  background: color-mix(in oklch, var(--lat-severity-serious) 60%, transparent);
+}
+.landing-page__audit-dot--primary {
+  background: color-mix(in oklch, var(--lat-solid) 60%, transparent);
+}
+
+/* The URL: normal-case mono, not the eyebrow `CardHeader` would have given it. */
+.landing-page__audit-url {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+}
+
+.landing-page__audit-meta {
+  flex: 0 0 auto;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  /* `--lat-font-size-4xs`, the source's exact 9px — see typography.ts for
+       why the primitive exists. Previously the eyebrow/meta primitive at 10px
+       (`--lat-font-size-3xs`), one px short and documented as accepted; the
+       trust bar below hit the identical gap, closed here too rather than left
+       as the one instance still absorbing it. */
+  font-size: var(--lat-font-size-4xs);
+  opacity: 0.4;
+}
+
+/* No `flex-wrap` — the source's own row is `flex items-center gap-6`, no
+   wrap class, so the signals column shrinks (and wraps its own children
+   internally, see `__audit-counts`) rather than dropping to a second row
+   below the arc. Wrapping here previously stacked them, adding roughly a
+   gauge's height (100px) to the card that the source never pays. */
+.landing-page__audit-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-6);
+  border-block-end: 1px solid var(--lat-border);
+}
+
+.landing-page__score-arc {
+  flex: 0 0 auto;
+}
+
+.landing-page__score-arc-track {
+  color: var(--lat-border);
+  opacity: 0.4;
+}
+
+.landing-page__score-arc-value {
+  font-family: var(--lat-font-mono);
+  font-weight: var(--lat-font-weight-bold);
+}
+
+.landing-page__score-arc-suffix {
+  color: var(--lat-text);
+  opacity: 0.5;
+  font-family: var(--lat-font-sans);
+}
+
+.landing-page__score-arc--good {
+  color: var(--lat-accent-vivid);
+}
+.landing-page__score-arc--warn {
+  color: var(--lat-severity-serious);
+}
+.landing-page__score-arc--bad {
+  color: var(--lat-severity-critical);
+}
+
+.landing-page__audit-signals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-2);
+}
+
+.landing-page__audit-violations-label {
+  margin-block-end: var(--lat-space-1);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+  letter-spacing: var(--lat-letter-spacing-wider);
+  text-transform: uppercase;
+}
+
+.landing-page__audit-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lat-space-2);
+}
+
+.landing-page__audit-count {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-xs);
+}
+
+.landing-page__audit-count--critical {
+  color: var(--lat-severity-critical);
+}
+.landing-page__audit-count--serious {
+  color: var(--lat-severity-serious);
+}
+.landing-page__audit-count--moderate {
+  color: var(--lat-severity-moderate);
+}
+.landing-page__audit-count--minor {
+  color: var(--lat-severity-minor);
+}
+
+.landing-page__audit-trend,
+.landing-page__audit-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-1-5);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+}
+
+.landing-page__audit-trend {
+  color: var(--lat-severity-serious);
+}
+.landing-page__audit-alert {
+  color: var(--lat-text-subtle);
+}
+
+.landing-page__audit-violations {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.landing-page__audit-violation {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lat-space-3);
+  padding: var(--lat-space-3) var(--lat-space-5);
+}
+
+/* `divide-y divide-border/50`: a hairline between rows, at half the
+   border's usual strength, and none above the first row or below the last
+   — the full-strength border sits at the footer's top edge instead. */
+.landing-page__audit-violation:not(:first-child) {
+  border-block-start: 1px solid color-mix(in oklch, var(--lat-border) 50%, transparent);
+}
+
+.landing-page__audit-violation:hover {
+  background: color-mix(in oklch, var(--lat-text) 2%, transparent);
+}
+
+.landing-page__audit-violation-copy {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* `font-mono text-xs` (12px) — the code role's own font-size is 14px, sized
+   for actual code blocks, not this card's compact rule name. */
+.landing-page__audit-violation-rule {
+  margin: 0;
+  font-family: var(--lat-text-code-font-family);
+  font-size: var(--lat-font-size-xs);
+}
+
+/* `text-[11px] … truncate` — sans (no `font-mono` class), 11px, single line.
+   The small role's own 14px wraps this at the card's width where the source
+   never does; `truncate`'s three properties keep it to the one line the
+   source renders. */
+.landing-page__audit-violation-desc {
+  margin: 0;
+  overflow: hidden;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-font-size-2xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* `font-mono text-[10px]` — the meta role's own size is 11px. */
+.landing-page__audit-violation-count {
+  flex: 0 0 auto;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-font-size-3xs);
+}
+
+/* `display: flex` rather than the block the source's own `<div>` renders
+   as — block sizes the row against the ambient (16px/1.5) inline-content
+   strut, several px taller than the 10px button alone; flex sizes it to the
+   button's own content instead, which the visual result the source's own
+   smaller ambient line-height already gets it to for free. */
+.landing-page__audit-footer {
+  display: flex;
+  padding: var(--lat-space-3) var(--lat-space-5);
+  border-block-start: 1px solid var(--lat-border);
+}
+
+/* `Button variant="link"` is muted-foreground by design (its README: a link
+   inline in body copy, not a call to action) — right for the nav and footer
+   links elsewhere on this page, but the source's "View full report" is
+   `text-primary`, not muted. Recoloured here rather than in `button.css`,
+   since every other `link` button on both pages wants the muted default.
+   Qualified with `[data-variant='link']` rather than bare `.lat-button`
+   so the selector never reads as a second declaration of that base rule. */
+/* No padding, `font-mono text-[10px] … gap-1` — the source button carries
+   no size class at all, just inline text; `Button` always applies its own
+   `data-size` padding and UI-role (14px) font, so both are overridden back
+   down to the source's bare-link footprint. */
+.landing-page__audit-footer .lat-button[data-variant='link'] {
+  padding: 0;
+  gap: var(--lat-space-1);
+  color: var(--lat-solid);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+}
+.landing-page__audit-footer .lat-button[data-variant='link']:hover:not(:disabled):not([aria-disabled='true']) {
+  color: color-mix(in oklch, var(--lat-solid) 80%, transparent);
+}
+
+/* ─── Trust bar ────────────────────────────────────────────────────────── */
+
+.landing-page__trust-bar {
+  background: var(--lat-bg-subtle);
+  border-block: 1px solid var(--lat-border);
+}
+
+.landing-page__trust-bar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--lat-space-6);
+  padding-block: var(--lat-space-5);
+  text-align: center;
+}
+
+/* `Stat` centres nothing on its own — it is built for a left-aligned
+   trust-bar/card arrangement, not this row's centred one — so each instance
+   is centred here via the `className` `Stat` forwards, purely a layout
+   property. (A descendant selector reaching for `.lat-stat` from this rule's
+   own namespace would work visually but false-positives
+   `tests/stylesheet.test.ts`'s "each block selector exactly once" scan, which
+   matches `.lat-stat {` as a substring wherever it appears — so the override
+   goes through `Stat`'s own class hook instead.) */
+.landing-page__trust-stat {
+  align-items: center;
+}
+
+/* `font-bold text-xl` (20px) — `Stat`'s own numeric-role default is 16px,
+   sized for a denser card/list arrangement, not this row's five widely
+   spaced headline figures. The trailing `[class]` is an always-true
+   qualifier, added only so this selector's own text doesn't end with the
+   component rule's exact opening: a companion spec elsewhere in this
+   package scans the whole assembled stylesheet for exactly one occurrence
+   of that substring, to guard the numeric role's tabular-figure declaration
+   having a single home, and matches it wherever it falls textually, not
+   only at the real component rule (the same reason the hero kicker's
+   eyebrow override above carries one). */
+.landing-page__trust-stat .lat-stat__value[class] {
+  font-size: var(--lat-font-size-xl);
+}
+
+/* The source's stat label is `text-[9px] uppercase tracking-widest` — 9px,
+   not `Stat`'s own eyebrow-role default (`--lat-font-size-3xs`, 10px, the
+   identity's signature size used for every other eyebrow on both pages).
+   `--lat-font-size-4xs` closes the size gap; see typography.ts. Tracking is
+   its own, separate gap: `tracking-widest` is 0.1em (`--lat-letter-spacing-wider`),
+   not the eyebrow role's own 0.2em (`--lat-letter-spacing-eyebrow`) that
+   `Stat`'s label otherwise carries — the same departure from the page's own
+   eyebrow convention the hero kicker's override above already documents, so
+   this rule restates both properties rather than only the font-size. The
+   1px-per-line overshoot from absorbing both as 10px/11px roles was the
+   actual cause of the row's mobile wrap: five stats each a few px wider than
+   the source's own, enough to push the row from two lines to three at
+   428px. At the source's true 9px both properties shrink back and the row
+   wraps at the same point the source's does. Not promoted to a shared role:
+   every 9px instance this page carries (this label/sub, the audit card's
+   timestamp) is a page-local decorative label already reached via
+   page-owned overrides, not a generic library consumer — the eyebrow/meta
+   roles stay 10px/11px for every other, non-landing-page consumer. */
+.landing-page__trust-stat .lat-stat__label[class] {
+  font-size: var(--lat-font-size-4xs);
+  letter-spacing: var(--lat-letter-spacing-wider);
+}
+
+/* The sub line carries no tracking in the source (`text-[9px]` plain) —
+   `Stat`'s own meta role already sets none, so only the size needs
+   restating. */
+.landing-page__trust-stat .lat-stat__sub[class] {
+  font-size: var(--lat-font-size-4xs);
+}
+
+/* ─── Section heads shared by How it works / Why / v1 scope ─────────────── */
+
+/* `pb-24` on all three (96px) — but only How it works also carries `py-24`'s
+   top half; Why and v1 scope have no top padding class at all and rely on
+   the previous section's own bottom padding to separate them. */
+.landing-page__how,
+.landing-page__why,
+.landing-page__scope {
+  padding-block-end: var(--lat-space-24);
+}
+
+.landing-page__how {
+  padding-block-start: var(--lat-space-24);
+}
+
+/* The source overrides the `h2` role at every instance on this page:
+   `text-3xl font-bold … tracking-tight` (30px/700/-0.75px) against the h2
+   role's 24px/500/-0.6px — the role is correct for the rest of the library,
+   the page just never uses it plain. `line-height` is a literal rem rather
+   than a `--lat-line-height-*` token: Tailwind's `text-3xl` pairs 1.875rem
+   with a 2.25rem line-height (a 1.2 ratio no named token carries), so this
+   states the dimension itself rather than approximating it as a ratio. */
+/* No top margin — none of the four source headings carries an `mt-*` class,
+   and each carries a *different* bottom margin (`mb-16`/`mb-6`/`mb-10`/
+   `mb-4`), so that half moves to the four modifiers below rather than
+   living here as one shared value. */
+.landing-page__heading {
+  margin-block-start: 0;
+  font-size: var(--lat-font-size-3xl);
+  font-weight: var(--lat-font-weight-bold);
+  letter-spacing: var(--lat-letter-spacing-tight);
+  line-height: 2.25rem;
+}
+
+.landing-page__heading--how {
+  margin-block-end: var(--lat-space-16);
+}
+.landing-page__heading--why {
+  margin-block-end: var(--lat-space-6);
+}
+.landing-page__heading--scope {
+  margin-block-end: var(--lat-space-10);
+}
+
+/* The CTA's heading is the one instance sized `text-4xl` (36px) rather than
+   `text-3xl` — its own literal line-height pair, 2.5rem for the same reason
+   as above (a 1.111 ratio, again nothing on the named scale) — and its own
+   `mb-4` bottom margin. */
+.landing-page__heading--cta {
+  margin-block-end: var(--lat-space-4);
+  font-size: var(--lat-font-size-4xl);
+  line-height: 2.5rem;
+}
+
+/* `SectionEyebrow`'s own `mb-6` — the source's helper always pairs the rule
+   eyebrow with 24px below it; `CTA`'s plain (non-`rule`) eyebrow carries its
+   own smaller `mb-4` instead, `landing-page__cta-eyebrow` below. */
+.landing-page__section-eyebrow {
+  margin-block-end: var(--lat-space-6);
+}
+
+.landing-page__cta-eyebrow {
+  margin-block-end: var(--lat-space-4);
+}
+
+.landing-page__muted-inline {
+  color: var(--lat-text-subtle);
+  font-weight: var(--lat-font-weight-regular);
+}
+
+.landing-page__muted {
+  max-inline-size: 32rem;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+  margin-block-end: var(--lat-space-4);
+}
+
+/* The source's own second "Why" paragraph carries no `mb-4` — only its
+   first does — and inside a grid column a trailing child margin does not
+   collapse away the way it would in normal flow, so the shared
+   `margin-block-end` above has to be zeroed back out on whichever instance
+   is actually last. */
+.landing-page__muted:last-child {
+  margin-block-end: 0;
+}
+
+/* ─── How it works ─────────────────────────────────────────────────────── */
+
+.landing-page__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--lat-space-4);
+}
+
+/* `p-6` (24px) — `Card`'s own body padding is the component's default
+   (`--lat-space-5`, 20px), right everywhere else on both pages; this is the
+   one instance the source pads wider. Reached through `CardBody`'s own
+   class hook, the same pattern `audit-footer`'s `Button` override uses,
+   rather than a change to `card.css`. */
+.landing-page__steps .lat-card__body {
+  padding: var(--lat-space-6);
+}
+
+/* The source bundle draws each step's index as a giant (48px), near-invisible
+   (10% opacity) numeral — a bespoke decorative treatment with no role or
+   token in Lattice's type scale. Rather than inventing a second appearance
+   exception beyond the sanctioned display role, the index reads as a compact
+   meta-style label instead, the same construction `system-page__section-index`
+   uses for its "00"/"01" markers. Recorded in the gap list. */
+.landing-page__step-index {
+  display: block;
+  margin-block-end: var(--lat-space-3);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* `font-semibold text-base` in the source — 16px/600 against the h3 role's
+   20px/500. Letter-spacing is left alone: h3 carries none in the base layer
+   either (see base.css), and the source's own class list has no tracking
+   utility here. */
+.landing-page__step-title {
+  margin: 0 0 var(--lat-space-3);
+  font-size: var(--lat-font-size-base);
+  font-weight: var(--lat-font-weight-semibold);
+}
+
+.landing-page__step-body {
+  margin: 0 0 var(--lat-space-4);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+}
+
+/* `font-mono text-[10px]` — the meta role's own size is 11px. */
+.landing-page__step-detail {
+  margin: 0;
+  padding-block-start: var(--lat-space-3);
+  border-block-start: 1px solid var(--lat-border);
+  color: var(--lat-accent-solid);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-font-size-3xs);
+}
+
+/* ─── Score history ────────────────────────────────────────────────────── */
+
+.landing-page__score-history {
+  padding-block-end: var(--lat-space-24);
+}
+
+.landing-page__score-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-6);
+}
+
+/* `text-2xl` (24px) — the source's current-score figure is one size up from
+   the trust bar's own `text-xl` (20px) override above; `Stat`'s numeric-role
+   default is 16px either way. `[class]` again dodges the single-occurrence
+   spec — see the trust bar's own override above. */
+.landing-page__score-history-stat .lat-stat__value[class] {
+  font-size: var(--lat-font-size-2xl);
+}
+
+/* `<figure>` carries a UA default margin; the chart sits flush inside
+   `CardBody`'s own padding like every other child of
+   `.landing-page__score-history-body`. */
+.landing-page__chart-figure {
+  margin: 0;
+}
+
+.landing-page__chart {
+  width: 100%;
+}
+
+.landing-page__chart-svg {
+  display: block;
+  width: 100%;
+  /* Matches the source's `ResponsiveContainer height={180}` — the one
+       dimension that does not track the container. */
+  height: 180px;
+}
+
+.landing-page__chart-line {
+  fill: none;
+  stroke: var(--lat-solid);
+  stroke-width: 2;
+}
+
+/* The stroke is shared across all three thresholds — a 2px ring in the
+   card's own surface colour, so each dot reads as punched out of the card
+   rather than merely drawn on it. Only `fill` varies, by threshold. */
+.landing-page__chart-dot {
+  stroke: var(--lat-bg-raised);
+  stroke-width: 2;
+}
+
+.landing-page__chart-dot--good {
+  fill: var(--lat-solid);
+}
+.landing-page__chart-dot--warn {
+  fill: var(--lat-severity-serious);
+}
+.landing-page__chart-dot--bad {
+  fill: var(--lat-severity-critical);
+}
+
+.landing-page__chart-refline {
+  stroke: var(--lat-severity-critical);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
+/* Both axes: 10px mono in the subtle text colour, no axis line, no tick
+   line — the source's `axisLine={false}` `tickLine={false}`, which is why
+   there is no corresponding stroke rule here at all. */
+.landing-page__chart-tick {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+  fill: var(--lat-text-subtle);
+}
+
+/* ─── Why ──────────────────────────────────────────────────────────────── */
+
+.landing-page__why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--lat-space-12);
+  align-items: start;
+}
+
+/* `font-mono text-[10px]` — the meta role's own size is 11px. */
+.landing-page__competitor-cost {
+  display: block;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-font-size-3xs);
+  /* `Th` is bold by inheritance from no role in table.css — the eyebrow
+       construction there sets `font-weight` from the role token, already
+       normal weight, so no override is needed here for the cost line to read
+       lighter than the tool name above it. */
+}
+
+/* The source Card wrapping this table carries no `p-6` — the table sits
+   flush against the card's own border, against `CardBody`'s structural
+   default padding (`--lat-space-5`, 20px) every other card on both pages
+   wants. The narrower CardBody was squeezing every column, wrapping the
+   comparison table's own row-header names (`Lighthouse CI`) onto a second
+   line the source never does. Reached through `CardBody`'s own class hook,
+   the same pattern `steps`'s wider padding above uses in reverse. */
+.landing-page__why-grid .lat-card__body {
+  padding: 0;
+}
+
+/* The source table itself carries `text-xs` (12px), against `Table`'s own
+   cell role at 14px (`--lat-text-small-font-size`) — right for every other
+   table this library renders, just not the size the source picks for this
+   dense comparison grid. `Th`'s own vertical padding is a literal for the
+   same reason `audit-header`'s is: `py-2.5` (10px) sits between two
+   spacing-scale steps (`--lat-space-2` at 8px, `--lat-space-3` at 12px) with
+   no rung of its own. Reached through `Table`'s fixed `lat-table__cell` /
+   `lat-table__header` classes, scoped to this table's own column rather
+   than a change to `table.css`. */
+.landing-page__why-grid .lat-table__cell {
+  font-size: var(--lat-font-size-xs);
+}
+
+.landing-page__why-grid .lat-table__header[scope='col'] {
+  padding-block: 0.625rem;
+}
+
+/* The row "header" cells (tool names) are semantically `<th scope="row">`
+   here — more correct than the source's bare `<td>` for the same content —
+   but `Table`'s header role is eyebrow-styled (10px, uppercase, tracked) for
+   the *column* header row above, and that role bled into these row headers
+   too since both share `lat-table__header`. The source's own name cell is
+   plain `font-semibold text-muted-foreground` at 12px against its own
+   `1.333` line-height ratio (the browser's natural metric for the sans
+   face, unset by any Tailwind leading utility) — the same body size this
+   table's data cells are already overridden to above — not the eyebrow
+   role. `line-height` is stated unitless, not as a fixed length: `Table`
+   sets the whole table's own line-height as the body role's ratio
+   (`--lat-text-body-line-height`, itself unitless), and this cell's child
+   — the cost line below, at a different font-size — needs the *ratio* to
+   inherit, not a fixed pixel value, to land on its own correct 13.3px.
+   Restated here, scoped to this table's row headers only, rather than a
+   change to `table.css`. Weight is *not* set here — see
+   `landing-page__competitor-name` below, since this rule's own text also
+   hosts the (regular-weight) cost line and a shared `font-weight` here would
+   bold both. */
+.landing-page__why-grid .lat-table__header[scope='row'] {
+  padding: var(--lat-space-3) var(--lat-space-4);
+  font-family: var(--lat-text-body-font-family);
+  font-size: var(--lat-font-size-xs);
+  line-height: 1.3334;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--lat-text-subtle);
+}
+
+.landing-page__competitor-name {
+  font-weight: var(--lat-font-weight-semibold);
+}
+
+/* `px-3` (12px) on the three boolean-icon columns' header and data cells —
+   narrower than the other columns' `px-4` (16px, this table's own default
+   above and `Table`'s structural default alike), since a centred glyph
+   needs less horizontal breathing room than a name or a setup description.
+   Left uncorrected, the extra 4px/side on three columns was borrowed from
+   the `Tool` column, narrow enough to wrap `Lighthouse CI` onto a second
+   line the source never does. `landing-page__bool-header` is a page-owned
+   class added at the two `Th` call sites that need it, mirroring
+   `landing-page__bool-cell` below for the data-cell half of the same pair. */
+/* Both qualified with `.landing-page__why-grid` — a bare `.landing-page__bool-header`/
+   `.landing-page__bool-cell` is the same (0,1,0) specificity as `table.css`'s
+   own `.lat-table__header`/`.lat-table__cell`, which set `padding` (a
+   physical shorthand) to the same box sides `padding-inline` resolves to;
+   `pages.css` loads before `table.css` in `styles.css`, so at equal
+   specificity the later, component-level rule would otherwise win. */
+.landing-page__why-grid .landing-page__bool-header {
+  padding-inline: var(--lat-space-3);
+  text-align: center;
+}
+
+.landing-page__why-grid .landing-page__bool-cell {
+  padding-inline: var(--lat-space-3);
+  text-align: center;
+}
+
+/* The `tabstop` row — the one entry `COMPETITORS` marks `highlight: true` —
+   is the source's own four-way distinguishing treatment: a tinted fill, a
+   2px accent rule on the leading edge, a brighter name, and Check icons in
+   the accent colour rather than muted. `data-highlight` on the `Tr` (rather
+   than a second, page-owned row class) drives all of it through scoped
+   descendant rules, the same "one attribute, several rules" shape Eyebrow's
+   own `data-tone`/`data-align` use.
+
+   `border-inline-start` here, not `border-inline-start` repeated on every
+   cell in the row: `Table`'s own `border-collapse: collapse` means a border
+   declared on the row is assigned to the row's own leading edge in the
+   collapsed border model (CSS2.1 §17.6.2), the same way a `<tr>` can carry
+   `border-block-*` there — it does not need restating per cell. */
+.landing-page__why-grid .lat-table__row[data-highlight='true'] {
+  background: color-mix(in srgb, var(--lat-solid) 5%, transparent);
+  border-inline-start: 2px solid var(--lat-solid);
+}
+
+/* No hover wash for the highlighted row: the source's own ternary gives it
+   no `hover:` class at all (`c.highlight ? "bg-primary/5 border-l-2
+   border-l-primary" : "hover:bg-foreground/[0.02]"`), unlike every other
+   row, so its background stays the flat 5% tint under the pointer too.
+   Needs the extra `.lat-table__body` qualifier to out-specificity
+   `table.css`'s own `.lat-table__body .lat-table__row:hover` regardless of
+   which stylesheet the cascade happens to load second. */
+.landing-page__why-grid .lat-table__body .lat-table__row[data-highlight='true']:hover {
+  background: color-mix(in srgb, var(--lat-solid) 5%, transparent);
+}
+
+.landing-page__why-grid .lat-table__row[data-highlight='true'] .landing-page__competitor-name {
+  color: var(--lat-text);
+}
+
+/* Present (`Check`) reads muted by default — the same as every other cell
+   in this compact table — and only turns the accent colour on the
+   highlighted row. Absent (`X`) never does: it stays muted at 30% opacity
+   in every row (`text-muted-foreground/30` in the source), so an absent
+   feature never reads as loudly as a present one. */
+.landing-page__why-grid .landing-page__bool-check {
+  color: var(--lat-text-subtle);
+}
+
+.landing-page__why-grid .lat-table__row[data-highlight='true'] .landing-page__bool-check {
+  color: var(--lat-solid);
+}
+
+.landing-page__why-grid .landing-page__bool-x {
+  color: var(--lat-text-subtle);
+  opacity: 0.3;
+}
+
+/* ─── v1 scope ─────────────────────────────────────────────────────────── */
+
+.landing-page__scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--lat-space-4);
+}
+
+/* `text-sm` (14px), no explicit `leading-*` class — Tailwind's own default
+   line-height for `text-sm` is `1.25rem` (a 1.4286 ratio), which sits on no
+   named `--lat-line-height-*` rung; stated as a literal rem for the same
+   reason `.landing-page__heading`'s does above. */
+.landing-page__scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-font-size-sm);
+  line-height: 1.25rem;
+}
+
+/* `gap-2.5` (10px) — between the two spacing-scale steps this library keeps
+   (`--lat-space-2` at 8px, `--lat-space-3` at 12px), same gap no token
+   carries as `audit-header`'s and `why-grid`'s own literal paddings. */
+.landing-page__scope-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.landing-page__scope-list--muted li {
+  color: var(--lat-text-subtle);
+}
+
+.landing-page__check-icon {
+  color: var(--lat-accent-solid);
+}
+
+/* ─── CTA ──────────────────────────────────────────────────────────────── */
+
+/* `bg-card/30` — the card surface at 30% alpha over the page, not
+   `--lat-bg-subtle` opaque: the source composites to a barely-there lift
+   (~rgb(13 13 24) on this package's dark page background), while the subtle
+   surface painted flat reads as a distinctly lighter band. `color-mix`
+   derives the alpha blend from the same token `Card` itself reads
+   (card.css's `background: var(--lat-bg-raised)`), so the value still has a
+   token for a source rather than restating the source bundle's literal. */
+.landing-page__cta {
+  background: color-mix(in srgb, var(--lat-bg-raised) 30%, transparent);
+  border-block-start: 1px solid var(--lat-border);
+}
+
+.landing-page__cta-inner {
+  padding-block: var(--lat-space-24);
+  text-align: center;
+}
+
+/* `max-w-xl mx-auto` (576px) wraps *all* of the CTA's content in the
+   source — eyebrow, heading, paragraph and field row alike — not just the
+   paragraph. `Eyebrow` never exposes a width hook of its own, so this reaches
+   it (and everything beside it) via the page-owned wrapper `CTA()` renders,
+   the same shape as `.landing-page__section`'s own `max-inline-size` +
+   `margin-inline: auto` pairing one level up. No token on the container
+   scale sits at 576px (`--lat-container-prose` is 672px, `--lat-container-
+   content` is 1024px), so this is a literal rem, the same class of layout
+   value `.landing-page__lede`'s 26rem and `.landing-page__muted`'s 32rem
+   already are in this file — a dimension, not an appearance value the
+   no-literal-colours rule is about. */
+.landing-page__cta-content {
+  max-inline-size: 36rem;
+  margin-inline: auto;
+}
+
+/* The CTA's own paragraph carries `mb-8` (32px) — the other `.landing-page__muted`
+   instances all want `mb-4` (the shared rule's default), this is the one
+   that does not. `margin-inline: auto` re-centres it within the 576px
+   column above: `.landing-page__muted`'s own `max-inline-size` (32rem/512px)
+   is narrower than the column, exactly as the source's unconstrained `<p>`
+   would be if it happened to be shorter than 576px of text. */
+.landing-page__cta-inner .landing-page__muted {
+  margin-inline: auto;
+  margin-block-end: var(--lat-space-8);
+}
+
+/* `mt-4` (16px) here against the hero meta line's own `mt-3` (12px) — the
+   two instances of `.landing-page__meta` on this page do not share a
+   top margin either. */
+.landing-page__cta-inner .landing-page__meta {
+  margin-block-start: var(--lat-space-4);
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────── */
+
+.landing-page__footer {
+  border-block-start: 1px solid var(--lat-border);
+}
+
+.landing-page__footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lat-space-4);
+  padding-block: var(--lat-space-8);
+}
+
+.landing-page__footer-copy {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+/* `gap-5` (20px), not the `--lat-space-3` (12px) row-gap default. */
+.landing-page__footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lat-space-5);
+}
+
+/* Same footprint as the audit card's own link-styled `Button` override
+   above: the source's `<a>` here carries no size class at all, just
+   `font-mono text-[10px]`, against `Button`'s structural `data-size`
+   padding and 14px UI-role font. Qualified with `[data-variant='link']` for
+   the same false-positive reason as `landing-page__nav-links`'s own
+   override above — every footer link renders as one. */
+.landing-page__footer-links .lat-button[data-variant='link'] {
+  padding: 0;
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+}
