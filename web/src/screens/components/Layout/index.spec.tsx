@@ -328,6 +328,53 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
   });
 
+  it('renders public shell routes after signed-out confirmation succeeds', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, {status: 204}))
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}));
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <Layout />,
+          children: [
+            {
+              index: true,
+              handle: {ownChrome: true},
+              element: (
+                <main id="main" tabIndex={-1}>
+                  <h1>Public landing</h1>
+                </main>
+              ),
+            },
+            {path: 'dashboard', element: <h1>Private dashboard</h1>},
+            {path: 'login', element: <h1>Sign in screen</h1>},
+          ],
+        },
+      ],
+      {initialEntries: ['/dashboard']},
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: {queries: {retry: false, staleTime: 30_000}, mutations: {retry: false}},
+    });
+    queryClient.setQueryData(sessionKeys.me, {id: '7', email: 'george@example.test', alertThreshold: 5});
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    expect(await screen.findByRole('heading', {name: 'Public landing'})).toBeVisible();
+    await act(async () => {
+      await router.navigate('/login');
+    });
+
+    expect(screen.getByRole('heading', {name: 'Sign in screen'})).toBeVisible();
+    expect(screen.getByRole('link', {name: 'Log in'})).toBeVisible();
+    expect(screen.getByRole('link', {name: 'Sign up'})).toBeVisible();
+  });
+
   it('carries the route announcer, since only the shell renders once', () => {
     // It has to persist ACROSS navigations. Mounted per screen, the region
     // would be new each time and a new region's content is initial content -

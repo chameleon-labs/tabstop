@@ -46,6 +46,7 @@ export const useLogout = (): LogoutMutation => {
       if (account !== null) {
         throw new AuthConfirmationError('Could not confirm that you signed out');
       }
+      setIsRevoked(false);
     },
   });
 

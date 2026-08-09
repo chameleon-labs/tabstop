@@ -143,7 +143,7 @@ describe('useLogout', () => {
       expect.objectContaining({method: 'POST', credentials: 'include'}),
     );
     expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
-    expect(result.current.isRevoked).toBe(true);
+    expect(result.current.isRevoked).toBe(false);
     expect(oldQueries).toHaveLength(2);
     for (const oldQuery of oldQueries) {
       expect(client.getQueryCache().getAll()).not.toContain(oldQuery);
