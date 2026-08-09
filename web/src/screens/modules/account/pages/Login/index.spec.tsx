@@ -54,7 +54,9 @@ describe('Login', () => {
   it('presents the credential form with browser password-manager hints and the page title', async () => {
     await openLogin();
 
-    expect(document.title).toBe('Log in · tabstop');
+    await waitFor(() => {
+      expect(document.title).toBe('Log in · tabstop');
+    });
     expect(screen.getByLabelText('Email address')).toHaveAttribute('autocomplete', 'email');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password');
     expect(screen.getByRole('link', {name: 'Create an account'})).toHaveAttribute('href', '/signup');

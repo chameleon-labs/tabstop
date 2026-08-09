@@ -54,7 +54,9 @@ describe('Signup', () => {
   it('presents account creation with browser password-manager hints and the page title', async () => {
     await openSignup();
 
-    expect(document.title).toBe('Create an account · tabstop');
+    await waitFor(() => {
+      expect(document.title).toBe('Create an account · tabstop');
+    });
     expect(screen.getByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
     expect(screen.getByLabelText('Email address')).toHaveAttribute('autocomplete', 'email');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');

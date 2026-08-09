@@ -33,6 +33,21 @@ describe('mountApp', () => {
     expect(container.firstElementChild).toBe(before);
   });
 
+  it('reuses prerendered markup when the pathname differs only by a trailing slash', () => {
+    // `dist/signup/index.html` is what a host serves at BOTH `/signup` and
+    // `/signup/` - the same file. An exact-string stamp comparison would miss
+    // the trailing-slash form and fall back to a client render for a page that
+    // was, in fact, prerendered for it.
+    const container = containerWith('/signup');
+    const before = container.firstElementChild;
+
+    act(() => {
+      mountApp(container, <Tree />, '/signup/');
+    });
+
+    expect(container.firstElementChild).toBe(before);
+  });
+
   it('discards markup prerendered for a different path', () => {
     // A host serving the landing shell for every route. React would throw the
     // markup away regardless; clearing first stops it hydrating into it.

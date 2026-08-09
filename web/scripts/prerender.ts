@@ -1,3 +1,4 @@
+import {existsSync} from 'node:fs';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -24,7 +25,7 @@ const main = async (): Promise<void> => {
   // before it exists. A non-literal specifier keeps TS from trying to resolve
   // the file at all, so the import above supplies the types instead.
   const bundle = pathToFileURL(join(HERE, '..', 'dist-ssr', 'entry-server.js')).href;
-  const {injectMarkup, render} = (await import(bundle)) as typeof EntryServer;
+  const {injectMarkup, render, assertBuildOutput} = (await import(bundle)) as typeof EntryServer;
 
   const template = await readFile(join(DIST, 'index.html'), 'utf8');
 
@@ -41,12 +42,26 @@ const main = async (): Promise<void> => {
 
     console.log(`[prerender] ${path} -> ${output.slice(DIST.length + 1)}`);
   }
+
+  // Checked against the FILESYSTEM, not against what the code above meant to
+  // do - the failure this guards against is a write that silently did not
+  // happen, which reading back what was actually written is the only way to
+  // catch.
+  const appHtmlExists = existsSync(join(DIST, 'app.html'));
+  const writtenIndex = await readFile(join(DIST, 'index.html'), 'utf8');
+  assertBuildOutput(appHtmlExists, writtenIndex);
 };
 
 // A prerender that fails must fail the BUILD. Emitting the empty shell and
 // carrying on degrades exactly back to a blank landing page, which is the one
 // regression nobody would notice for months.
+//
+// `process.exitCode`, not `process.exit()`: the latter tears the process down
+// immediately, before stderr - a pipe in CI, not a TTY - has necessarily
+// flushed, so the one message that explains the failure can be truncated.
+// Setting the code and letting `main()`'s rejection finish unwinding lets
+// Node exit on its own once the event loop is empty.
 main().catch((error: unknown) => {
   console.error('[prerender] failed:', error);
-  process.exit(1);
+  process.exitCode = 1;
 });

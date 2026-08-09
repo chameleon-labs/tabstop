@@ -28,11 +28,19 @@ export const routes: RouteObject[] = [
     path: '/',
     element: <Layout />,
     errorElement: <RouteError />,
-    // Rendered while a lazy route's chunk is in flight on a DIRECT visit. Nothing,
-    // deliberately, matching `RequireAuth`: this resolves in one request, and a
-    // spinner that appears for 80ms and vanishes is worse than a beat of nothing -
-    // for a screen reader it is an announcement about a state that no longer holds.
-    hydrateFallbackElement: <></>,
+    // Rendered while a lazy route's chunk is in flight on a DIRECT visit.
+    // `<Layout />`, not empty: a fallback declared on the ROOT route replaces
+    // what that route renders, not just the page inside it - `RequireAuth`'s
+    // "beat of nothing" is a different case, because it renders INSIDE an
+    // already-painted shell. Empty here instead means no skip link, no header,
+    // no route announcer for the whole window before the chunk resolves, on
+    // every lazy route - the exact failure prerendering exists to remove.
+    //
+    // `Layout` degrades correctly in this position: `useMatches()` is still
+    // populated from the router's matched-but-unloaded routes. No lazy route
+    // supplies its own chrome, so the header and empty main remain available
+    // until the child chunk resolves.
+    hydrateFallbackElement: <Layout />,
     children: [
       {
         errorElement: <RouteError />,
