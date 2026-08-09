@@ -4,17 +4,24 @@ import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {LogoutButton} from './index';
+import {useLogout} from '../../mutations';
 import {sessionKeys} from '../../session';
 import {jsonResponse} from '@/test/http';
 
 const account = {id: '7', email: 'george@example.test', alertThreshold: 5};
 const pages = [{id: 'page-1'}];
 
+const LogoutButtonHarness = (): React.JSX.Element => {
+  const logout = useLogout();
+
+  return <LogoutButton logout={logout} />;
+};
+
 const renderLogout = (queryClient: QueryClient) => {
   const router = createMemoryRouter(
     [
       {path: '/before', element: <h1>Before dashboard</h1>},
-      {path: '/dashboard', element: <LogoutButton />},
+      {path: '/dashboard', element: <LogoutButtonHarness />},
       {path: '/', element: <h1>Home</h1>},
     ],
     {initialEntries: ['/before', '/dashboard'], initialIndex: 1},
@@ -143,6 +150,6 @@ describe('LogoutButton', () => {
     expect(client.getQueryData(sessionKeys.me)).toBeUndefined();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
     expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
-    expect(screen.getByRole('button', {name: 'Log out'})).toBeEnabled();
+    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
   });
 });

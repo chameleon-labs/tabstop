@@ -3,10 +3,9 @@ import {useEffect, useRef} from 'react';
 import {useNavigate} from 'react-router';
 import {AlertCircle} from '@/screens/components/Icons';
 import {authFailureMessage} from '../../failure';
-import {useLogout} from '../../mutations';
+import type {LogoutMutation} from '../../mutations';
 
-export const LogoutButton = (): React.JSX.Element => {
-  const logout = useLogout();
+export const LogoutButton = ({logout}: {logout: LogoutMutation}): React.JSX.Element => {
   const navigate = useNavigate();
   const alertRef = useRef<HTMLDivElement>(null);
 
@@ -33,9 +32,11 @@ export const LogoutButton = (): React.JSX.Element => {
           {authFailureMessage(logout.error)}
         </Callout>
       )}
-      <Button type="button" variant="link" size="sm" disabled={logout.isPending} onClick={() => void signOut()}>
-        {logout.isPending ? 'Signing out…' : 'Log out'}
-      </Button>
+      {!logout.isRevoked || logout.isPending ? (
+        <Button type="button" variant="link" size="sm" disabled={logout.isPending} onClick={() => void signOut()}>
+          {logout.isPending ? 'Signing out…' : 'Log out'}
+        </Button>
+      ) : null}
     </>
   );
 };

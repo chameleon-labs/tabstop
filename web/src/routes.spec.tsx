@@ -1,8 +1,11 @@
-import {screen, waitFor} from '@testing-library/react';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {act, render, screen, waitFor} from '@testing-library/react';
+import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {jsonResponse} from './test/http';
 import {renderAt} from './test/render';
 import {routes} from './routes';
+import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
 
@@ -54,6 +57,37 @@ describe('the route table', () => {
     expect(await screen.findByRole('heading', {level: 1, name: 'Audit result'})).toBeVisible();
     expect(screen.getByText(/abc-123/)).toBeVisible();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('disables session fetching only while moving through a public share route', async () => {
+    withSession();
+    const router = createMemoryRouter(routes, {initialEntries: ['/dashboard']});
+    const queryClient = new QueryClient({defaultOptions: {queries: {retry: false, staleTime: 0}}});
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+
+    await act(async () => {
+      await router.navigate('/r/abc-123');
+    });
+    expect(await screen.findByRole('heading', {level: 1, name: 'Audit result'})).toBeVisible();
+    await act(async () => {
+      await queryClient.invalidateQueries({queryKey: sessionKeys.me, exact: true});
+    });
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+
+    await act(async () => {
+      await router.navigate('/dashboard');
+    });
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/me']);
+    });
   });
 
   it('resolves /login for a signed-out visitor', async () => {

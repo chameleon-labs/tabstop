@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {renderHook} from '@testing-library/react';
+import {act, renderHook} from '@testing-library/react';
 import type {PropsWithChildren} from 'react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {useLogin, useLogout, useSignup} from './mutations';
@@ -127,9 +127,12 @@ describe('useLogout', () => {
     );
     const {result} = renderHook(() => useLogout(), {wrapper});
 
-    await expect(result.current.mutateAsync()).resolves.toBeUndefined();
+    await act(async () => {
+      await expect(result.current.mutateAsync()).resolves.toBeUndefined();
+    });
 
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
+    expect(result.current.isRevoked).toBe(true);
     expect(oldQueries).toHaveLength(2);
     for (const oldQuery of oldQueries) {
       expect(client.getQueryCache().getAll()).not.toContain(oldQuery);
@@ -151,13 +154,16 @@ describe('useLogout', () => {
 
     await expect(result.current.mutateAsync()).rejects.toThrow('Could not sign out');
 
+    expect(result.current.isRevoked).toBe(false);
     expect(client.getQueryData(['pages'])).toEqual(pages);
     expect(client.getQueryData(sessionKeys.me)).toEqual(account);
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout']);
   });
 
   it('rejects when logout is followed by an authenticated session', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(null, {status: 204})).mockResolvedValueOnce(jsonResponse(200, account));
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, {status: 204}))
+      .mockResolvedValueOnce(jsonResponse(200, account));
     const client = queryClient();
     client.setQueryData(['pages'], [{id: 'page-1'}]);
     client.setQueryData(sessionKeys.me, account);
@@ -167,9 +173,12 @@ describe('useLogout', () => {
     );
     const {result} = renderHook(() => useLogout(), {wrapper});
 
-    await expect(result.current.mutateAsync()).rejects.toThrow('Could not confirm that you signed out');
+    await act(async () => {
+      await expect(result.current.mutateAsync()).rejects.toThrow('Could not confirm that you signed out');
+    });
 
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
+    expect(result.current.isRevoked).toBe(true);
     for (const oldQuery of oldQueries) {
       expect(client.getQueryCache().getAll()).not.toContain(oldQuery);
     }

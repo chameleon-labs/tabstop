@@ -1,10 +1,20 @@
 import {Button} from '@chameleon-labs/lattice-react';
 import {Link} from 'react-router';
 import {LogoutButton} from '../LogoutButton';
+import {useLogout} from '../../mutations';
 import {useSession} from '../../session';
 
 export const AccountNavigation = ({sessionFree = false}: {sessionFree?: boolean}): React.JSX.Element => {
-  const {data: account, error, isPending} = useSession({enabled: !sessionFree});
+  const logout = useLogout();
+  const {data: account, error, isPending} = useSession({enabled: !sessionFree && !logout.isRevoked});
+
+  if (logout.isRevoked) {
+    return (
+      <nav aria-label="Main">
+        <LogoutButton logout={logout} />
+      </nav>
+    );
+  }
 
   if (error !== null || (isPending && !sessionFree)) {
     return <nav aria-label="Main" />;
@@ -28,7 +38,7 @@ export const AccountNavigation = ({sessionFree = false}: {sessionFree?: boolean}
       <Button variant="link" size="sm" render={<Link to="/dashboard" />}>
         Dashboard
       </Button>
-      <LogoutButton />
+      <LogoutButton logout={logout} />
     </nav>
   );
 };
