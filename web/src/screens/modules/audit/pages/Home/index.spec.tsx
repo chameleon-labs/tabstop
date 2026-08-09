@@ -82,6 +82,14 @@ describe('the home screen', () => {
     expect(document.title).toBe('tabstop');
   });
 
+  it('links the landing navigation to the working credential routes', () => {
+    renderAt('/');
+
+    expect(screen.getByRole('link', {name: 'Sign in'})).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('data-variant', 'primary');
+  });
+
   it('takes a bare domain through to a result', async () => {
     // The whole hook, end to end: paste, wait, get something worth sharing.
     renderAt('/');

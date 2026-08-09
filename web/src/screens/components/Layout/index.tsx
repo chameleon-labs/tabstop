@@ -1,5 +1,6 @@
 import {Link, Outlet, useMatches} from 'react-router';
 import {RouteAnnouncer} from '../RouteAnnouncer';
+import {AccountNavigation} from '@/screens/modules/account/components/AccountNavigation';
 
 /** A route declaring that it renders its own header, main and footer. */
 export type RouteChrome = {ownChrome?: boolean};
@@ -53,9 +54,7 @@ export const Layout = (): React.JSX.Element => {
             <Link to="/" className="wordmark">
               tabstop
             </Link>
-            <nav aria-label="Main">
-              <Link to="/dashboard">Dashboard</Link>
-            </nav>
+            <AccountNavigation />
           </header>
 
           <main id="main" tabIndex={-1}>

@@ -1,9 +1,11 @@
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
-import {describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {Layout} from './index';
 import {RouteError} from '../RouteError';
+import {jsonResponse} from '@/test/http';
 
 const renderLayout = (): void => {
   const router = createMemoryRouter(
@@ -17,7 +19,11 @@ const renderLayout = (): void => {
     {initialEntries: ['/']},
   );
 
-  render(<RouterProvider router={router} />);
+  render(
+    <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 };
 
 /** A screen that brings its own header, main and footer - as the landing page does. */
@@ -53,6 +59,17 @@ const renderOwnChrome = (): void => {
 };
 
 describe('Layout', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   describe('when a screen brings its own chrome', () => {
     it('steps back, leaving exactly one of each landmark', async () => {
       // The shell's header plus the screen's own produced two `banner`
@@ -157,6 +174,22 @@ describe('Layout', () => {
     renderLayout();
 
     expect(screen.getByRole('navigation', {name: 'Main'})).toBeVisible();
+  });
+
+  it('renders anonymous account entry points in the shell navigation', async () => {
+    renderLayout();
+
+    expect(await screen.findByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('href', '/signup');
+  });
+
+  it('renders authenticated account controls in the shell navigation', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {id: '7', email: 'george@example.test', alertThreshold: 5}));
+    renderLayout();
+
+    expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
+    expect(screen.getByRole('button', {name: 'Log out'})).toBeVisible();
+    expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
   });
 
   it('carries the route announcer, since only the shell renders once', () => {
