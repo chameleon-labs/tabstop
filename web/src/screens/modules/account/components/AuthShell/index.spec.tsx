@@ -7,11 +7,7 @@ describe('AuthShell', () => {
   it('presents the auth content with navigation back home', () => {
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <AuthShell
-          title="Welcome back"
-          subtitle="Sign in to continue"
-          footer={<a href="/signup">Create an account</a>}
-        >
+        <AuthShell title="Welcome back" subtitle="Sign in to continue" footer={<a href="/signup">Create an account</a>}>
           <form aria-label="Sign in form" />
         </AuthShell>
       </MemoryRouter>,

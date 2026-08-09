@@ -12,7 +12,9 @@ export const sessionQueryOptions = queryOptions({
     try {
       return await request<AccountResponse>('/api/me');
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401) return null;
+      if (error instanceof ApiError && error.status === 401) {
+        return null;
+      }
       throw error;
     }
   },

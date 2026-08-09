@@ -115,9 +115,21 @@ describe('AccountNavigation', () => {
   });
 
   it('hides every account state when revocation succeeds but anonymous confirmation fails', async () => {
+    let finishLogout = (): void => undefined;
+    let failConfirmation = (): void => undefined;
     fetchMock
-      .mockResolvedValueOnce(new Response(null, {status: 204}))
-      .mockResolvedValueOnce(jsonResponse(500, {error: 'Session confirmation failed'}));
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishLogout = () => resolve(new Response(null, {status: 204}));
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            failConfirmation = () => resolve(jsonResponse(500, {error: 'Session confirmation failed'}));
+          }),
+      );
     const queryClient = makeQueryClient();
     queryClient.setQueryData(sessionKeys.me, account);
     queryClient.setQueryData(['pages'], pages);
@@ -125,6 +137,22 @@ describe('AccountNavigation', () => {
     await screen.findByRole('link', {name: 'Dashboard'});
 
     await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+
+    act(() => {
+      finishLogout();
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByRole('button', {name: 'Signing out…'})).toBeDisabled();
+    expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/somewhere');
+
+    act(() => {
+      failConfirmation();
+    });
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Session confirmation failed');

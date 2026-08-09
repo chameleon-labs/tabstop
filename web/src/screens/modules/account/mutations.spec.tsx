@@ -7,6 +7,7 @@ import {sessionKeys} from './session';
 import {jsonResponse} from '@/test/http';
 
 const account = {id: '7', email: 'george@example.test', alertThreshold: 5};
+const confirmedAccount = {id: '7', email: 'confirmed@example.test', alertThreshold: 5};
 const credentials = {email: 'george@example.test', password: 'correct horse battery staple'};
 
 const queryClient = (): QueryClient =>
@@ -25,14 +26,16 @@ describe('useLogin', () => {
   });
 
   it('returns the account confirmed after posting credentials', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, account)).mockResolvedValueOnce(jsonResponse(200, account));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, account))
+      .mockResolvedValueOnce(jsonResponse(200, confirmedAccount));
     const client = queryClient();
     const wrapper = ({children}: PropsWithChildren): React.JSX.Element => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const {result} = renderHook(() => useLogin(), {wrapper});
 
-    await expect(result.current.mutateAsync(credentials)).resolves.toEqual(account);
+    await expect(result.current.mutateAsync(credentials)).resolves.toEqual(confirmedAccount);
 
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/login', '/api/me']);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
@@ -70,14 +73,16 @@ describe('useSignup', () => {
   });
 
   it('returns the account confirmed after posting credentials', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(201, account)).mockResolvedValueOnce(jsonResponse(200, account));
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(201, account))
+      .mockResolvedValueOnce(jsonResponse(200, confirmedAccount));
     const client = queryClient();
     const wrapper = ({children}: PropsWithChildren): React.JSX.Element => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const {result} = renderHook(() => useSignup(), {wrapper});
 
-    await expect(result.current.mutateAsync(credentials)).resolves.toEqual(account);
+    await expect(result.current.mutateAsync(credentials)).resolves.toEqual(confirmedAccount);
 
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/signup', '/api/me']);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
@@ -132,6 +137,12 @@ describe('useLogout', () => {
     });
 
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/logout',
+      expect.objectContaining({method: 'POST', credentials: 'include'}),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
     expect(result.current.isRevoked).toBe(true);
     expect(oldQueries).toHaveLength(2);
     for (const oldQuery of oldQueries) {
