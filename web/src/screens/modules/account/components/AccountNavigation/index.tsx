@@ -3,18 +3,14 @@ import {Link} from 'react-router';
 import {LogoutButton} from '../LogoutButton';
 import {useSession} from '../../session';
 
-export const AccountNavigation = (): React.JSX.Element => {
-  const {data: account, error, isPending} = useSession();
+export const AccountNavigation = ({sessionFree = false}: {sessionFree?: boolean}): React.JSX.Element => {
+  const {data: account, error, isPending} = useSession({enabled: !sessionFree});
 
-  if (error !== null) {
-    throw error;
-  }
-
-  if (isPending) {
+  if (error !== null || (isPending && !sessionFree)) {
     return <nav aria-label="Main" />;
   }
 
-  if (account === null) {
+  if (account === null || account === undefined) {
     return (
       <nav aria-label="Main">
         <Button variant="link" size="sm" render={<Link to="/login" />}>

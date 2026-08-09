@@ -1,13 +1,14 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {render, screen} from '@testing-library/react';
+import {act, render, screen, waitFor} from '@testing-library/react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {AccountNavigation} from './index';
+import {sessionKeys} from '../../session';
 import {jsonResponse} from '@/test/http';
 
 const account = {id: '7', email: 'george@example.test', alertThreshold: 5};
 
-const renderNavigation = (): void => {
+const renderNavigation = (): QueryClient => {
   const router = createMemoryRouter(
     [
       {
@@ -18,12 +19,15 @@ const renderNavigation = (): void => {
     ],
     {initialEntries: ['/somewhere']},
   );
+  const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
 
   render(
-    <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+
+  return queryClient;
 };
 
 describe('AccountNavigation', () => {
@@ -72,10 +76,36 @@ describe('AccountNavigation', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('lets a real session failure reach the route boundary', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(500, {error: 'Session lookup failed'}));
-    renderNavigation();
+  it('keeps the named navigation empty when the shell session lookup fails', async () => {
+    let failSession = (): void => undefined;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          failSession = () => resolve(jsonResponse(500, {error: 'Session lookup failed'}));
+        }),
+    );
+    const queryClient = renderNavigation();
 
-    expect(await screen.findByRole('heading', {name: 'Session unavailable'})).toBeVisible();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      failSession();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(queryClient.getQueryState(sessionKeys.me)?.status).toBe('error');
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('navigation', {name: 'Main'})).toBeEmptyDOMElement();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Session unavailable'})).not.toBeInTheDocument();
+    });
   });
 });

@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {act, render, screen, waitFor} from '@testing-library/react';
+import {act, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -59,7 +59,7 @@ describe('Signup', () => {
     expect(screen.getByLabelText('Email address')).toHaveAttribute('autocomplete', 'email');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password');
     expect(screen.getByText('12–200 characters')).toBeVisible();
-    expect(screen.getByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
+    expect(within(screen.getByRole('main')).getByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
   });
 
   it('defers validation until submit, then focuses the first invalid field', async () => {

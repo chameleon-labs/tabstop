@@ -46,6 +46,7 @@ describe('LogoutButton', () => {
 
   it('locks while signing out, clears account data, confirms the session, and replaces with home', async () => {
     let finishLogout = (): void => undefined;
+    let finishConfirmation = (): void => undefined;
     fetchMock
       .mockImplementationOnce(
         () =>
@@ -53,7 +54,12 @@ describe('LogoutButton', () => {
             finishLogout = () => resolve(new Response(null, {status: 204}));
           }),
       )
-      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}));
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishConfirmation = () => resolve(jsonResponse(401, {error: 'Unauthorized'}));
+          }),
+      );
     const client = queryClient();
     client.setQueryData(['pages'], pages);
     client.setQueryData(sessionKeys.me, account);
@@ -68,9 +74,14 @@ describe('LogoutButton', () => {
       finishLogout();
     });
 
-    expect(await screen.findByRole('heading', {name: 'Home'})).toBeVisible();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(router.state.location.pathname).toBe('/dashboard');
+    expect(screen.queryByRole('heading', {name: 'Home'})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Signing out…'})).toBeDisabled();
     expect(client.getQueryData(['pages'])).toBeUndefined();
-    expect(client.getQueryData(sessionKeys.me)).toBeNull();
+    expect(client.getQueryData(sessionKeys.me)).toBeUndefined();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -78,6 +89,13 @@ describe('LogoutButton', () => {
       expect.objectContaining({method: 'POST', credentials: 'include'}),
     );
     expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
+
+    act(() => {
+      finishConfirmation();
+    });
+
+    expect(await screen.findByRole('heading', {name: 'Home'})).toBeVisible();
+    expect(client.getQueryData(sessionKeys.me)).toBeNull();
 
     await act(async () => {
       await router.navigate(-1);
@@ -104,5 +122,27 @@ describe('LogoutButton', () => {
       expect(screen.getByRole('button', {name: 'Log out'})).toBeEnabled();
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays in place and focuses the confirmation error after a successful logout request', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, {status: 204}))
+      .mockResolvedValueOnce(jsonResponse(500, {error: 'Session confirmation failed'}));
+    const client = queryClient();
+    client.setQueryData(['pages'], pages);
+    client.setQueryData(sessionKeys.me, account);
+    const router = renderLogout(client);
+
+    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Session confirmation failed');
+    expect(alert).toHaveFocus();
+    expect(router.state.location.pathname).toBe('/dashboard');
+    expect(client.getQueryData(['pages'])).toBeUndefined();
+    expect(client.getQueryData(sessionKeys.me)).toBeUndefined();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
+    expect(screen.getByRole('button', {name: 'Log out'})).toBeEnabled();
   });
 });

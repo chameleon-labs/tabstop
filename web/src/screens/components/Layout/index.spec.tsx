@@ -1,13 +1,14 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {render, screen} from '@testing-library/react';
+import {act, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {Layout} from './index';
+import {Layout, providesSessionFree} from './index';
 import {RouteError} from '../RouteError';
+import {sessionKeys} from '@/screens/modules/account/session';
 import {jsonResponse} from '@/test/http';
 
-const renderLayout = (): void => {
+const renderLayout = (): QueryClient => {
   const router = createMemoryRouter(
     [
       {
@@ -18,12 +19,15 @@ const renderLayout = (): void => {
     ],
     {initialEntries: ['/']},
   );
+  const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
 
   render(
-    <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+
+  return queryClient;
 };
 
 /** A screen that brings its own header, main and footer - as the landing page does. */
@@ -68,6 +72,16 @@ describe('Layout', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  describe('session-free route metadata', () => {
+    it('accepts only an object whose sessionFree flag is exactly true', () => {
+      expect(providesSessionFree({sessionFree: true})).toBe(true);
+      expect(providesSessionFree({sessionFree: false})).toBe(false);
+      expect(providesSessionFree({sessionFree: 'true'})).toBe(false);
+      expect(providesSessionFree(null)).toBe(false);
+      expect(providesSessionFree(['sessionFree'])).toBe(false);
+    });
   });
 
   describe('when a screen brings its own chrome', () => {
@@ -190,6 +204,41 @@ describe('Layout', () => {
     expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('button', {name: 'Log out'})).toBeVisible();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
+  });
+
+  it('keeps the shell and screen while a shell session lookup is failing', async () => {
+    let failSession = (): void => undefined;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          failSession = () => resolve(jsonResponse(500, {error: 'Session lookup failed'}));
+        }),
+    );
+    const queryClient = renderLayout();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      failSession();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(queryClient.getQueryState(sessionKeys.me)?.status).toBe('error');
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', {level: 1, name: 'A screen'})).toBeVisible();
+      expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.getByRole('navigation', {name: 'Main'})).toBeEmptyDOMElement();
+      expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+    });
   });
 
   it('carries the route announcer, since only the shell renders once', () => {

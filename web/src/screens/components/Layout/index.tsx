@@ -2,8 +2,7 @@ import {Link, Outlet, useMatches} from 'react-router';
 import {RouteAnnouncer} from '../RouteAnnouncer';
 import {AccountNavigation} from '@/screens/modules/account/components/AccountNavigation';
 
-/** A route declaring that it renders its own header, main and footer. */
-export type RouteChrome = {ownChrome?: boolean};
+export type RouteChrome = {ownChrome?: boolean; sessionFree?: boolean};
 
 /**
  * Narrowed rather than cast: `handle` is `unknown` by construction, since any
@@ -12,6 +11,13 @@ export type RouteChrome = {ownChrome?: boolean};
  */
 export const providesOwnChrome = (handle: unknown): boolean =>
   typeof handle === 'object' && handle !== null && 'ownChrome' in handle && handle.ownChrome === true;
+
+export const providesSessionFree = (handle: unknown): boolean =>
+  typeof handle === 'object' &&
+  handle !== null &&
+  !Array.isArray(handle) &&
+  'sessionFree' in handle &&
+  handle.sessionFree === true;
 
 /**
  * The shell every route renders into.
@@ -36,8 +42,11 @@ export const providesOwnChrome = (handle: unknown): boolean =>
 /** True when the matched route says it renders its own header, main and footer. */
 export const useOwnChrome = (): boolean => useMatches().some((match) => providesOwnChrome(match.handle));
 
+export const useSessionFree = (): boolean => useMatches().some((match) => providesSessionFree(match.handle));
+
 export const Layout = (): React.JSX.Element => {
   const ownChrome = useOwnChrome();
+  const sessionFree = useSessionFree();
 
   return (
     <>
@@ -54,7 +63,7 @@ export const Layout = (): React.JSX.Element => {
             <Link to="/" className="wordmark">
               tabstop
             </Link>
-            <AccountNavigation />
+            <AccountNavigation sessionFree={sessionFree} />
           </header>
 
           <main id="main" tabIndex={-1}>

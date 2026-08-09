@@ -35,4 +35,5 @@ export const refreshSession = async (queryClient: QueryClient): Promise<AccountR
   return await queryClient.fetchQuery(sessionQueryOptions);
 };
 
-export const useSession = (): UseQueryResult<AccountResponse | null, Error> => useQuery(sessionQueryOptions);
+export const useSession = (options: {enabled?: boolean} = {}): UseQueryResult<AccountResponse | null, Error> =>
+  useQuery({...sessionQueryOptions, enabled: options.enabled ?? true});

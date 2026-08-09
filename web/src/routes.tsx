@@ -84,6 +84,7 @@ export const routes: RouteObject[] = [
           // is what makes the link shareable at all.
           {
             path: 'r/:uuid',
+            handle: {sessionFree: true},
             lazy: async () => {
               const {Share} = await import('./screens/modules/audit/pages/Share');
               return {element: <Share />};
