@@ -60,7 +60,10 @@ export const Login = (): React.JSX.Element => {
       subtitle="Enter your details to continue."
       footer={
         <>
-          New to tabstop? <Link to="/signup">Create an account</Link>
+          New to tabstop?{' '}
+          <Link to="/signup" state={location.state}>
+            Create an account
+          </Link>
         </>
       }
     >

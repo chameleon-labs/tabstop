@@ -2,6 +2,7 @@ import type {AccountResponse} from '@tabstop/contract';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useState} from 'react';
 import {post, request} from '@/api/client';
+import {AuthConfirmationError} from './failure';
 import {refreshSession} from './session';
 import type {Credentials} from './validation';
 
@@ -19,7 +20,7 @@ const useCredentialMutation = (
       await post<AccountResponse>(path, credentials);
       const account = await refreshSession(queryClient);
       if (account === null) {
-        throw new Error('Could not confirm your session');
+        throw new AuthConfirmationError('Could not confirm your session');
       }
       return account;
     },
@@ -43,7 +44,7 @@ export const useLogout = (): LogoutMutation => {
       queryClient.removeQueries();
       const account = await refreshSession(queryClient);
       if (account !== null) {
-        throw new Error('Could not confirm that you signed out');
+        throw new AuthConfirmationError('Could not confirm that you signed out');
       }
     },
   });

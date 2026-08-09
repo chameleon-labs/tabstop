@@ -1,12 +1,13 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {Button, Callout, TextField} from '@chameleon-labs/lattice-react';
-import {Link, useNavigate} from 'react-router';
+import {Link, useLocation, useNavigate} from 'react-router';
 import {AlertCircle} from '@/screens/components/Icons';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 import {AuthShell} from '../../components/AuthShell';
 import {PasswordField} from '../../components/PasswordField';
 import {authFailureMessage} from '../../failure';
 import {useSignup} from '../../mutations';
+import {destinationFrom} from '../../return-to';
 import {validateSignup, type Credentials} from '../../validation';
 import './signup.css';
 
@@ -17,6 +18,7 @@ export const Signup = (): React.JSX.Element => {
   const passwordRef = useRef<HTMLInputElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
   const signup = useSignup();
+  const location = useLocation();
   const navigate = useNavigate();
   const errors = submitted ? validateSignup(credentials) : {};
 
@@ -49,7 +51,7 @@ export const Signup = (): React.JSX.Element => {
     if (!succeeded) {
       return;
     }
-    await navigate('/dashboard', {replace: true});
+    await navigate(destinationFrom(location.state), {replace: true});
   };
 
   return (
@@ -58,7 +60,10 @@ export const Signup = (): React.JSX.Element => {
       subtitle="Enter your details to get started."
       footer={
         <>
-          Already have an account? <Link to="/login">Log in</Link>
+          Already have an account?{' '}
+          <Link to="/login" state={location.state}>
+            Log in
+          </Link>
         </>
       }
     >

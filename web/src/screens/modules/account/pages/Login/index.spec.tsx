@@ -144,6 +144,20 @@ describe('Login', () => {
     expect(screen.getByRole('button', {name: 'Log in'})).toBeEnabled();
   });
 
+  it('keeps the local confirmation message when accepted credentials produce no session', async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
+      .mockResolvedValueOnce(jsonResponse(200, account))
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}));
+    await openLogin();
+    await enterCredentials(user);
+
+    await user.click(screen.getByRole('button', {name: 'Log in'}));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not confirm your session');
+  });
+
   it('locks the form while the login request is pending', async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'})).mockImplementationOnce(
@@ -236,6 +250,17 @@ describe('Login', () => {
     expect(router.state.location.pathname).toBe('/pages/42');
     expect(router.state.location.search).toBe('?days=30');
     expect(router.state.location.hash).toBe('#history');
+  });
+
+  it('carries the recorded destination to account creation', async () => {
+    const user = userEvent.setup();
+    const state = {from: '/pages/42?days=30#history'};
+    const {router} = await openLogin(state);
+
+    await user.click(screen.getByRole('link', {name: 'Create an account'}));
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
+    expect(router.state.location.state).toEqual(state);
   });
 
   it('chooses the recorded destination instead of relying on the anonymous-route fallback', async () => {

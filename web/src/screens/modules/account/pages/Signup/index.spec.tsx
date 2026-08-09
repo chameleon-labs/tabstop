@@ -22,8 +22,8 @@ describe('Signup', () => {
     vi.unstubAllGlobals();
   });
 
-  const openSignup = async () => {
-    const router = createMemoryRouter(routes, {initialEntries: ['/signup']});
+  const openSignup = async (state?: unknown) => {
+    const router = createMemoryRouter(routes, {initialEntries: [{pathname: '/signup', state}]});
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {retry: false, staleTime: 30_000},
@@ -220,6 +220,31 @@ describe('Signup', () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/me', expect.objectContaining({credentials: 'include'}));
+  });
+
+  it('returns to the full recorded destination after confirming the session', async () => {
+    const user = userEvent.setup();
+    succeedSignup();
+    const {router} = await openSignup({from: '/pages/42?days=30#history'});
+    await enterCredentials(user);
+
+    await user.click(screen.getByRole('button', {name: 'Create account'}));
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Page 42'})).toBeVisible();
+    expect(router.state.location.pathname).toBe('/pages/42');
+    expect(router.state.location.search).toBe('?days=30');
+    expect(router.state.location.hash).toBe('#history');
+  });
+
+  it('carries the recorded destination back to login', async () => {
+    const user = userEvent.setup();
+    const state = {from: '/pages/42?days=30#history'};
+    const {router} = await openSignup(state);
+
+    await user.click(within(screen.getByRole('main')).getByRole('link', {name: 'Log in'}));
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
+    expect(router.state.location.state).toEqual(state);
   });
 
   it('replaces the signup history entry after a successful standalone signup', async () => {
