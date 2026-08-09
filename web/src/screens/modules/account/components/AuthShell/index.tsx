@@ -16,7 +16,7 @@ export const AuthShell = ({title, subtitle, footer, children}: AuthShellProps): 
   return (
     <section className="auth-page" aria-labelledby={headingId}>
       <div className="auth-page__panel">
-        <Link to="/" className="auth-page__brand" aria-label="tabstop home">
+        <Link to="/" className="auth-page__brand">
           <span className="auth-page__brand-mark" aria-hidden="true">
             t/
           </span>

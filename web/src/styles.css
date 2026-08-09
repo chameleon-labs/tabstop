@@ -8,6 +8,10 @@
    scrollbars follow the theme its tokens already switch. */
 :root {
   color-scheme: light dark;
+
+  /* The lime solid is too light for Lattice's white light-mode ink (3.33:1).
+     Both mode solids need the same dark ink to keep button text at AA. */
+  --lat-accent-on-solid: #0c0c14;
 }
 
 * {
@@ -84,6 +88,11 @@ main:focus {
 /* Lattice rings the wrapper, so the inner input must not ring too. */
 .lat-input:focus-visible {
   outline: none;
+}
+
+/* Lattice rc.2 gives link buttons subtle text, which is 3.83:1 in dark mode. */
+.lat-button[data-variant='link'] {
+  color: var(--lat-text);
 }
 
 .site-header {

@@ -19,7 +19,8 @@ describe('AuthShell', () => {
     expect(screen.getByText('Sign in to continue')).toBeVisible();
     expect(screen.getByRole('form', {name: 'Sign in form'})).toBeVisible();
 
-    expect(screen.getByRole('link', {name: /tabstop/i})).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', {name: 'tabstop'})).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('link', {name: 'tabstop home'})).not.toBeInTheDocument();
     expect(screen.getByRole('link', {name: 'Create an account'})).toHaveAttribute('href', '/signup');
   });
 });
