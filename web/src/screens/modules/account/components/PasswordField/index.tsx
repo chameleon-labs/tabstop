@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Button, TextField, type TextFieldProps} from '@chameleon-labs/lattice-react';
+import {AddonButton, TextField, type TextFieldProps} from '@chameleon-labs/lattice-react';
 import {Eye, EyeOff} from '@/screens/components/Icons';
 
 export type PasswordFieldProps = Omit<TextFieldProps, 'type' | 'addonEnd'>;
@@ -16,16 +16,9 @@ export const PasswordField = ({size = 'md', disabled = false, ...props}: Passwor
       disabled={disabled}
       type={revealed ? 'text' : 'password'}
       addonEnd={
-        <Button
-          type="button"
-          variant="ghost"
-          size={size}
-          disabled={disabled}
-          aria-label={label}
-          onClick={() => setRevealed((value) => !value)}
-        >
-          <Icon size="sm" />
-        </Button>
+        <AddonButton label={label} size={size} disabled={disabled} onClick={() => setRevealed((value) => !value)}>
+          <Icon />
+        </AddonButton>
       }
     />
   );

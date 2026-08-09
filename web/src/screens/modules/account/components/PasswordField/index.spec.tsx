@@ -11,6 +11,10 @@ describe('PasswordField', () => {
     const input = screen.getByLabelText('Password');
     const show = screen.getByRole('button', {name: 'Show password'});
     expect(input).toHaveAttribute('type', 'password');
+    expect(show).toHaveClass('lat-addon-button');
+    expect(show).not.toHaveClass('lat-button');
+    expect(show).toHaveAttribute('type', 'button');
+    expect(show).toHaveAttribute('data-size', 'md');
     expect(show.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
 
     await user.click(show);
@@ -32,10 +36,18 @@ describe('PasswordField', () => {
     expect(input).toHaveAccessibleDescription('Password is required');
   });
 
-  it('disables both the input and reveal action', () => {
+  it('disables the input and keeps the unavailable reveal action discoverable', async () => {
+    const user = userEvent.setup();
     render(<PasswordField label="Password" disabled />);
 
-    expect(screen.getByLabelText('Password')).toBeDisabled();
-    expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
+    const input = screen.getByLabelText('Password');
+    const reveal = screen.getByRole('button', {name: 'Show password'});
+    expect(input).toBeDisabled();
+    expect(reveal).toHaveAttribute('aria-disabled', 'true');
+    expect(reveal).not.toHaveAttribute('disabled');
+
+    await user.click(reveal);
+
+    expect(input).toHaveAttribute('type', 'password');
   });
 });

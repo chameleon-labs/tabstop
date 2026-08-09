@@ -175,7 +175,7 @@ describe('Login', () => {
       expect(screen.getByLabelText('Email address')).toBeDisabled();
     });
     expect(screen.getByLabelText('Password')).toBeDisabled();
-    expect(screen.getByRole('button', {name: 'Show password'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Show password'})).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', {name: 'Logging in…'})).toBeDisabled();
     expect(screen.queryByRole('button', {name: 'Log in'})).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
