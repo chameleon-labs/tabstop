@@ -9,6 +9,7 @@ import {authFailureMessage} from '../../failure';
 import {useLogin} from '../../mutations';
 import {destinationFrom} from '../../return-to';
 import {validateLogin, type Credentials} from '../../validation';
+import './login.css';
 
 export const Login = (): React.JSX.Element => {
   const [credentials, setCredentials] = useState<Credentials>({email: '', password: ''});
@@ -68,7 +69,7 @@ export const Login = (): React.JSX.Element => {
           {authFailureMessage(login.error)}
         </Callout>
       )}
-      <form noValidate onSubmit={submit}>
+      <form className="login-form" noValidate onSubmit={submit}>
         <TextField
           ref={emailRef}
           label="Email address"
