@@ -2,6 +2,7 @@ import type {RouteObject} from 'react-router';
 import {Layout} from './screens/components/Layout';
 import {NotFound} from './screens/components/NotFound';
 import {RequireAuth} from './screens/modules/account/components/RequireAuth';
+import {RequireAnonymous} from './screens/modules/account/components/RequireAnonymous';
 import {RouteError} from './screens/components/RouteError';
 import {Home} from './screens/modules/audit/pages/Home';
 
@@ -33,15 +34,12 @@ export const routes: RouteObject[] = [
     // "beat of nothing" is a different case, because it renders INSIDE an
     // already-painted shell. Empty here instead means no skip link, no header,
     // no route announcer for the whole window before the chunk resolves, on
-    // every one of the four lazy routes - the exact failure prerendering exists
-    // to remove.
+    // every lazy route - the exact failure prerendering exists to remove.
     //
     // `Layout` degrades correctly in this position: `useMatches()` is still
-    // populated from the router's matched-but-unloaded routes, none of the four
-    // lazy routes sets `handle: {ownChrome: true}`, so `useOwnChrome` reads
-    // false and the header renders; `Outlet` then renders `null` for the
-    // unresolved child, leaving header + an empty `<main id="main">` until the
-    // chunk loads.
+    // populated from the router's matched-but-unloaded routes. No lazy route
+    // supplies its own chrome, so the header and empty main remain available
+    // until the child chunk resolves.
     hydrateFallbackElement: <Layout />,
     children: [
       {
@@ -65,6 +63,19 @@ export const routes: RouteObject[] = [
             },
           },
           {
+            path: 'login',
+            lazy: async () => {
+              const {Login} = await import('./screens/modules/account/pages/Login');
+              return {
+                element: (
+                  <RequireAnonymous>
+                    <Login />
+                  </RequireAnonymous>
+                ),
+              };
+            },
+          },
+          {
             path: 'pages/:id',
             lazy: async () => {
               const {PageDetail} = await import('./screens/modules/audit/pages/PageDetail');
@@ -81,19 +92,23 @@ export const routes: RouteObject[] = [
           // is what makes the link shareable at all.
           {
             path: 'r/:uuid',
+            handle: {sessionFree: true},
             lazy: async () => {
               const {Share} = await import('./screens/modules/audit/pages/Share');
               return {element: <Share />};
             },
           },
-          // Public: the rate-limit offer on the home screen links here, and it
-          // is the one link this app shows to someone who is not signed in and
-          // has just been told to stop.
           {
             path: 'signup',
             lazy: async () => {
               const {Signup} = await import('./screens/modules/account/pages/Signup');
-              return {element: <Signup />};
+              return {
+                element: (
+                  <RequireAnonymous>
+                    <Signup />
+                  </RequireAnonymous>
+                ),
+              };
             },
           },
           {path: '*', element: <NotFound />},

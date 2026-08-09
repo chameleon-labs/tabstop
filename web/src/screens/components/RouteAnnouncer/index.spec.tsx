@@ -2,8 +2,9 @@ import {act, render, screen, waitFor} from '@testing-library/react';
 import {useEffect, useState} from 'react';
 import {Outlet, RouterProvider, createMemoryRouter} from 'react-router';
 import userEvent from '@testing-library/user-event';
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {renderAt} from '@/test/render';
+import {jsonResponse} from '@/test/http';
 import {RouteAnnouncer} from './index';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 
@@ -13,6 +14,10 @@ import {useDocumentTitle} from '@/screens/hooks/use-document-title';
  * activates a link and hears silence.
  */
 describe('the route announcer', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   /**
    * The SHELL's region, which comes first in the document. The home screen now
    * carries a second one for audit status, so an unscoped query matches both.
@@ -33,6 +38,10 @@ describe('the route announcer', () => {
   });
 
   it('names the new page after a navigation', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'}))),
+    );
     renderAt('/nope');
     await screen.findByRole('heading', {level: 1, name: 'Page not found'});
 

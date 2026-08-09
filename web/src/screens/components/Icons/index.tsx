@@ -15,6 +15,8 @@ export {ChevronRight} from './ChevronRight';
 export {Circle} from './Circle';
 export {Copy} from './Copy';
 export {ExternalLink} from './ExternalLink';
+export {Eye} from './Eye';
+export {EyeOff} from './EyeOff';
 export {Globe} from './Globe';
 export {Info} from './Info';
 export {Mail} from './Mail';

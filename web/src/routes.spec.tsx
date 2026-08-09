@@ -1,8 +1,12 @@
-import {screen, waitFor} from '@testing-library/react';
+import {QueryClientProvider} from '@tanstack/react-query';
+import {act, render, screen, waitFor} from '@testing-library/react';
+import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {jsonResponse} from './test/http';
+import {makeQueryClient} from './api/query-client';
 import {renderAt} from './test/render';
 import {routes} from './routes';
+import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
 
@@ -56,11 +60,73 @@ describe('the route table', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('disables session fetching only while moving through a public share route', async () => {
+    withSession();
+    const router = createMemoryRouter(routes, {initialEntries: ['/dashboard']});
+    const queryClient = makeQueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+
+    await act(async () => {
+      await router.navigate('/r/abc-123');
+    });
+    expect(await screen.findByRole('heading', {level: 1, name: 'Audit result'})).toBeVisible();
+    await act(async () => {
+      await queryClient.invalidateQueries({queryKey: sessionKeys.me, exact: true});
+    });
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+
+    await act(async () => {
+      await router.navigate('/dashboard');
+    });
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/me']);
+    });
+  });
+
+  it('resolves /login for a signed-out visitor', async () => {
+    renderAt('/login');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
+  });
+
+  it('redirects a signed-in visitor away from /login', async () => {
+    withSession();
+
+    renderAt('/login');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(screen.queryByRole('heading', {level: 1, name: 'Log in'})).not.toBeInTheDocument();
+  });
+
+  it('resolves /signup for a signed-out visitor', async () => {
+    renderAt('/signup');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Create account'})).toBeVisible();
+  });
+
+  it('redirects a signed-in visitor away from /signup', async () => {
+    withSession();
+
+    renderAt('/signup');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(screen.queryByRole('heading', {level: 1, name: 'Create an account'})).not.toBeInTheDocument();
+  });
+
   it('sends a signed-out visitor away from a guarded route', async () => {
     renderAt('/dashboard');
 
-    // Landed on home, not on the dashboard behind a spinner.
-    expect(await screen.findByRole('heading', {level: 1})).toHaveTextContent('Accessibility monitoring');
+    // Landed on login, not on the dashboard behind a spinner.
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
     expect(screen.queryByRole('heading', {name: 'Dashboard'})).not.toBeInTheDocument();
   });
 
@@ -135,5 +201,12 @@ describe('what may be split out of the initial chunk', () => {
     const eager = inner.filter((route) => route.index !== true && route.path !== '*' && route.lazy === undefined);
 
     expect(eager).toEqual([]);
+  });
+
+  it('keeps the login screen in a lazy route', () => {
+    const login = inner.find((route) => route.path === 'login');
+
+    expect(login?.lazy).toBeTypeOf('function');
+    expect(login?.element).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import {memo, useState} from 'react';
+import {Link} from 'react-router';
 import {
   Badge,
   Button,
@@ -34,6 +35,7 @@ import {
 import type {IconProps} from '@/screens/components/Icons';
 import {ScoreArc} from './LandingParts/score-arc';
 import {ScoreChart} from './LandingParts/score-chart';
+import './landing.css';
 
 /**
  * The tabstop landing page, rebuilt from Lattice components alone.
@@ -270,8 +272,12 @@ const Nav = memo(() => {
           {isDark ? <Sun size="md" /> : <Moon size="md" />}
         </Button>
 
-        <Button variant="primary" size="sm" className="landing-page__nav-cta">
-          Try it free
+        <Button variant="link" size="sm" render={<Link to="/login" />}>
+          Sign in
+        </Button>
+
+        <Button variant="primary" size="sm" className="landing-page__nav-cta" render={<Link to="/signup" />}>
+          Sign up
           <ArrowRight size="md" />
         </Button>
       </div>

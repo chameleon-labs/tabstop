@@ -35,13 +35,16 @@ const auditBody = (over: Partial<AuditResultResponse> = {}): AuditResultResponse
  * done" - which is the only interesting shape this screen has.
  */
 const server = (handlers: {post?: () => Response; get?: () => Response}): ReturnType<typeof vi.fn> => {
-  const mock = vi.fn((_url: string, init?: RequestInit) =>
-    Promise.resolve(
+  const mock = vi.fn((url: string, init?: RequestInit) => {
+    if (url === '/api/me') {
+      return Promise.resolve(jsonResponse(401, {error: 'Unauthorized'}));
+    }
+    return Promise.resolve(
       init?.method === 'POST'
         ? (handlers.post?.() ?? jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}))
         : (handlers.get?.() ?? jsonResponse(200, auditBody())),
-    ),
-  );
+    );
+  });
   vi.stubGlobal('fetch', mock);
   return mock;
 };
@@ -77,6 +80,14 @@ describe('the home screen', () => {
     renderAt('/');
 
     expect(document.title).toBe('tabstop');
+  });
+
+  it('links the landing navigation to the working credential routes', () => {
+    renderAt('/');
+
+    expect(screen.getByRole('link', {name: 'Sign in'})).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('href', '/signup');
+    expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('data-variant', 'primary');
   });
 
   it('takes a bare domain through to a result', async () => {

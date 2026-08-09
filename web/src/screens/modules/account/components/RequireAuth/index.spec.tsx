@@ -38,7 +38,7 @@ const renderGate = (): ReturnType<typeof createMemoryRouter> => {
     [
       {path: '/start', element: <h1>Where they came from</h1>},
       {
-        path: '/dashboard',
+        path: '/pages/42',
         element: (
           <RequireAuth>
             <h1>Protected</h1>
@@ -47,7 +47,7 @@ const renderGate = (): ReturnType<typeof createMemoryRouter> => {
       },
       {path: SIGNED_OUT_REDIRECT, element: <Landing />},
     ],
-    {initialEntries: ['/start', '/dashboard'], initialIndex: 1},
+    {initialEntries: ['/start', '/pages/42?days=30#history'], initialIndex: 1},
   );
 
   render(
@@ -126,12 +126,12 @@ describe('RequireAuth', () => {
     expect(screen.queryByRole('heading', {name: 'Protected'})).not.toBeInTheDocument();
   });
 
-  it('carries where they were going, so a login can send them back', async () => {
+  it('carries the complete destination, so a login can send them back', async () => {
     renderGate();
 
     await screen.findByRole('heading', {name: 'Signed out landing'});
 
-    expect(screen.getByText('landed')).toHaveAttribute('data-returnto', '/dashboard');
+    expect(screen.getByText('landed')).toHaveAttribute('data-returnto', '/pages/42?days=30#history');
   });
 
   it('replaces the gated entry rather than pushing over it', async () => {

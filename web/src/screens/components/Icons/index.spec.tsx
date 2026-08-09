@@ -30,7 +30,7 @@ describe('the icon set', () => {
   it('exports every icon, so the checks below are not a sample', () => {
     // A hand-written list goes stale the moment an icon is added, and the tests
     // after this one would then pass while covering less than they claim.
-    expect(ICONS.length).toBe(18);
+    expect(ICONS.length).toBe(20);
   });
 
   it('hides every one of them from assistive technology', () => {

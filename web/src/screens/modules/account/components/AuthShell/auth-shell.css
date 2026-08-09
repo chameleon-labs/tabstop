@@ -1,0 +1,158 @@
+.auth-page {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-block-size: calc(100dvh - (var(--lat-space-12) + var(--lat-space-2)));
+  padding: var(--lat-space-16) var(--lat-space-4);
+  overflow: hidden;
+  place-items: center;
+  background: var(--lat-bg);
+  color: var(--lat-text);
+}
+
+.auth-page::before,
+.auth-page::after {
+  position: absolute;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+}
+
+.auth-page::before {
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--lat-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--lat-border) 1px, transparent 1px);
+  background-size: var(--lat-space-12) var(--lat-space-12);
+  opacity: 0.35;
+  transition: opacity var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.auth-page::after {
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  inline-size: min(32rem, 100%);
+  aspect-ratio: 1;
+  background: radial-gradient(circle, var(--lat-accent-tint), transparent 68%);
+  opacity: 0.45;
+  transform: translate(-50%, -50%);
+  transition: opacity var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.auth-page__panel {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  text-align: center;
+  animation: auth-page-enter var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.auth-page__brand {
+  display: inline-flex;
+  gap: var(--lat-gap-sm);
+  align-items: center;
+  color: var(--lat-text);
+  font-family: var(--lat-text-body-strong-font-family);
+  font-size: var(--lat-text-body-strong-font-size);
+  font-weight: var(--lat-text-body-strong-font-weight);
+  line-height: var(--lat-text-body-strong-line-height);
+  text-decoration: none;
+  transition: color var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.auth-page__brand:hover {
+  color: var(--lat-text);
+}
+
+.auth-page__brand-mark {
+  display: grid;
+  inline-size: var(--lat-space-8);
+  block-size: var(--lat-space-8);
+  place-items: center;
+  background: var(--lat-solid);
+  border-radius: var(--lat-radius-sm);
+  color: var(--lat-on-solid);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-sm);
+  font-weight: var(--lat-font-weight-bold);
+  line-height: var(--lat-line-height-none);
+}
+
+.auth-page h1 {
+  margin: var(--lat-space-6) 0 0;
+  font-family: var(--lat-text-h2-font-family);
+  font-size: var(--lat-text-h2-font-size);
+  font-weight: var(--lat-text-h2-font-weight);
+  letter-spacing: var(--lat-text-h2-letter-spacing);
+  line-height: var(--lat-text-h2-line-height);
+}
+
+.auth-page__subtitle {
+  margin: var(--lat-space-2) 0 var(--lat-space-8);
+  color: var(--lat-text);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  font-weight: var(--lat-text-meta-font-weight);
+  letter-spacing: var(--lat-text-meta-letter-spacing);
+  line-height: var(--lat-text-meta-line-height);
+}
+
+.auth-page__card-body {
+  padding: var(--lat-space-6);
+  text-align: start;
+}
+
+.auth-page__footer {
+  margin: var(--lat-space-5) 0 0;
+  color: var(--lat-text);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  font-weight: var(--lat-text-meta-font-weight);
+  letter-spacing: var(--lat-text-meta-letter-spacing);
+  line-height: var(--lat-text-meta-line-height);
+}
+
+.auth-page__footer a {
+  color: var(--lat-text);
+  text-decoration-color: currentcolor;
+  text-underline-offset: var(--lat-space-0-5);
+  transition: color var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.auth-page__footer a:hover {
+  color: var(--lat-text);
+}
+
+@keyframes auth-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--lat-space-3));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(var(--lat-space-0));
+  }
+}
+
+@media (max-width: 20rem) {
+  .auth-page {
+    padding: var(--lat-space-8) var(--lat-space-4);
+  }
+
+  .auth-page__card-body {
+    padding: var(--lat-space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-page::before,
+  .auth-page::after,
+  .auth-page__brand,
+  .auth-page__footer a {
+    transition: none;
+  }
+
+  .auth-page__panel {
+    animation: none;
+  }
+}
