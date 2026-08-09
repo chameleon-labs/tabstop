@@ -60,7 +60,7 @@
 }
 
 .auth-page__brand:hover {
-  color: var(--lat-solid);
+  color: var(--lat-text);
 }
 
 .auth-page__brand-mark {
@@ -88,7 +88,7 @@
 
 .auth-page__subtitle {
   margin: var(--lat-space-2) 0 var(--lat-space-8);
-  color: var(--lat-text-subtle);
+  color: var(--lat-text);
   font-family: var(--lat-text-meta-font-family);
   font-size: var(--lat-text-meta-font-size);
   font-weight: var(--lat-text-meta-font-weight);
@@ -103,7 +103,7 @@
 
 .auth-page__footer {
   margin: var(--lat-space-5) 0 0;
-  color: var(--lat-text-subtle);
+  color: var(--lat-text);
   font-family: var(--lat-text-meta-font-family);
   font-size: var(--lat-text-meta-font-size);
   font-weight: var(--lat-text-meta-font-weight);
@@ -112,8 +112,8 @@
 }
 
 .auth-page__footer a {
-  color: var(--lat-solid);
-  text-decoration-color: var(--lat-accent-tint-border);
+  color: var(--lat-text);
+  text-decoration-color: currentcolor;
   text-underline-offset: var(--lat-space-0-5);
   transition: color var(--lat-duration-default) var(--lat-easing-out);
 }
