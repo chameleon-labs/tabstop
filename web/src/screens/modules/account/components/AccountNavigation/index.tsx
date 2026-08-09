@@ -1,11 +1,15 @@
 import {Button} from '@chameleon-labs/lattice-react';
 import {Link} from 'react-router';
 import {LogoutButton} from '../LogoutButton';
-import {useLogout} from '../../mutations';
+import type {LogoutMutation} from '../../mutations';
 import {useSession} from '../../session';
 
-export const AccountNavigation = ({sessionFree = false}: {sessionFree?: boolean}): React.JSX.Element => {
-  const logout = useLogout();
+export type AccountNavigationProps = {
+  logout: LogoutMutation;
+  sessionFree?: boolean;
+};
+
+export const AccountNavigation = ({logout, sessionFree = false}: AccountNavigationProps): React.JSX.Element => {
   const {data: account, error, isPending} = useSession({enabled: !sessionFree && !logout.isRevoked});
 
   if (logout.isRevoked) {

@@ -59,7 +59,11 @@ const renderOwnChrome = (): void => {
     {initialEntries: ['/']},
   );
 
-  render(<RouterProvider router={router} />);
+  render(
+    <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 };
 
 describe('Layout', () => {
@@ -123,7 +127,11 @@ describe('Layout', () => {
         ],
         {initialEntries: ['/']},
       );
-      render(<RouterProvider router={router} />);
+      render(
+        <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
       await screen.findByRole('heading', {level: 1, name: 'Something went wrong'});
 
       expect(screen.getAllByRole('main')).toHaveLength(1);
@@ -239,6 +247,85 @@ describe('Layout', () => {
       expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
       expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
     });
+  });
+
+  it('keeps revocation authoritative across landing-page navigation', async () => {
+    let finishLogout = (): void => undefined;
+    let failConfirmation = (): void => undefined;
+    fetchMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishLogout = () => resolve(new Response(null, {status: 204}));
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            failConfirmation = () => resolve(jsonResponse(500, {error: 'Session confirmation failed'}));
+          }),
+      );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <Layout />,
+          children: [
+            {
+              index: true,
+              handle: {ownChrome: true},
+              element: (
+                <main id="main" tabIndex={-1}>
+                  <h1>Public landing</h1>
+                </main>
+              ),
+            },
+            {path: 'dashboard', element: <h1>Private dashboard</h1>},
+          ],
+        },
+      ],
+      {initialEntries: ['/dashboard']},
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: {queries: {retry: false, staleTime: 30_000}, mutations: {retry: false}},
+    });
+    queryClient.setQueryData(sessionKeys.me, {id: '7', email: 'george@example.test', alertThreshold: 5});
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await act(async () => {
+      await router.navigate('/');
+    });
+    expect(screen.getByRole('heading', {name: 'Public landing'})).toBeVisible();
+
+    act(() => {
+      finishLogout();
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await router.navigate('/dashboard');
+    });
+
+    expect(screen.queryByRole('heading', {name: 'Private dashboard'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+
+    act(() => {
+      failConfirmation();
+    });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Session confirmation failed');
+    expect(alert).toHaveFocus();
+    expect(screen.queryByRole('heading', {name: 'Private dashboard'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
   });
 
   it('carries the route announcer, since only the shell renders once', () => {

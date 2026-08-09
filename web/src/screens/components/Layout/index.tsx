@@ -1,6 +1,7 @@
 import {Link, Outlet, useMatches} from 'react-router';
 import {RouteAnnouncer} from '../RouteAnnouncer';
 import {AccountNavigation} from '@/screens/modules/account/components/AccountNavigation';
+import {useLogout} from '@/screens/modules/account/mutations';
 
 export type RouteChrome = {ownChrome?: boolean; sessionFree?: boolean};
 
@@ -47,6 +48,8 @@ export const useSessionFree = (): boolean => useMatches().some((match) => provid
 export const Layout = (): React.JSX.Element => {
   const ownChrome = useOwnChrome();
   const sessionFree = useSessionFree();
+  const logout = useLogout();
+  const hidePrivateOutlet = logout.isRevoked && !ownChrome && !sessionFree;
 
   return (
     <>
@@ -63,11 +66,11 @@ export const Layout = (): React.JSX.Element => {
             <Link to="/" className="wordmark">
               tabstop
             </Link>
-            <AccountNavigation sessionFree={sessionFree} />
+            <AccountNavigation sessionFree={sessionFree} logout={logout} />
           </header>
 
           <main id="main" tabIndex={-1}>
-            <Outlet />
+            {hidePrivateOutlet ? null : <Outlet />}
           </main>
         </>
       )}

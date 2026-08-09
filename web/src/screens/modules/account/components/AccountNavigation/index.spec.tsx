@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {AccountNavigation} from './index';
+import {useLogout} from '../../mutations';
 import {sessionKeys} from '../../session';
 import {jsonResponse} from '@/test/http';
 
@@ -15,12 +16,18 @@ const makeQueryClient = (): QueryClient =>
     defaultOptions: {queries: {retry: false, staleTime: 30_000}, mutations: {retry: false}},
   });
 
+const NavigationHarness = (): React.JSX.Element => {
+  const logout = useLogout();
+
+  return <AccountNavigation logout={logout} />;
+};
+
 const renderNavigation = (queryClient = makeQueryClient()) => {
   const router = createMemoryRouter(
     [
       {
         path: '*',
-        element: <AccountNavigation />,
+        element: <NavigationHarness />,
         errorElement: <h1>Session unavailable</h1>,
       },
     ],
