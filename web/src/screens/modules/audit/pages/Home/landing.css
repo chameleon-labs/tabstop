@@ -1,536 +1,9 @@
-/*
- * Layout for the full-page stories under Pages/*.
- *
- * Registered in src/styles.css alongside every component family, so it ships
- * with the package — there is no separate story-only stylesheet. Its classes
- * are never part of the component contract; they style page chrome no
- * exported component models — a sidebar, a topbar, a section head, a sticky
- * nav — for the `SystemPage` and `LandingPage` stories, and any sibling
- * full-page story built the same way.
- *
- * Its rules are grid/flex/gap/padding/position shells. Anywhere a rule below
- * reaches past layout into appearance — colour, border, radius, type — the
- * value is a `var(--lat-*)` reference, never a literal: the page exists to
- * prove the token, not to restate the Figma bundle's own hard-coded hex
- * values.
- *
- * The one deliberate exception is the `display` role (48px): it has no
- * bare-element rule in base.css and no component of its own, so a page
- * headline builds it directly from `--lat-text-display-*`, same as the
- * h1–h4 rules base.css already ships. The recipe lives once, in
- * `.lat-page__display` below, and both pages compose it onto their `<h1>`
- * alongside a page-owned class that carries only `margin-block-end` — the
- * one declaration that legitimately differs per page, being page layout
- * rather than part of the display role itself. (It briefly existed as two
- * copies, `.system-page__display` and `.landing-page__display`, because the
- * landing page's task could touch this file but not `system-page.tsx`'s
- * markup; folded into one class once both pages could be edited together.)
- */
-
-/* The shared display-role recipe — see the file header comment. Compose with
-   a page-owned class (`.system-page__display`, `.landing-page__display`)
-   that supplies only `margin-block-end`. */
 .lat-page__display {
   font-family: var(--lat-text-display-font-family);
   font-size: var(--lat-text-display-font-size);
   font-weight: var(--lat-text-display-font-weight);
   letter-spacing: var(--lat-text-display-letter-spacing);
   line-height: var(--lat-text-display-line-height);
-}
-
-.system-page {
-  display: flex;
-  min-block-size: 100vh;
-}
-
-/* ─── Sidebar ──────────────────────────────────────────────────────────── */
-
-.system-page__sidebar {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 14rem;
-  position: sticky;
-  inset-block-start: 0;
-  block-size: 100vh;
-  overflow-y: auto;
-  background: var(--lat-bg-raised);
-  border-inline-end: 1px solid var(--lat-border);
-}
-
-.system-page__logo {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-2);
-  padding: var(--lat-space-5);
-  border-block-end: 1px solid var(--lat-border);
-}
-
-.system-page__logo-mark {
-  display: block;
-  inline-size: var(--lat-space-5);
-  block-size: var(--lat-space-5);
-  background: var(--lat-accent-solid);
-  border-radius: var(--lat-radius-none);
-}
-
-.system-page__logo-text {
-  font-weight: var(--lat-font-weight-bold);
-}
-
-.system-page__nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-1);
-  flex: 1;
-  padding: var(--lat-space-3);
-  overflow-y: auto;
-}
-
-.system-page__nav-item {
-  justify-content: flex-start;
-  inline-size: 100%;
-}
-
-.system-page__resources {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-2);
-  padding: var(--lat-space-5) var(--lat-space-2) 0;
-}
-
-.system-page__resource {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-2);
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-small-font-family);
-  font-size: var(--lat-text-small-font-size);
-}
-
-.system-page__sidebar-footer {
-  padding: var(--lat-space-4) var(--lat-space-5);
-  border-block-start: 1px solid var(--lat-border);
-}
-
-/* ─── Topbar + content shell ──────────────────────────────────────────── */
-
-.system-page__main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-inline-size: 0;
-}
-
-.system-page__topbar {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-3);
-  position: sticky;
-  inset-block-start: 0;
-  padding: var(--lat-space-3) var(--lat-space-8);
-  background: var(--lat-bg);
-  border-block-end: 1px solid var(--lat-border);
-}
-
-.system-page__crumb {
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-.system-page__topbar-end {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-3);
-  margin-inline-start: auto;
-}
-
-.system-page__content {
-  padding: var(--lat-space-8) var(--lat-space-12);
-  max-inline-size: var(--lat-container-wide);
-}
-
-.system-page__section {
-  margin-block-end: var(--lat-space-16);
-}
-
-.system-page__panel {
-  margin-block-end: var(--lat-space-4);
-}
-
-.system-page__section-head {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-3);
-  margin-block-end: var(--lat-space-6);
-}
-
-.system-page__section-index {
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-/* ─── Overview ─────────────────────────────────────────────────────────── */
-
-.system-page__overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: var(--lat-space-6);
-  margin-block-end: var(--lat-space-4);
-}
-
-.system-page__hero {
-  grid-column: span 3;
-}
-
-.system-page__stats {
-  grid-column: span 2;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--lat-space-3);
-}
-
-.system-page__badge-row {
-  display: flex;
-  gap: var(--lat-space-2);
-  margin-block-end: var(--lat-space-4);
-}
-
-.system-page__display {
-  margin-block-end: var(--lat-space-4);
-}
-
-.system-page__display-accent {
-  color: var(--lat-accent-solid);
-}
-
-.system-page__lede {
-  max-inline-size: 24rem;
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-small-font-family);
-  font-size: var(--lat-text-small-font-size);
-  line-height: var(--lat-text-small-line-height);
-}
-
-/* ─── Tokens ───────────────────────────────────────────────────────────── */
-
-.system-page__swatch-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: var(--lat-space-3);
-}
-
-.system-page__swatch-color {
-  block-size: var(--lat-space-12);
-}
-
-.system-page__swatch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--lat-space-2);
-}
-
-.system-page__swatch-label {
-  font-family: var(--lat-text-ui-font-family);
-  font-size: var(--lat-text-ui-font-size);
-}
-
-.system-page__swatch-token {
-  display: block;
-  margin-block-start: var(--lat-space-1);
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-.system-page__spacing-scale {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-3);
-}
-
-.system-page__spacing-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-4);
-}
-
-.system-page__spacing-name {
-  flex: 0 0 8rem;
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-.system-page__spacing-bar {
-  block-size: var(--lat-space-3);
-  background: var(--lat-accent-tint);
-  border: 1px solid var(--lat-accent-tint-border);
-}
-
-.system-page__spacing-px {
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-/* ─── Typography ───────────────────────────────────────────────────────── */
-
-.system-page__type-scale {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-5);
-}
-
-.system-page__type-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--lat-space-6);
-}
-
-.system-page__type-meta {
-  flex: 0 0 8rem;
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-1);
-}
-
-.system-page__type-name {
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-text-meta-font-size);
-}
-
-.system-page__type-desc {
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-meta-font-family);
-  font-size: var(--lat-font-size-3xs);
-}
-
-.system-page__type-sample {
-  flex: 1;
-  margin: 0;
-}
-
-.system-page__type-display {
-  font-family: var(--lat-text-display-font-family);
-  font-size: var(--lat-text-display-font-size);
-  font-weight: var(--lat-text-display-font-weight);
-  line-height: var(--lat-text-display-line-height);
-}
-
-.system-page__type-small {
-  font-family: var(--lat-text-small-font-family);
-  font-size: var(--lat-text-small-font-size);
-  font-weight: var(--lat-text-small-font-weight);
-  line-height: var(--lat-text-small-line-height);
-}
-
-.system-page__type-mono {
-  font-family: var(--lat-text-code-font-family);
-  font-size: var(--lat-text-code-font-size);
-  line-height: var(--lat-text-code-line-height);
-}
-
-/* ─── Components ───────────────────────────────────────────────────────── */
-
-.system-page__row-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--lat-space-3);
-}
-
-.system-page__two-col {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: var(--lat-space-4);
-  margin-block-end: var(--lat-space-4);
-}
-
-.system-page__field-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-4);
-}
-
-.system-page__anatomy-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: var(--lat-space-3);
-}
-
-.system-page__anatomy-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-block-end: var(--lat-space-3);
-}
-
-.system-page__anatomy-title {
-  margin: 0 0 var(--lat-space-1);
-}
-
-.system-page__anatomy-desc {
-  margin: 0;
-  color: var(--lat-text-subtle);
-  font-family: var(--lat-text-small-font-family);
-  font-size: var(--lat-text-small-font-size);
-  line-height: var(--lat-text-small-line-height);
-}
-
-/* The three "tone" accents on Circle/Square/Triangle in the Card anatomy demo
-   and the highlighted row in the Command Palette pattern — Lattice's own
-   accent, info and chart-3 roles standing in for the bundle's primary/
-   chart-2/chart-3 icon colours. */
-.system-page__tone[data-tone='primary'] {
-  color: var(--lat-accent-solid);
-}
-.system-page__tone[data-tone='info'] {
-  color: var(--lat-info-solid);
-}
-.system-page__tone[data-tone='accent'] {
-  color: var(--lat-chart-3);
-}
-
-/* ─── Patterns ─────────────────────────────────────────────────────────── */
-
-.system-page__palette {
-  border: 1px solid var(--lat-accent-tint-border);
-}
-
-.system-page__palette-search {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-3);
-  padding: var(--lat-space-3) var(--lat-space-4);
-  border-block-end: 1px solid var(--lat-border);
-}
-
-.system-page__palette-placeholder {
-  color: var(--lat-text);
-  font-family: var(--lat-text-code-font-family);
-  font-size: var(--lat-text-code-font-size);
-}
-
-.system-page__palette-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-3);
-  padding: var(--lat-space-2) var(--lat-space-4);
-}
-
-/*
- * `[data-active]` deliberately carries no background of its own. Two things
- * tried here first, both wrong for the same underlying reason:
- *
- * 1. `--lat-accent-tint` — the tint half of the accent tinted triple, built
- *    to pair with `--lat-solid` as text (that pairing is measured: the
- *    ledger's "accent text on its tint" row). The default `Badge` inside
- *    this row reads `--lat-text-subtle`, a colour sized for Lattice's
- *    *neutral* surfaces, not an accent wash — a pairing no ledger row,
- *    chromatic triple or severity triple measures. Contrast 2.2:1.
- * 2. `--lat-wash` — the same neutral overlay the default Badge's own tint
- *    already uses, on the theory that stacking two instances of the same
- *    token would land on the pairing the severity-minor tint row measures.
- *    It does not: the row's wash and the Badge's own wash compound into a
- *    *third*, still-unmeasured surface, better but still novel. Contrast
- *    2.85:1.
- *
- * Both are instances of one rule: a neutral-variant component placed on
- * *any* added tint is an unmeasured pairing, because the ledger measures
- * token pairs, not page compositions, and cannot enumerate every surface a
- * composition might invent. The only pairing this row's `Badge` is
- * guaranteed to match a ledger row on is the one every other default
- * `Badge` on this page already uses: `--lat-text-subtle` directly on the
- * `Card`'s own `--lat-bg-raised`, no overlay in between — "muted-foreground
- * on card" (3.67:1, an accepted, documented failure).
- *
- * "Active" still reads without it: the source bundle's own primary signal is
- * the `ChevronRight` turning accent-coloured (`system-page.tsx`), which
- * this page already does and the `Tag`/`Badge` never picks up in the
- * source either, active row or not.
- */
-
-.system-page__palette-spacer {
-  display: inline-block;
-  inline-size: 11px;
-}
-
-.system-page__palette-name {
-  flex: 1;
-  color: var(--lat-text);
-  font-family: var(--lat-text-code-font-family);
-  font-size: var(--lat-text-code-font-size);
-}
-
-/* ─── Motion ───────────────────────────────────────────────────────────── */
-
-.system-page__motion-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lat-space-1);
-}
-
-.system-page__motion-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lat-space-5);
-  padding: var(--lat-space-3) 0;
-}
-
-.system-page__motion-label {
-  flex: 0 0 6rem;
-  font-family: var(--lat-text-ui-font-family);
-  font-size: var(--lat-text-ui-font-size);
-}
-
-.system-page__motion-track {
-  position: relative;
-  flex: 1;
-  block-size: 1px;
-  background: var(--lat-border);
-}
-
-/* Each duration preset reads its own `--lat-duration-*` token, and every
-   preset but Instant reads an easing token too — the row plays Lattice's
-   real motion scale rather than the bundle's arbitrary millisecond list. */
-.system-page__motion-dot {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: 0;
-  transform: translateY(-50%);
-  inline-size: var(--lat-space-3);
-  block-size: var(--lat-space-3);
-  border-radius: var(--lat-radius-full);
-  background: var(--lat-accent-solid);
-  transition-property: inset-inline-start;
-  transition-timing-function: var(--lat-easing-out);
-}
-
-.system-page__motion-dot[data-duration='instant'] {
-  transition-duration: var(--lat-duration-instant);
-}
-.system-page__motion-dot[data-duration='swift'] {
-  transition-duration: var(--lat-duration-swift);
-}
-.system-page__motion-dot[data-duration='default'] {
-  transition-duration: var(--lat-duration-default);
-}
-.system-page__motion-dot[data-duration='deliberate'] {
-  transition-duration: var(--lat-duration-deliberate);
-}
-.system-page__motion-dot[data-duration='expressive'] {
-  transition-duration: var(--lat-duration-expressive);
-}
-.system-page__motion-dot[data-easing='in-out'] {
-  transition-timing-function: var(--lat-easing-in-out);
-}
-
-.system-page__motion-dot[data-playing] {
-  inset-inline-start: calc(100% - var(--lat-space-3));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -577,7 +50,7 @@
 /* ─── Nav ──────────────────────────────────────────────────────────────── */
 
 /*
- * The stacking order for every sticky chrome element on these pages.
+ * The landing navigation sits above positioned page content while scrolling.
  *
  * `position: sticky` alone is not enough. A sticky element with `z-index: auto`
  * paints in DOM order against other positioned elements, so anything later in
@@ -590,9 +63,7 @@
  * no component in the library positions itself, so the token package has no
  * layering scale to draw on.
  */
-.landing-page__nav,
-.system-page__sidebar,
-.system-page__topbar {
+.landing-page__nav {
   z-index: 50;
 }
 
@@ -667,6 +138,18 @@
   padding: var(--lat-space-0-5) var(--lat-space-1-5);
   font-size: var(--lat-font-size-3xs);
   letter-spacing: var(--lat-letter-spacing-wider);
+}
+
+@media (width < 25rem) {
+  .landing-page__nav-inner {
+    gap: var(--lat-space-2);
+    padding-inline: var(--lat-space-4);
+  }
+
+  .landing-page__logo-text,
+  .landing-page__brand .lat-badge {
+    display: none;
+  }
 }
 
 /* The source's own nav links (`DECISIONS.md`, `How it works`) are
@@ -760,12 +243,13 @@
 /* `pt-20 pb-24`: asymmetric, not the even `padding-block` every other
    section on this page uses. */
 .landing-page__hero {
+  overflow-x: clip;
   padding-block: var(--lat-space-20) var(--lat-space-24);
 }
 
 .landing-page__hero-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
   gap: var(--lat-space-12);
   align-items: center;
 }
@@ -1327,8 +811,7 @@
    (10% opacity) numeral — a bespoke decorative treatment with no role or
    token in Lattice's type scale. Rather than inventing a second appearance
    exception beyond the sanctioned display role, the index reads as a compact
-   meta-style label instead, the same construction `system-page__section-index`
-   uses for its "00"/"01" markers. Recorded in the gap list. */
+   meta-style label instead. Recorded in the gap list. */
 .landing-page__step-index {
   display: block;
   margin-block-end: var(--lat-space-3);
@@ -1448,7 +931,7 @@
 
 .landing-page__why-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
   gap: var(--lat-space-12);
   align-items: start;
 }
@@ -1600,6 +1083,19 @@
 .landing-page__why-grid .landing-page__bool-x {
   color: var(--lat-text-subtle);
   opacity: 0.3;
+}
+
+@media (width < 25rem) {
+  .landing-page__why-grid .lat-table {
+    table-layout: fixed;
+    inline-size: 100%;
+  }
+
+  .landing-page__why-grid .lat-table__header,
+  .landing-page__why-grid .lat-table__cell {
+    padding-inline: var(--lat-space-1);
+    overflow-wrap: anywhere;
+  }
 }
 
 /* ─── v1 scope ─────────────────────────────────────────────────────────── */
