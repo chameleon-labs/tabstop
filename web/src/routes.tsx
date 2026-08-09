@@ -89,14 +89,17 @@ export const routes: RouteObject[] = [
               return {element: <Share />};
             },
           },
-          // Public: the rate-limit offer on the home screen links here, and it
-          // is the one link this app shows to someone who is not signed in and
-          // has just been told to stop.
           {
             path: 'signup',
             lazy: async () => {
               const {Signup} = await import('./screens/modules/account/pages/Signup');
-              return {element: <Signup />};
+              return {
+                element: (
+                  <RequireAnonymous>
+                    <Signup />
+                  </RequireAnonymous>
+                ),
+              };
             },
           },
           {path: '*', element: <NotFound />},

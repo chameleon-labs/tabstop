@@ -1,25 +1,101 @@
+import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {Button, Callout, TextField} from '@chameleon-labs/lattice-react';
+import {Link, useNavigate} from 'react-router';
+import {AlertCircle} from '@/screens/components/Icons';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import {AuthShell} from '../../components/AuthShell';
+import {PasswordField} from '../../components/PasswordField';
+import {authFailureMessage} from '../../failure';
+import {useSignup} from '../../mutations';
+import {validateSignup, type Credentials} from '../../validation';
 
-/**
- * Placeholder, and it exists now because #19 links here.
- *
- * The 429 offer is the product's best conversion moment - someone who has
- * audited enough pages to exhaust the anonymous limit - and it pointed at a
- * route that did not exist, so the most motivated visitor the product will ever
- * see landed on a 404. A placeholder that says what is coming is a poor
- * destination; a 404 is a broken one.
- *
- * The real screen needs its own issue: account creation, the #10 session
- * cookie, and the "track this page" flow that carries the audited URL through
- * signup so it is not retyped.
- */
 export const Signup = (): React.JSX.Element => {
+  const [credentials, setCredentials] = useState<Credentials>({email: '', password: ''});
+  const [submitted, setSubmitted] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const signup = useSignup();
+  const navigate = useNavigate();
+  const errors = submitted ? validateSignup(credentials) : {};
+
   useDocumentTitle('Create an account');
 
+  useEffect(() => {
+    if (signup.error !== null) {
+      alertRef.current?.focus();
+    }
+  }, [signup.error]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    setSubmitted(true);
+
+    const nextErrors = validateSignup(credentials);
+    if (nextErrors.email !== undefined) {
+      emailRef.current?.focus();
+      return;
+    }
+    if (nextErrors.password !== undefined) {
+      passwordRef.current?.focus();
+      return;
+    }
+
+    const succeeded = await signup.mutateAsync(credentials).then(
+      () => true,
+      () => false,
+    );
+    if (!succeeded) {
+      return;
+    }
+    await navigate('/dashboard', {replace: true});
+  };
+
   return (
-    <section>
-      <h1>Create an account</h1>
-      <p>Accounts are not open yet. Audits stay free and anonymous in the meantime.</p>
-    </section>
+    <AuthShell
+      title="Create an account"
+      subtitle="Enter your details to get started."
+      footer={
+        <>
+          Already have an account? <Link to="/login">Log in</Link>
+        </>
+      }
+    >
+      {signup.error === null ? null : (
+        <Callout ref={alertRef} tabIndex={-1} variant="danger" icon={<AlertCircle size="sm" />} live="assertive">
+          {authFailureMessage(signup.error)}
+        </Callout>
+      )}
+      <form noValidate onSubmit={submit}>
+        <TextField
+          ref={emailRef}
+          label="Email address"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={credentials.email}
+          {...(errors.email === undefined ? {} : {error: errors.email})}
+          disabled={signup.isPending}
+          onChange={(event) => {
+            setCredentials((current) => ({...current, email: event.target.value}));
+          }}
+        />
+        <PasswordField
+          ref={passwordRef}
+          label="Password"
+          description="12–200 characters"
+          autoComplete="new-password"
+          value={credentials.password}
+          {...(errors.password === undefined ? {} : {error: errors.password})}
+          disabled={signup.isPending}
+          onChange={(event) => {
+            setCredentials((current) => ({...current, password: event.target.value}));
+          }}
+        />
+        <Button type="submit" variant="primary" disabled={signup.isPending}>
+          Create account
+        </Button>
+      </form>
+    </AuthShell>
   );
 };

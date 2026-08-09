@@ -71,6 +71,22 @@ describe('the route table', () => {
     expect(screen.queryByRole('heading', {level: 1, name: 'Log in'})).not.toBeInTheDocument();
   });
 
+  it('resolves /signup for a signed-out visitor', async () => {
+    renderAt('/signup');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
+    expect(screen.getByRole('button', {name: 'Create account'})).toBeVisible();
+  });
+
+  it('redirects a signed-in visitor away from /signup', async () => {
+    withSession();
+
+    renderAt('/signup');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(screen.queryByRole('heading', {level: 1, name: 'Create an account'})).not.toBeInTheDocument();
+  });
+
   it('sends a signed-out visitor away from a guarded route', async () => {
     renderAt('/dashboard');
 
