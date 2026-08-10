@@ -95,25 +95,6 @@
   margin-inline-end: auto;
 }
 
-.landing-page__logo-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: var(--lat-space-6);
-  block-size: var(--lat-space-6);
-  background: var(--lat-accent-solid);
-  color: var(--lat-on-solid);
-  border-radius: var(--lat-radius-none);
-  font-family: var(--lat-text-code-font-family);
-  /* `text-[11px]` — the meta role's own primitive size, not the nearest
-       eyebrow/meta *role* token (which pairs 11px with mono, tracking and a
-       muted colour this mark doesn't want). `--lat-font-size-2xs` is the exact
-       match here, unlike the `3xs` (10px) stand-ins used elsewhere in this
-       file for literal 9px/10px sizes with no rung of their own. */
-  font-size: var(--lat-font-size-2xs);
-  font-weight: var(--lat-font-weight-bold);
-}
-
 /* `font-bold text-sm … tracking-tight` (14px/700/-0.35px) — the ambient
    body size (16px, no tracking) everywhere this text isn't overridden. */
 .landing-page__logo-text {

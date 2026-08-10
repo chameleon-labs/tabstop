@@ -63,20 +63,6 @@
   color: var(--lat-text);
 }
 
-.auth-page__brand-mark {
-  display: grid;
-  inline-size: var(--lat-space-8);
-  block-size: var(--lat-space-8);
-  place-items: center;
-  background: var(--lat-solid);
-  border-radius: var(--lat-radius-sm);
-  color: var(--lat-on-solid);
-  font-family: var(--lat-font-mono);
-  font-size: var(--lat-font-size-sm);
-  font-weight: var(--lat-font-weight-bold);
-  line-height: var(--lat-line-height-none);
-}
-
 .auth-page h1 {
   margin: var(--lat-space-6) 0 0;
   font-family: var(--lat-text-h2-font-family);

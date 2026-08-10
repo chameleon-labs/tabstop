@@ -1,0 +1,26 @@
+.brand-mark {
+  display: grid;
+  place-items: center;
+  background: var(--lat-solid);
+  border-radius: var(--lat-radius-sm);
+  color: var(--lat-on-solid);
+  font-family: var(--lat-font-mono);
+  font-weight: var(--lat-font-weight-bold);
+  line-height: var(--lat-line-height-none);
+}
+
+.brand-mark[data-size='md'] {
+  inline-size: var(--lat-space-8);
+  block-size: var(--lat-space-8);
+  font-size: var(--lat-font-size-sm);
+}
+
+/* `--lat-font-size-2xs` is the meta role's own primitive size (11px), not the
+   `meta` *role* token - which pairs 11px with tracking and a muted colour this
+   mark does not want. Carried over from the landing header, where the pairing
+   was chosen against the Lattice reference page. */
+.brand-mark[data-size='sm'] {
+  inline-size: var(--lat-space-6);
+  block-size: var(--lat-space-6);
+  font-size: var(--lat-font-size-2xs);
+}

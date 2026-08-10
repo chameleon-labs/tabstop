@@ -1,6 +1,7 @@
 import {useId, type ReactNode} from 'react';
 import {Card, CardBody} from '@chameleon-labs/lattice-react';
 import {Link} from 'react-router';
+import {BrandMark} from '@/screens/components/BrandMark';
 import './auth-shell.css';
 
 export type AuthShellProps = {
@@ -17,9 +18,7 @@ export const AuthShell = ({title, subtitle, footer, children}: AuthShellProps): 
     <section className="auth-page" aria-labelledby={headingId}>
       <div className="auth-page__panel">
         <Link to="/" className="auth-page__brand">
-          <span className="auth-page__brand-mark" aria-hidden="true">
-            t/
-          </span>
+          <BrandMark />
           <span>tabstop</span>
         </Link>
         <h1 id={headingId}>{title}</h1>
