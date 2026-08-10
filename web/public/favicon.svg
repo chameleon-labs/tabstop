@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="tabstop">
+  <!--
+    The `t/` brand mark, matching `src/screens/components/BrandMark`.
+
+    The glyphs are OUTLINES, not text. A favicon renders in a context that
+    loads no external resources, so the JetBrains Mono the mark uses on screen
+    is unreachable here, and a text element would silently fall back to the
+    platform's default monospace. Traced from the same variable font the app
+    ships (`@chameleon-labs/lattice-tokens`, JetBrains Mono, wght 700, OFL) and
+    scaled to 75% of the tile, since a favicon is read at 16px where the in-app
+    14px/32px ratio leaves the glyphs too small.
+
+    Colours are the resolved sRGB of the accent tokens `lat-accent-solid` and
+    `lat-accent-on-solid`. Both are named here WITHOUT their CSS custom-property
+    prefix on purpose: that prefix is a double hyphen, which XML forbids inside
+    a comment, and including it stops this file from parsing at all.
+      light  oklch(0.630364 0.166245 128.60811)  tile #6A9B00, glyph #FFFFFF
+      dark   oklch(0.90537 0.199002 120.264194)  tile #CFF23A, glyph #0C0C14
+    Resolved rather than left as `oklch()`, which is not dependable in a favicon
+    rendering context; these are static values, so nothing is lost by it.
+  -->
+  <style>
+    :root { --tile: #6A9B00; --glyph: #FFFFFF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --tile: #CFF23A; --glyph: #0C0C14; }
+    }
+  </style>
+  <rect width="32" height="32" rx="3" fill="var(--tile)"/>
+  <path fill="var(--glyph)" d="M10.99 23.74Q9.23 23.74 8.22 22.74Q7.21 21.73 7.21 19.98V14.65H4V11.91H7.21V8.58H10.25V11.91H14.9V14.65H10.25V19.89Q10.25 20.38 10.51 20.7Q10.77 21.01 11.26 21.01H14.79V23.74ZM17.41 26.11 24.86 5.89H28L20.55 26.11Z"/>
+</svg>

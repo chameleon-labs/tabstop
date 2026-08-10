@@ -33,6 +33,7 @@ import {
   X,
 } from '@/screens/components/Icons';
 import type {IconProps} from '@/screens/components/Icons';
+import {BrandMark} from '@/screens/components/BrandMark';
 import {ScoreArc} from './LandingParts/score-arc';
 import {ScoreChart} from './LandingParts/score-chart';
 import './landing.css';
@@ -247,9 +248,7 @@ const Nav = memo(() => {
     <header className="landing-page__nav">
       <div className="landing-page__nav-inner">
         <div className="landing-page__brand">
-          <span className="landing-page__logo-mark" aria-hidden="true">
-            t/
-          </span>
+          <BrandMark size="sm" />
           <span className="landing-page__logo-text">tabstop</span>
           <Badge variant="default">beta</Badge>
         </div>
@@ -629,9 +628,7 @@ const Footer = memo(() => (
   <footer className="landing-page__footer">
     <Section className="landing-page__footer-inner">
       <div className="landing-page__brand">
-        <span className="landing-page__logo-mark" aria-hidden="true">
-          t/
-        </span>
+        <BrandMark size="sm" />
         <span className="landing-page__footer-copy">tabstop — MIT license</span>
       </div>
 
