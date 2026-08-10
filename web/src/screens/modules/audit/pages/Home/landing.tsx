@@ -628,9 +628,7 @@ const Footer = memo(() => (
   <footer className="landing-page__footer">
     <Section className="landing-page__footer-inner">
       <div className="landing-page__brand">
-        <span className="landing-page__logo-mark" aria-hidden="true">
-          t/
-        </span>
+        <BrandMark size="sm" />
         <span className="landing-page__footer-copy">tabstop — MIT license</span>
       </div>
 
