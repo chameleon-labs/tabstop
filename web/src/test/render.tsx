@@ -2,7 +2,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {render, type RenderResult} from '@testing-library/react';
 import {useState} from 'react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
-import {routes} from '../routes';
+import {makeRoutes} from '../routes';
 
 export type AppMemoryRouter = ReturnType<typeof createMemoryRouter>;
 
@@ -54,19 +54,22 @@ export const wrapper = Providers;
 /**
  * The app's real route table, mounted at a chosen path.
  *
- * `routes` is imported rather than rebuilt here on purpose: a test that
- * declares its own routes asserts that React Router works, which is not in
+ * `makeRoutes` is called rather than a table rebuilt here on purpose: a test
+ * that declares its own routes asserts that React Router works, which is not in
  * doubt. This asserts that OUR configuration resolves the way we think.
  *
  * A fresh `QueryClient` per call, because a shared cache turns one test's fetch
  * into the next test's silent cache hit - and the failure then appears in
- * whichever test happened to run second.
+ * whichever test happened to run second. The SAME one reaches the guards and
+ * the provider, as in `main.tsx`: two would make a guarded page cost two
+ * requests here and one in production, which is the wrong way round.
  */
 export const renderAt = (path: string): RenderResult & {router: AppMemoryRouter} => {
-  const router = createMemoryRouter(routes, {initialEntries: [path]});
+  const queryClient = testQueryClient();
+  const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: [path]});
 
   const result = render(
-    <QueryClientProvider client={testQueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );

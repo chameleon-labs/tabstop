@@ -5,7 +5,7 @@ import type * as reactRouter from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {App} from './app';
 import {makeQueryClient} from './api/query-client';
-import {routes} from './routes';
+import {makeRoutes} from './routes';
 
 /**
  * The module is spied on rather than replaced: `RouterProvider` and everything
@@ -49,7 +49,8 @@ describe('App', () => {
   });
 
   const renderApp = (): void => {
-    render(<App queryClient={makeQueryClient()} router={createBrowserRouter(routes)} />);
+    const queryClient = makeQueryClient();
+    render(<App queryClient={queryClient} router={createBrowserRouter(makeRoutes(queryClient))} />);
   };
 
   it("renders the app at the browser's current location", async () => {
@@ -63,8 +64,8 @@ describe('App', () => {
   it('provides a query client its descendants can actually use', async () => {
     // Mounted at a GUARDED route on purpose. Nothing on the home screen calls
     // `useQuery`, so rendering there passes with the provider deleted - which
-    // is exactly what the first version of this test did. `/dashboard` goes
-    // through `RequireAuth` into `useSession`, where a missing provider throws.
+    // is exactly what the first version of this test did. `/dashboard` renders
+    // the header's `useSession`, where a missing provider throws.
     window.history.pushState({}, '', '/dashboard');
 
     renderApp();
@@ -83,7 +84,7 @@ describe('App', () => {
     // which subscribes to browser history. Constructing one anywhere inside this
     // subtree therefore leaves a second router listening to `popstate` with no
     // owner and no way to dispose it. A lazy initialiser does not save you.
-    const router = createMemoryRouter(routes, {initialEntries: ['/']});
+    const router = createMemoryRouter(makeRoutes(makeQueryClient()), {initialEntries: ['/']});
     createBrowserRouterSpy.mockClear();
 
     render(

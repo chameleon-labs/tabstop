@@ -2,7 +2,7 @@ import {QueryClientProvider} from '@tanstack/react-query';
 import {renderToString} from 'react-dom/server';
 import {StaticRouterProvider, createStaticHandler, createStaticRouter} from 'react-router';
 import {makeQueryClient} from './api/query-client';
-import {routes} from './routes';
+import {makeRoutes} from './routes';
 
 /**
  * The app's HTML for a path, rendered at build time by `scripts/prerender.ts`.
@@ -14,11 +14,13 @@ import {routes} from './routes';
  * `StaticRouterProvider` defaults to `hydrate: true`, so the returned markup
  * also carries a `<script>window.__staticRouterHydrationData = …</script>`
  * inside `#root`, which `createBrowserRouter` reads on the client and discards.
- * Nothing on `/` has a loader today, so the payload is `null` and this is inert
- * - but it is the correct default to leave in place for the day one appears on
- * this branch, rather than something to strip out now for being unused.
+ * `/` is the only prerendered path and its route has no loader, so the payload
+ * stays empty - guarded routes have loaders, but none of them is prerendered,
+ * and a build-time `GET /api/me` is exactly what that must not become.
  */
 export const render = async (url: string): Promise<string> => {
+  const queryClient = makeQueryClient();
+  const routes = makeRoutes(queryClient);
   const handler = createStaticHandler(routes);
   const context = await handler.query(new Request(`http://localhost${url}`));
 
@@ -31,7 +33,7 @@ export const render = async (url: string): Promise<string> => {
   const router = createStaticRouter(routes, context);
 
   return renderToString(
-    <QueryClientProvider client={makeQueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <StaticRouterProvider router={router} context={context} />
     </QueryClientProvider>,
   );

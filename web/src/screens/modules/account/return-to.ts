@@ -1,24 +1,22 @@
-import {RETURN_TO_KEY} from './components/RequireAuth';
+export const RETURN_TO_KEY = 'from';
 
 const LOCAL_ORIGIN = 'https://tabstop.invalid';
+const FALLBACK = '/dashboard';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+export const returnToSearch = (destination: string): string =>
+  `?${new URLSearchParams({[RETURN_TO_KEY]: destination}).toString()}`;
 
-export const destinationFrom = (state: unknown): string => {
-  if (!isRecord(state)) {
-    return '/dashboard';
-  }
+export const destinationFrom = (search: string): string => {
+  const destination = new URLSearchParams(search).get(RETURN_TO_KEY);
 
-  const destination = state[RETURN_TO_KEY];
-  if (typeof destination !== 'string' || !destination.startsWith('/') || destination.startsWith('//')) {
-    return '/dashboard';
+  if (destination === null || !destination.startsWith('/') || destination.startsWith('//')) {
+    return FALLBACK;
   }
   if (destination.includes('\\')) {
-    return '/dashboard';
+    return FALLBACK;
   }
   if (new URL(destination, LOCAL_ORIGIN).origin !== LOCAL_ORIGIN) {
-    return '/dashboard';
+    return FALLBACK;
   }
   return destination;
 };

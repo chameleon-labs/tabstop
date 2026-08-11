@@ -5,7 +5,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {jsonResponse} from './test/http';
 import {makeQueryClient} from './api/query-client';
 import {renderAt} from './test/render';
-import {routes} from './routes';
+import {makeRoutes} from './routes';
+import {destinationFrom, returnToSearch} from './screens/modules/account/return-to';
 import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
@@ -62,8 +63,8 @@ describe('the route table', () => {
 
   it('disables session fetching only while moving through a public share route', async () => {
     withSession();
-    const router = createMemoryRouter(routes, {initialEntries: ['/dashboard']});
     const queryClient = makeQueryClient();
+    const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: ['/dashboard']});
     render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
@@ -130,6 +131,69 @@ describe('the route table', () => {
     expect(screen.queryByRole('heading', {name: 'Dashboard'})).not.toBeInTheDocument();
   });
 
+  it('records the complete destination, so login can send them back', async () => {
+    // A loader cannot attach history state to a redirect, so the destination
+    // travels in the query string. Without it, a deep link into a guarded page
+    // becomes the dashboard the moment the visitor signs in.
+    const {router} = renderAt('/pages/42?days=30#history');
+
+    await screen.findByRole('heading', {level: 1, name: 'Log in'});
+
+    expect(router.state.location.pathname).toBe('/login');
+    expect(destinationFrom(router.state.location.search)).toBe('/pages/42?days=30#history');
+  });
+
+  it('replaces the guarded entry rather than pushing over it', async () => {
+    // Without `replace`, Back from login returns to the guarded route, which
+    // redirects to login again: the visitor is trapped and Back looks broken.
+    //
+    // Two entries deep, sitting on the second, because that is the only shape
+    // that can tell the two apart. From a single entry there is nowhere to go
+    // back TO, so the assertion holds however the redirect was made - which is
+    // how the vacuous first version of this test was caught.
+    const queryClient = makeQueryClient();
+    const router = createMemoryRouter(makeRoutes(queryClient), {
+      initialEntries: ['/', '/dashboard'],
+      initialIndex: 1,
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole('heading', {level: 1, name: 'Log in'});
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/');
+    });
+    expect(screen.queryByRole('heading', {name: 'Log in'})).not.toBeInTheDocument();
+  });
+
+  it('sends a signed-in visitor to the destination they were reaching for', async () => {
+    withSession();
+
+    const {router} = renderAt(`/login${returnToSearch('/pages/42?days=30#history')}`);
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Page 42'})).toBeVisible();
+    expect(router.state.location.pathname).toBe('/pages/42');
+  });
+
+  it('asks for the session once, however many consumers a guarded page has', async () => {
+    // The loader and the header both need this answer. Two caches make it two
+    // round trips on every guarded navigation; the loader's own is the one
+    // that would go unnoticed, since the screen still renders.
+    withSession();
+
+    renderAt('/dashboard');
+    await screen.findByRole('heading', {level: 1, name: 'Dashboard'});
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+  });
+
   it('does not treat a broken /me as being signed out', async () => {
     // The failure mode this exists to prevent: a 500 from the session endpoint
     // silently reading as "logged out" and bouncing every signed-in user to a
@@ -180,7 +244,7 @@ describe('the route table', () => {
 });
 
 describe('what may be split out of the initial chunk', () => {
-  const inner = routes[0]?.children?.[0]?.children ?? [];
+  const inner = makeRoutes(makeQueryClient())[0]?.children?.[0]?.children ?? [];
 
   it('keeps the index route eager, because it is the prerendered one', () => {
     // The invariant the prerendering rests on. A lazy Home would leave
