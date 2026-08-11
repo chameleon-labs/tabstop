@@ -3,8 +3,9 @@ import {act, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {routes} from '@/routes';
+import {makeRoutes} from '@/routes';
 import {jsonResponse} from '@/test/http';
+import {returnToSearch} from '../../return-to';
 import {Signup} from './index';
 
 const account = {id: '1', email: 'person@example.com', alertThreshold: 5};
@@ -22,14 +23,15 @@ describe('Signup', () => {
     vi.unstubAllGlobals();
   });
 
-  const openSignup = async (state?: unknown) => {
-    const router = createMemoryRouter(routes, {initialEntries: [{pathname: '/signup', state}]});
+  const openSignup = async (destination?: string) => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {retry: false, staleTime: 30_000},
         mutations: {retry: false},
       },
     });
+    const path = destination === undefined ? '/signup' : `/signup${returnToSearch(destination)}`;
+    const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: [path]});
     render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
@@ -225,7 +227,7 @@ describe('Signup', () => {
   it('returns to the full recorded destination after confirming the session', async () => {
     const user = userEvent.setup();
     succeedSignup();
-    const {router} = await openSignup({from: '/pages/42?days=30#history'});
+    const {router} = await openSignup('/pages/42?days=30#history');
     await enterCredentials(user);
 
     await user.click(screen.getByRole('button', {name: 'Create account'}));
@@ -238,13 +240,13 @@ describe('Signup', () => {
 
   it('carries the recorded destination back to login', async () => {
     const user = userEvent.setup();
-    const state = {from: '/pages/42?days=30#history'};
-    const {router} = await openSignup(state);
+    const destination = '/pages/42?days=30#history';
+    const {router} = await openSignup(destination);
 
     await user.click(within(screen.getByRole('main')).getByRole('link', {name: 'Log in'}));
 
     expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
-    expect(router.state.location.state).toEqual(state);
+    expect(router.state.location.search).toBe(returnToSearch(destination));
   });
 
   it('replaces the signup history entry after a successful standalone signup', async () => {

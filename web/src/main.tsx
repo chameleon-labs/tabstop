@@ -3,7 +3,7 @@ import {createBrowserRouter} from 'react-router';
 import {App} from './app';
 import {makeQueryClient} from './api/query-client';
 import {mountApp} from './hydrate';
-import {routes} from './routes';
+import {makeRoutes} from './routes';
 // Tokens before components, and both before the app's own sheet. `lattice.css`
 // declares the custom properties `styles.css` reads, so the reverse order
 // leaves every colour and spacing value resolving to nothing.
@@ -24,13 +24,17 @@ if (container === null) {
  * initialiser, both are double-invoked in development - that means two routers
  * listening and one abandoned. Constructed once at the entry point, there is
  * exactly one for the life of the page.
+ *
+ * One client, shared: the route guards read the session through it and the
+ * header reads the same entry, so a guarded page costs one `/api/me`.
  */
-const router = createBrowserRouter(routes);
+const queryClient = makeQueryClient();
+const router = createBrowserRouter(makeRoutes(queryClient));
 
 mountApp(
   container,
   <StrictMode>
-    <App queryClient={makeQueryClient()} router={router} />
+    <App queryClient={queryClient} router={router} />
   </StrictMode>,
   window.location.pathname,
 );

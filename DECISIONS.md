@@ -6,6 +6,57 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-10 — routes are gated by loaders, and the return-to destination moves into the URL
+
+`RequireAuth` and `RequireAnonymous` wrapped the guarded screens and decided
+once mounted. A gate is a component, so the router had already matched the
+route, resolved its lazy chunk and begun rendering before anything asked who
+was signed in — a signed-out visitor opening `/dashboard` downloaded the
+dashboard chunk, mounted it, and was redirected out of it.
+
+**Route loaders.** A `loader` runs before the route renders and may answer with
+a redirect instead, so the decision happens at the point where it can still
+prevent work. `screens/modules/account/guards.ts` exports `requireSession` and
+`requireAnonymous` as loader factories over the `QueryClient`; `routes.tsx`
+became `makeRoutes(queryClient)` to hand it in, since a loader has no hooks to
+reach a provider with.
+
+**The guards read the session through the shared cache**, not through their own
+request. `AccountNavigation` asks the same question milliseconds later, and a
+loader holding its own copy makes every guarded navigation two round trips
+while nothing on screen looks wrong. `sessionQueryOptions` now carries its own
+`staleTime` for the same reason — without a stale window the loader fills the
+cache and the header immediately refetches, which is the same two requests
+through a different door.
+
+**The return-to destination moved from history state into the query string, and
+that is the part with a security consequence.** A loader answers with a
+`Response`, and a `Response` has nowhere to carry router state, so `?from=` is
+the only channel left. In history state the value was ours to write; in the URL
+anyone can type it. The validation in `return-to.ts` did not change, but it
+stopped being defence in depth and became the only thing preventing an open
+redirect on a login page — which is a phishing primitive, because the link
+carries a real origin and the visitor arrives already trusting it.
+
+**Rejected: keeping the components and adding loaders alongside.** Two places
+deciding the same thing, and the component would still render after the loader
+had already answered.
+
+**Rejected: `redirect` for `replace`.** Pushing leaves the guarded route behind
+Back, which redirects to login again — the visitor is trapped and the browser's
+Back button looks broken.
+
+**A 500 is still not a signed-out visitor**, which is the invariant this change
+most easily could have lost. `useSession` maps 401 to `null` and leaves
+everything else an error; both guards preserve that, so a broken backend
+reaches the error boundary instead of bouncing every signed-in user to a login
+page that could not work either.
+
+**One thing found by writing the tests:** the loader's `url` argument is not
+`new URL(request.url)`. The router strips the fragment on the way into the
+`Request` and restores it on `url`, so reading the Request would have silently
+dropped the anchor from every recorded destination.
+
 ## 2026-08-08 — the landing page is prerendered at build time, not server-rendered
 
 The home page was blank until ~115 kB of JavaScript, gzipped, arrived: `index.html` was

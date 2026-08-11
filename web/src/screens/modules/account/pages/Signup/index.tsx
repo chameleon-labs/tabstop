@@ -51,7 +51,7 @@ export const Signup = (): React.JSX.Element => {
     if (!succeeded) {
       return;
     }
-    await navigate(destinationFrom(location.state), {replace: true});
+    await navigate(destinationFrom(location.search), {replace: true});
   };
 
   return (
@@ -60,10 +60,7 @@ export const Signup = (): React.JSX.Element => {
       subtitle="Enter your details to get started."
       footer={
         <>
-          Already have an account?{' '}
-          <Link to="/login" state={location.state}>
-            Log in
-          </Link>
+          Already have an account? <Link to={{pathname: '/login', search: location.search}}>Log in</Link>
         </>
       }
     >

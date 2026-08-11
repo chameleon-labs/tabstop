@@ -7,7 +7,7 @@ import {App} from './app';
 import {makeQueryClient} from './api/query-client';
 import {render as prerender} from './entry-server';
 import {mountApp} from './hydrate';
-import {routes} from './routes';
+import {makeRoutes} from './routes';
 
 describe('the prerendered landing page', () => {
   afterEach(() => {
@@ -24,13 +24,14 @@ describe('the prerendered landing page', () => {
     container.innerHTML = await prerender('/');
     document.body.append(container);
 
-    const router = createBrowserRouter(routes);
+    const queryClient = makeQueryClient();
+    const router = createBrowserRouter(makeRoutes(queryClient));
 
     act(() => {
       mountApp(
         container,
         <StrictMode>
-          <App queryClient={makeQueryClient()} router={router} />
+          <App queryClient={queryClient} router={router} />
         </StrictMode>,
         '/',
       );

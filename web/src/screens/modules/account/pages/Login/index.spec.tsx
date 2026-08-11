@@ -3,8 +3,9 @@ import {act, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {routes} from '@/routes';
+import {makeRoutes} from '@/routes';
 import {jsonResponse} from '@/test/http';
+import {returnToSearch} from '../../return-to';
 import {Login} from './index';
 
 const account = {id: '1', email: 'person@example.com', alertThreshold: 5};
@@ -22,14 +23,15 @@ describe('Login', () => {
     vi.unstubAllGlobals();
   });
 
-  const openLogin = async (state?: unknown) => {
-    const router = createMemoryRouter(routes, {initialEntries: [{pathname: '/login', state}]});
+  const openLogin = async (destination?: string) => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: {retry: false, staleTime: 30_000},
         mutations: {retry: false},
       },
     });
+    const path = destination === undefined ? '/login' : `/login${returnToSearch(destination)}`;
+    const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: [path]});
     render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
@@ -241,7 +243,7 @@ describe('Login', () => {
   it('returns to the full recorded destination after confirming the session', async () => {
     const user = userEvent.setup();
     succeedLogin();
-    const {router} = await openLogin({from: '/pages/42?days=30#history'});
+    const {router} = await openLogin('/pages/42?days=30#history');
     await enterCredentials(user);
 
     await user.click(screen.getByRole('button', {name: 'Log in'}));
@@ -254,13 +256,13 @@ describe('Login', () => {
 
   it('carries the recorded destination to account creation', async () => {
     const user = userEvent.setup();
-    const state = {from: '/pages/42?days=30#history'};
-    const {router} = await openLogin(state);
+    const destination = '/pages/42?days=30#history';
+    const {router} = await openLogin(destination);
 
     await user.click(screen.getByRole('link', {name: 'Create an account'}));
 
     expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
-    expect(router.state.location.state).toEqual(state);
+    expect(router.state.location.search).toBe(returnToSearch(destination));
   });
 
   it('chooses the recorded destination instead of relying on the anonymous-route fallback', async () => {
@@ -272,7 +274,7 @@ describe('Login', () => {
         {path: '/dashboard', element: <h1>Dashboard</h1>},
         {path: '/pages/:id', element: <h1>Recorded page</h1>},
       ],
-      {initialEntries: [{pathname: '/login', state: {from: '/pages/42?days=30#history'}}]},
+      {initialEntries: [`/login${returnToSearch('/pages/42?days=30#history')}`]},
     );
     const queryClient = new QueryClient({
       defaultOptions: {queries: {retry: false}, mutations: {retry: false}},

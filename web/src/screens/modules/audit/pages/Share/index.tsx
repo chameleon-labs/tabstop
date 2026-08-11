@@ -4,7 +4,7 @@ import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 /**
  * Placeholder. The public result page is #23.
  *
- * Unauthenticated and outside `RequireAuth` by design: the uuid is the only
+ * Unauthenticated and unguarded by design: the uuid is the only
  * credential, and requiring a session here would defeat the point of a link
  * someone can send to a colleague.
  */
