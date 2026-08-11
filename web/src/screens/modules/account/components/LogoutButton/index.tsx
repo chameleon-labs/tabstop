@@ -1,12 +1,12 @@
 import {Button, Callout} from '@chameleon-labs/lattice-react';
 import {useEffect, useRef} from 'react';
-import {useNavigate} from 'react-router';
 import {AlertCircle} from '@/screens/components/Icons';
 import {authFailureMessage} from '../../failure';
+import {useSignOut} from '../../hooks/use-sign-out';
 import type {LogoutMutation} from '../../mutations';
 
 export const LogoutButton = ({logout}: {logout: LogoutMutation}): React.JSX.Element => {
-  const navigate = useNavigate();
+  const signOut = useSignOut(logout);
   const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -14,16 +14,6 @@ export const LogoutButton = ({logout}: {logout: LogoutMutation}): React.JSX.Elem
       alertRef.current?.focus();
     }
   }, [logout.error]);
-
-  const signOut = async (): Promise<void> => {
-    const succeeded = await logout.mutateAsync().then(
-      () => true,
-      () => false,
-    );
-    if (succeeded) {
-      await navigate('/', {replace: true});
-    }
-  };
 
   return (
     <>

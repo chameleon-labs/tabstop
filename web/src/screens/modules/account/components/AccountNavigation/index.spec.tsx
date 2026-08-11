@@ -42,6 +42,22 @@ const renderNavigation = (queryClient = makeQueryClient()) => {
   return {queryClient, router};
 };
 
+/**
+ * Reaching "Log out" now costs a click: it lives inside the account menu the
+ * avatar opens, which is the point of #102 - one control in the header rather
+ * than three. Every assertion below is about what the menu leads to, so the
+ * opening is factored out rather than repeated.
+ */
+const openAccountMenu = async (): Promise<void> => {
+  await userEvent.click(screen.getByRole('button', {name: /Account menu/}));
+  await screen.findByRole('menu');
+};
+
+const clickLogOut = async (): Promise<void> => {
+  await openAccountMenu();
+  await userEvent.click(screen.getByRole('menuitem', {name: 'Log out'}));
+};
+
 describe('AccountNavigation', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -60,17 +76,33 @@ describe('AccountNavigation', () => {
     expect(await screen.findByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
     expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('href', '/signup');
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /Account menu/})).not.toBeInTheDocument();
   });
 
-  it('offers dashboard and logout only when an account is signed in', async () => {
+  it('offers dashboard and an account menu only when an account is signed in', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, account));
     renderNavigation();
 
     expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
-    expect(screen.getByRole('button', {name: 'Log out'})).toBeVisible();
+    // Named for the account, so a person with two of them can tell which
+    // window they are looking at without opening the menu.
+    expect(screen.getByRole('button', {name: `Account menu for ${account.email}`})).toBeVisible();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
+  });
+
+  it('keeps log out behind the menu rather than in the header', async () => {
+    // The header carries one control for the account, not three. A Log out
+    // sitting beside the avatar would be the shape this change removed.
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, account));
+    renderNavigation();
+    await screen.findByRole('link', {name: 'Dashboard'});
+
+    expect(screen.queryByRole('menuitem', {name: 'Log out'})).not.toBeInTheDocument();
+
+    await openAccountMenu();
+
+    expect(screen.getByRole('menuitem', {name: 'Log out'})).toBeVisible();
   });
 
   it('keeps an empty named navigation while the session is pending', () => {
@@ -143,7 +175,7 @@ describe('AccountNavigation', () => {
     const {router} = renderNavigation(queryClient);
     await screen.findByRole('link', {name: 'Dashboard'});
 
-    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await clickLogOut();
 
     act(() => {
       finishLogout();
@@ -151,6 +183,9 @@ describe('AccountNavigation', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+    // A button, not a menu item. Once `/api/logout` returns, `isRevoked` flips
+    // and the navigation swaps to `LogoutButton` for the confirmation window -
+    // the account menu is gone by this point, along with the account it named.
     expect(screen.getByRole('button', {name: 'Signing out…'})).toBeDisabled();
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
@@ -167,7 +202,7 @@ describe('AccountNavigation', () => {
     expect(queryClient.getQueryData(['pages'])).toBeUndefined();
     expect(router.state.location.pathname).toBe('/somewhere');
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', {name: 'Log out'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
@@ -189,14 +224,14 @@ describe('AccountNavigation', () => {
     const {router} = renderNavigation(queryClient);
     await screen.findByRole('link', {name: 'Dashboard'});
 
-    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await clickLogOut();
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveFocus();
     expect(queryClient.getQueryData(['pages'])).toBeUndefined();
     expect(router.state.location.pathname).toBe('/somewhere');
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', {name: 'Log out'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout', '/api/me']);
@@ -210,7 +245,7 @@ describe('AccountNavigation', () => {
     const {router} = renderNavigation(queryClient);
     await screen.findByRole('link', {name: 'Dashboard'});
 
-    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await clickLogOut();
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Could not revoke this session');
@@ -219,9 +254,13 @@ describe('AccountNavigation', () => {
     expect(queryClient.getQueryData(sessionKeys.me)).toEqual(account);
     expect(router.state.location.pathname).toBe('/somewhere');
     expect(screen.getByRole('link', {name: 'Dashboard'})).toBeVisible();
-    expect(screen.getByRole('button', {name: 'Log out'})).toBeEnabled();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout']);
+
+    // Retryable is the point of this test. At this level that means the header
+    // still offers the account at all; that the menu stays open behind the
+    // callout with a live Log out in it is `AccountMenu`'s own spec to assert.
+    expect(screen.getByRole('button', {name: `Account menu for ${account.email}`})).toBeEnabled();
   });
 });

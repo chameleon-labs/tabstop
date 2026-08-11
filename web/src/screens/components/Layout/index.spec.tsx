@@ -30,8 +30,8 @@ const renderLayout = (): QueryClient => {
   return queryClient;
 };
 
-/** A screen that brings its own header, main and footer - as the landing page does. */
-const renderOwnChrome = (): void => {
+/** A screen that brings its own `<main>` and footer - as the landing page does. */
+const renderOwnMain = (): void => {
   const router = createMemoryRouter(
     [
       {
@@ -40,12 +40,11 @@ const renderOwnChrome = (): void => {
         children: [
           {
             index: true,
-            handle: {ownChrome: true},
+            handle: {ownMain: true},
             element: (
+              // No header of its own: that is shared now, and supplying a
+              // second one is the two-banner bug this flag used to prevent.
               <div>
-                <header>
-                  <a href="/">a wordmark</a>
-                </header>
                 <main id="main" tabIndex={-1}>
                   <h1>A screen</h1>
                 </main>
@@ -88,13 +87,24 @@ describe('Layout', () => {
     });
   });
 
-  describe('when a screen brings its own chrome', () => {
+  it('carries the shell classes the sticky-footer column is written against', () => {
+    // jsdom computes no layout, so this ties the MARKUP to the stylesheet -
+    // which is the half that can rot. `site-header.css.spec.ts` asserts the
+    // rules exist; without this, dropping the class here leaves the landing
+    // footer floating on a short page and every test still green.
+    renderLayout();
+
+    expect(document.querySelector('.app-shell')).not.toBeNull();
+    expect(screen.getByRole('main')).toHaveClass('app-shell__main');
+  });
+
+  describe('when a screen brings its own main', () => {
     it('steps back, leaving exactly one of each landmark', async () => {
-      // The shell's header plus the screen's own produced two `banner`
-      // landmarks and two "tabstop" wordmarks, and the shell's `<main>` wrapped
-      // the screen's into a `<main>` inside a `<main>` - which is invalid, and
-      // gives the skip link two `#main` candidates to choose between.
-      renderOwnChrome();
+      // The shell's `<main>` wrapping the screen's own made a `<main>` inside a
+      // `<main>` - invalid, and it gives the skip link two `#main` candidates.
+      // The header is no longer part of this: it is shared, and the screen
+      // supplying one was the two-banner half of the bug.
+      renderOwnMain();
       await screen.findByRole('heading', {level: 1, name: 'A screen'});
 
       expect(screen.getAllByRole('banner')).toHaveLength(1);
@@ -104,7 +114,7 @@ describe('Layout', () => {
     });
 
     it('still has a #main for the skip link when the screen throws', async () => {
-      // The route still matches and its handle still says `ownChrome`, so the
+      // The route still matches and its handle still says `ownMain`, so the
       // shell steps back exactly as it would for a working screen - but what
       // renders is the error boundary, which is not the screen. Left alone that
       // produces an error page with no landmarks and a retained skip link
@@ -120,7 +130,7 @@ describe('Layout', () => {
             children: [
               {
                 errorElement: <RouteError />,
-                children: [{index: true, element: <Boom />, handle: {ownChrome: true}}],
+                children: [{index: true, element: <Boom />, handle: {ownMain: true}}],
               },
             ],
           },
@@ -143,7 +153,7 @@ describe('Layout', () => {
       // The screen supplies the landmarks; it does not supply the escape from
       // them. Dropping this with the header would take the skip link off the
       // one screen with the most chrome to skip.
-      renderOwnChrome();
+      renderOwnMain();
       await screen.findByRole('heading', {level: 1, name: 'A screen'});
 
       expect(screen.getByRole('link', {name: 'Skip to content'})).toHaveAttribute('href', '#main');
@@ -210,7 +220,9 @@ describe('Layout', () => {
     renderLayout();
 
     expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
-    expect(screen.getByRole('button', {name: 'Log out'})).toBeVisible();
+    // Log out moved inside the account menu; the header's signed-in control is
+    // the avatar that opens it.
+    expect(screen.getByRole('button', {name: /Account menu/})).toBeVisible();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
   });
 
@@ -245,7 +257,7 @@ describe('Layout', () => {
       expect(screen.getByRole('status')).toBeInTheDocument();
       expect(screen.getByRole('navigation', {name: 'Main'})).toBeEmptyDOMElement();
       expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /Account menu/})).not.toBeInTheDocument();
     });
   });
 
@@ -273,7 +285,7 @@ describe('Layout', () => {
           children: [
             {
               index: true,
-              handle: {ownChrome: true},
+              handle: {ownMain: true},
               element: (
                 <main id="main" tabIndex={-1}>
                   <h1>Public landing</h1>
@@ -296,7 +308,8 @@ describe('Layout', () => {
       </QueryClientProvider>,
     );
 
-    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await userEvent.click(screen.getByRole('button', {name: /Account menu/}));
+    await userEvent.click(await screen.findByRole('menuitem', {name: 'Log out'}));
     await act(async () => {
       await router.navigate('/');
     });
@@ -314,7 +327,7 @@ describe('Layout', () => {
 
     expect(screen.queryByRole('heading', {name: 'Private dashboard'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: 'Log out'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /Account menu/})).not.toBeInTheDocument();
 
     act(() => {
       failConfirmation();
@@ -340,7 +353,7 @@ describe('Layout', () => {
           children: [
             {
               index: true,
-              handle: {ownChrome: true},
+              handle: {ownMain: true},
               element: (
                 <main id="main" tabIndex={-1}>
                   <h1>Public landing</h1>
@@ -364,7 +377,8 @@ describe('Layout', () => {
       </QueryClientProvider>,
     );
 
-    await userEvent.click(screen.getByRole('button', {name: 'Log out'}));
+    await userEvent.click(screen.getByRole('button', {name: /Account menu/}));
+    await userEvent.click(await screen.findByRole('menuitem', {name: 'Log out'}));
     expect(await screen.findByRole('heading', {name: 'Public landing'})).toBeVisible();
     await act(async () => {
       await router.navigate('/login');

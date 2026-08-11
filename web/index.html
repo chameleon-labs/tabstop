@@ -6,6 +6,29 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>tabstop</title>
     <meta name="description" content="Paste a URL, get an accessibility audit and a score." />
+    <!--
+      Render-blocking on purpose, and in the head on purpose. The page is
+      prerendered, so it paints before React runs: applying a stored theme from
+      the app would flip the palette a frame after paint for everyone whose
+      choice differs from their OS. Deferring this, or moving it below <body>,
+      restores that flash while every behavioural test still passes.
+
+      Duplicates the storage key and the value check from src/theme/theme.ts,
+      which it cannot import. src/theme/boot.spec.ts extracts this and runs it,
+      and asserts the key matches.
+    -->
+    <script>
+      try {
+        const t = localStorage.getItem('tabstop:theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-lat-theme', t);
+          document.documentElement.style.setProperty('color-scheme', t);
+        }
+      } catch (e) {
+        // Storage can throw outright in Safari's private mode. An uncaught
+        // throw here is a blank page, which is worse than the flash.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

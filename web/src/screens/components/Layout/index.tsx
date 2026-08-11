@@ -1,79 +1,85 @@
-import {Link, Outlet, useMatches} from 'react-router';
+import {Outlet, useMatches} from 'react-router';
 import {RouteAnnouncer} from '../RouteAnnouncer';
-import {AccountNavigation} from '@/screens/modules/account/components/AccountNavigation';
+import {SiteHeader, type HeaderSection} from '../SiteHeader';
 import {useLogout} from '@/screens/modules/account/mutations';
 
-export type RouteChrome = {ownChrome?: boolean; sessionFree?: boolean};
+export type RouteChrome = {
+  /**
+   * The route renders its own `<main>` and any footer after it. Not the
+   * header. A `<footer>` inside `<main>` is not a `contentinfo` landmark.
+   */
+  ownMain?: boolean;
+  sessionFree?: boolean;
+  sections?: readonly HeaderSection[];
+};
 
 /**
  * Narrowed rather than cast: `handle` is `unknown` by construction, since any
  * route may put anything there, and asserting a shape onto it would compile
  * just as happily against a typo in the route table.
  */
-export const providesOwnChrome = (handle: unknown): boolean =>
-  typeof handle === 'object' && handle !== null && 'ownChrome' in handle && handle.ownChrome === true;
+const isHandle = (handle: unknown): handle is Record<string, unknown> =>
+  typeof handle === 'object' && handle !== null && !Array.isArray(handle);
+
+export const providesOwnMain = (handle: unknown): boolean =>
+  isHandle(handle) && 'ownMain' in handle && handle['ownMain'] === true;
 
 export const providesSessionFree = (handle: unknown): boolean =>
-  typeof handle === 'object' &&
-  handle !== null &&
-  !Array.isArray(handle) &&
-  'sessionFree' in handle &&
-  handle.sessionFree === true;
+  isHandle(handle) && 'sessionFree' in handle && handle['sessionFree'] === true;
 
-/**
- * The shell every route renders into.
- *
- * The skip link is first in the DOM and only visible on focus, which is the
- * whole mechanism: a keyboard user should not tab through the header on every
- * page to reach the content. It targets `#main`, which is why `<main>` carries
- * `tabIndex={-1}` - without it the browser moves the scroll position but not
- * focus, and the next Tab starts from the top of the page again.
- *
- * ONE route supplies its own chrome: the landing page, whose design carries a
- * nav and a footer of its own. Nesting that inside this shell produced two
- * `banner` landmarks, two "tabstop" wordmarks and a `<main>` inside a `<main>`
- * - invalid, and it breaks the skip link by giving `#main` two candidates.
- *
- * So the shell steps back to the skip link and the announcer, and that screen
- * owns the three landmarks. What stays true either way is the invariant the
- * specs pin: exactly one banner, one main and one contentinfo, and a `#main`
- * for the skip link to land on. Declared in the route table rather than matched
- * on a path here, so the exception is visible where routes are read.
- */
-/** True when the matched route says it renders its own header, main and footer. */
-export const useOwnChrome = (): boolean => useMatches().some((match) => providesOwnChrome(match.handle));
+/** Read from the handle: a screen cannot pass children up to the layout. */
+export const sectionsFrom = (handle: unknown): readonly HeaderSection[] | undefined => {
+  if (!isHandle(handle) || !Array.isArray(handle['sections'])) {
+    return undefined;
+  }
+
+  const sections = handle['sections'].filter(
+    (item): item is HeaderSection =>
+      isHandle(item) && typeof item['id'] === 'string' && typeof item['label'] === 'string',
+  );
+
+  return sections.length === 0 ? undefined : sections;
+};
+
+/** True when the matched route says it renders its own `<main>` and footer. */
+export const useOwnMain = (): boolean => useMatches().some((match) => providesOwnMain(match.handle));
 
 export const useSessionFree = (): boolean => useMatches().some((match) => providesSessionFree(match.handle));
 
+export const useHeaderSections = (): readonly HeaderSection[] | undefined =>
+  useMatches().reduce<readonly HeaderSection[] | undefined>(
+    (found, match) => sectionsFrom(match.handle) ?? found,
+    undefined,
+  );
+
+/**
+ * The shell every route renders into. `<main>` carries `tabIndex={-1}` or the
+ * skip link moves scroll without focus.
+ *
+ * The full-height column lives here, not on `.landing-page`: that wrapper no
+ * longer contains the header, so a `100vh` there would stack beneath it.
+ */
 export const Layout = (): React.JSX.Element => {
-  const ownChrome = useOwnChrome();
+  const ownMain = useOwnMain();
   const sessionFree = useSessionFree();
+  const sections = useHeaderSections();
   const logout = useLogout();
-  const hidePrivateOutlet = logout.isRevoked && !ownChrome && !sessionFree;
+  const hidePrivateOutlet = logout.isRevoked && !ownMain && !sessionFree;
 
   return (
-    <>
+    <div className="app-shell">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <RouteAnnouncer />
-
-      {ownChrome ? (
+      <SiteHeader sections={sections} sessionFree={sessionFree} logout={logout} />
+      {ownMain ? (
         <Outlet />
       ) : (
-        <>
-          <header className="site-header">
-            <Link to="/" className="wordmark">
-              tabstop
-            </Link>
-            <AccountNavigation sessionFree={sessionFree} logout={logout} />
-          </header>
-
-          <main id="main" tabIndex={-1}>
-            {hidePrivateOutlet ? null : <Outlet />}
-          </main>
-        </>
+        <main id="main" tabIndex={-1} className="app-shell__main">
+          {hidePrivateOutlet ? null : <Outlet />}
+        </main>
       )}
-    </>
+    </div>
   );
 };

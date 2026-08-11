@@ -15,5 +15,5 @@ allowBuilds:
   protobufjs: true
   ssh2: true
 minimumReleaseAgeExclude:
-  - '@chameleon-labs/lattice-react@0.1.0-rc.3'
-  - '@chameleon-labs/lattice-tokens@0.1.0-rc.3'
+  - '@chameleon-labs/lattice-react@0.1.0-rc.5'
+  - '@chameleon-labs/lattice-tokens@0.1.0-rc.5'

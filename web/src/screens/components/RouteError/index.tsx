@@ -2,7 +2,7 @@ import {Link, isRouteErrorResponse, useRouteError} from 'react-router';
 import {ApiError} from '@/api/client';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 import {NotFound} from '../NotFound';
-import {useOwnChrome} from '../Layout';
+import {useOwnMain} from '../Layout';
 
 export type ErrorPageProps = {
   error: unknown;
@@ -63,13 +63,13 @@ const ErrorPage = ({error}: ErrorPageProps): React.JSX.Element => {
   useDocumentTitle('Something went wrong');
   const detail = messageOf(error);
   /**
-   * The screen this replaced may have owned the chrome, in which case the shell
-   * stepped back and rendered no `<main>` - and it cannot know the screen threw,
-   * because the route still matches and its handle still says `ownChrome`. So
-   * the error page supplies what the shell withheld, or the skip link points at
-   * a `#main` that does not exist.
+   * The screen this replaced may have supplied its own `<main>`, in which case
+   * the shell rendered none - and it cannot know the screen threw, because the
+   * route still matches and its handle still says `ownMain`. So the error page
+   * supplies what the shell withheld, or the skip link points at a `#main`
+   * that does not exist.
    */
-  const ownChrome = useOwnChrome();
+  const ownMain = useOwnMain();
 
   const body = (
     <section>
@@ -87,8 +87,8 @@ const ErrorPage = ({error}: ErrorPageProps): React.JSX.Element => {
     </section>
   );
 
-  return ownChrome ? (
-    <main id="main" tabIndex={-1}>
+  return ownMain ? (
+    <main id="main" tabIndex={-1} className="app-shell__main">
       {body}
     </main>
   ) : (
