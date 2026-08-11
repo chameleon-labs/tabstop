@@ -83,9 +83,11 @@ describe('the home screen', () => {
   });
 
   it('links the landing navigation to the working credential routes', () => {
+    // Through the SHARED header now, which labels this "Log in" - the landing
+    // no longer carries a nav of its own.
     renderAt('/');
 
-    expect(screen.getByRole('link', {name: 'Sign in'})).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
     expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('href', '/signup');
     expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('data-variant', 'primary');
   });

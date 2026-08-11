@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
-import {memo, useState} from 'react';
-import {Link} from 'react-router';
+import type {HeaderSection} from '@/screens/components/SiteHeader';
+import {memo} from 'react';
 import {
   Badge,
   Button,
@@ -27,8 +27,6 @@ import {
   ExternalLink,
   Info,
   Mail,
-  Moon,
-  Sun,
   TrendingDown,
   X,
 } from '@/screens/components/Icons';
@@ -67,11 +65,19 @@ const IMPACT_ICON: Record<Impact, (props: IconProps) => ReactNode> = {
   minor: Info,
 };
 
-const NAV_LINKS = [
+/**
+ * The in-page anchors this screen offers in the shared header.
+ *
+ * Declared here, beside the sections they point at, and reaching the header
+ * through this route's handle in `routes.tsx`. The header renders `{id, label}`
+ * pairs and never learns what any of them mean - a screen renders inside the
+ * outlet and cannot pass children up to the layout above it.
+ */
+export const LANDING_SECTIONS: readonly HeaderSection[] = [
   {id: 'how', label: 'How it works'},
   {id: 'why', label: 'Why tabstop'},
   {id: 'scope', label: 'v1 scope'},
-] as const;
+];
 
 const TRUST_STATS = [
   {value: 'axe-core', label: 'Engine', sub: 'industry standard'},
@@ -240,49 +246,6 @@ function BoolCell({value}: {value: boolean}): React.JSX.Element {
     </Td>
   );
 }
-
-const Nav = memo(() => {
-  const [isDark, setIsDark] = useState(true);
-
-  return (
-    <header className="landing-page__nav">
-      <div className="landing-page__nav-inner">
-        <div className="landing-page__brand">
-          <BrandMark size="sm" />
-          <span className="landing-page__logo-text">tabstop</span>
-          <Badge variant="default">beta</Badge>
-        </div>
-
-        <nav className="landing-page__nav-links" aria-label="Page sections">
-          {NAV_LINKS.map((item) => (
-            <Button key={item.id} variant="link" size="sm" render={<a href={`#${item.id}`} />}>
-              {item.label}
-            </Button>
-          ))}
-        </nav>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="landing-page__theme-toggle"
-          aria-label="Preview the other theme"
-          onClick={() => setIsDark((v) => !v)}
-        >
-          {isDark ? <Sun size="md" /> : <Moon size="md" />}
-        </Button>
-
-        <Button variant="link" size="sm" render={<Link to="/login" />}>
-          Sign in
-        </Button>
-
-        <Button variant="primary" size="sm" className="landing-page__nav-cta" render={<Link to="/signup" />}>
-          Sign up
-          <ArrowRight size="md" />
-        </Button>
-      </div>
-    </header>
-  );
-});
 
 function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}): React.JSX.Element {
   return (
@@ -656,7 +619,6 @@ export type LandingProps = {
 export function Landing({urlField, live}: LandingProps): React.JSX.Element {
   return (
     <div className="lat-page lat-surface landing-page">
-      <Nav />
       <main id="main" tabIndex={-1} className="landing-page__main">
         <Hero urlField={urlField} live={live} />
         <TrustBar />

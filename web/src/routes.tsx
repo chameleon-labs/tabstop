@@ -5,6 +5,7 @@ import {NotFound} from './screens/components/NotFound';
 import {RouteError} from './screens/components/RouteError';
 import {requireAnonymous, requireSession} from './screens/modules/account/guards';
 import {Home} from './screens/modules/audit/pages/Home';
+import {LANDING_SECTIONS} from './screens/modules/audit/pages/Home/landing';
 
 /**
  * Built from a `QueryClient` rather than exported as a constant, because the
@@ -48,10 +49,22 @@ export const makeRoutes = (queryClient: QueryClient): RouteObject[] => [
       {
         errorElement: <RouteError />,
         children: [
-          // Declares that Home renders its own header, main and footer: its
-          // design carries a nav and footer, and nesting those inside the
-          // shell's would produce two banners and a nested <main>. See Layout.
-          {index: true, element: <Home />, handle: {ownChrome: true}},
+          // `ownMain`: Home renders its own <main> and a <footer> beside it. A
+          // <footer> inside <main> is not a contentinfo landmark, so only the
+          // route can put one there. The HEADER is shared, unlike before.
+          //
+          // `sessionFree`: the landing must cost a marketing visitor zero API
+          // calls, so it reads the session cache and never fills it. A visitor
+          // arriving from inside the app still gets their account header,
+          // because the guards above have already warmed it.
+          //
+          // `sections`: the in-page anchors, declared in landing.tsx beside the
+          // sections they point at. See Layout.
+          {
+            index: true,
+            element: <Home />,
+            handle: {ownMain: true, sessionFree: true, sections: LANDING_SECTIONS},
+          },
           {
             path: 'dashboard',
             loader: requireSession(queryClient),

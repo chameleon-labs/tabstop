@@ -33,6 +33,42 @@ describe('the route table', () => {
     expect(await screen.findByRole('heading', {level: 1})).toHaveTextContent('Accessibility monitoring');
   });
 
+  it('costs the landing page nothing, however the visitor arrives', async () => {
+    // The constraint the header's design turns on: a marketing visit must not
+    // spend an API call. One `enabled` flag away from being lost, and nothing
+    // on screen would look wrong if it were.
+    renderAt('/');
+    await screen.findByRole('heading', {level: 1});
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', {name: 'Log in'})).toBeVisible();
+  });
+
+  it('shows the account header on / when the session is already known', async () => {
+    // Still no request. `sessionFree` READS the cache and never fills it, so a
+    // visitor who reached `/` from inside the app - where the route guards have
+    // already answered - gets their own header rather than an invitation to
+    // sign in again.
+    withSession();
+    const queryClient = makeQueryClient();
+    const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: ['/dashboard']});
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole('heading', {level: 1, name: 'Dashboard'});
+    const beforeLanding = fetchMock.mock.calls.length;
+
+    await act(async () => {
+      await router.navigate('/');
+    });
+
+    expect(await screen.findByRole('button', {name: /Account menu/})).toBeVisible();
+    expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls).toHaveLength(beforeLanding);
+  });
+
   it('resolves /dashboard for a signed-in visitor', async () => {
     withSession();
 

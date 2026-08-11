@@ -95,18 +95,18 @@ main:focus {
   color: var(--lat-text);
 }
 
-.site-header {
+/* The sticky-footer column, at the shell rather than on any one screen. The
+   landing page carried this itself while it also carried its own header; now
+   that the header is shared and rendered above, a `100vh` down there would
+   stack beneath it and grow a scrollbar on a page that fits. */
+.app-shell {
   display: flex;
-  gap: 1.5rem;
-  align-items: baseline;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--lat-text) 15%, transparent);
+  flex-direction: column;
+  min-block-size: 100vh;
 }
 
-.wordmark {
-  font-weight: 700;
-  text-decoration: none;
-  color: var(--lat-text);
+.app-shell__main {
+  flex: 1;
 }
 
 /* Sized from the type scale, because an icon is sized to the text beside it.

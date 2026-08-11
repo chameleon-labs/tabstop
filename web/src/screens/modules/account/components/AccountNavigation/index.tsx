@@ -1,11 +1,21 @@
 import {Button} from '@chameleon-labs/lattice-react';
 import {Link} from 'react-router';
+import {AccountMenu} from '../AccountMenu';
 import {LogoutButton} from '../LogoutButton';
 import type {LogoutMutation} from '../../mutations';
 import {useSession} from '../../session';
 
 export type AccountNavigationProps = {
   logout: LogoutMutation;
+  /**
+   * Read the session if it is already known, never ask for it.
+   *
+   * `useSession` turns this into `enabled: false`, which returns cached data
+   * and issues no request - so the landing page still shows an account header
+   * to a visitor who arrived from inside the app, and still costs a marketing
+   * visitor nothing. A cold load of `/` shows the signed-out header even to
+   * someone signed in, which is the accepted trade on #102.
+   */
   sessionFree?: boolean;
 };
 
@@ -42,7 +52,7 @@ export const AccountNavigation = ({logout, sessionFree = false}: AccountNavigati
       <Button variant="link" size="sm" render={<Link to="/dashboard" />}>
         Dashboard
       </Button>
-      <LogoutButton logout={logout} />
+      <AccountMenu email={account.email} logout={logout} />
     </nav>
   );
 };

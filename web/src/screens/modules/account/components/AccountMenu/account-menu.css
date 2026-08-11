@@ -1,0 +1,37 @@
+/* No trigger rule: `MenuButton bare` adds no chrome and `.lat-avatar` brings
+   its own circle and focus ring. */
+
+.account-menu {
+  min-inline-size: 12rem;
+}
+
+/* Not a `MenuItem`: a focusable non-action is a dead stop for a keyboard.
+
+   Full-strength ink, not `--lat-text-subtle`, which is 3.67:1 on this surface
+   in dark - under AA - while passing in light. Kept secondary by size. */
+.account-menu__email {
+  margin: 0;
+  padding: var(--lat-space-2) var(--lat-space-3);
+  color: var(--lat-text);
+  font-size: var(--lat-font-size-xs);
+  /* Long addresses must not widen the popup past its own min-inline-size. */
+  overflow-wrap: anywhere;
+}
+
+/* Trailing, so ticks align with each other and labels align with the items
+   that carry none. Reserved, so the edge does not jump. */
+.account-menu__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: auto;
+  inline-size: var(--lat-font-size-xs);
+  flex: none;
+}
+
+/* Not `display: contents`, which can drop the `group` role from the a11y tree.
+   Repeats `.lat-menu`'s own column or the radios sit in a row. */
+.account-menu__group {
+  display: flex;
+  flex-direction: column;
+}
