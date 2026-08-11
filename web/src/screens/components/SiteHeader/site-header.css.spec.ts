@@ -39,6 +39,15 @@ describe('the site header stylesheet', () => {
     expect(appStyles).not.toContain('.wordmark');
   });
 
+  it('lets the row grow, because the account nav can hold an error', () => {
+    // A revoke failure puts a Callout in the nav. At a fixed 3.5rem the row
+    // cannot hold it and `align-items: center` spills it out of both ends.
+    // Only the property is asserted: jsdom computes no layout, so nothing in
+    // this suite can see the overflow itself.
+    expect(styles).toMatch(/\.site-header__inner\s*{[^}]*min-block-size:\s*3\.5rem/s);
+    expect(styles).not.toMatch(/\.site-header__inner\s*{[^}]*[^-]block-size:\s*3\.5rem/s);
+  });
+
   it('leaves the full-height column to the shell', () => {
     // Below a shared header, `100vh` here stacks into `100vh + 3.5rem`.
     expect(landing).not.toMatch(/\.landing-page\s*{[^}]*min-block-size:\s*100vh/s);

@@ -60,6 +60,14 @@ describe('AccountMenu', () => {
     expect(screen.getByRole('button', {name: `Account menu for ${account.email}`})).toBeVisible();
   });
 
+  it('draws two initials from the address, not the one Lattice reads from a single word', () => {
+    // `ada.lovelace@` is one word to a whitespace splitter, which renders `A`
+    // for every address a person is likely to have.
+    renderMenu();
+
+    expect(screen.getByRole('button', {name: /Account menu/})).toHaveTextContent('AL');
+  });
+
   it('keeps its contents closed until asked', () => {
     renderMenu();
 

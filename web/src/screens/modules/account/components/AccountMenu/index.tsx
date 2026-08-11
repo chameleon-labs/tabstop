@@ -3,6 +3,7 @@ import {useEffect, useRef} from 'react';
 import {AlertCircle, Check} from '@/screens/components/Icons';
 import {THEMES, type Theme} from '@/theme/theme';
 import {useTheme} from '@/theme/use-theme';
+import {emailInitials} from '../../email-initials';
 import {authFailureMessage} from '../../failure';
 import {useSignOut} from '../../hooks/use-sign-out';
 import type {LogoutMutation} from '../../mutations';
@@ -45,7 +46,7 @@ export const AccountMenu = ({email, logout}: AccountMenuProps): React.JSX.Elemen
         <MenuButton
           bare
           aria-label={`Account menu for ${email}`}
-          render={<Avatar name={email} size="md" decorative />}
+          render={<Avatar name={email} initials={emailInitials(email)} size="md" decorative />}
         />
         <Menu className="account-menu" gutter={8} unmountOnHide>
           <div className="account-menu__email" aria-hidden="true">
