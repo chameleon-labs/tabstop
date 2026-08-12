@@ -11,24 +11,12 @@ import {useAuditPhase} from '../../hooks/use-audit-phase';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
 import {Landing} from './landing';
 
-/**
- * The product's entire hook: paste a URL, wait, get something worth sharing.
- * No signup. If this screen is not good, nothing downstream matters.
- *
- * Three states, one at a time - the form, the wait, the answer - and a failure
- * can replace any of them. Mutually exclusive on purpose: a previous result
- * still showing beneath a new audit's progress reads as though the new one had
- * already finished.
- */
 export const Home = (): React.JSX.Element => {
   useDocumentTitle('');
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const request = useRequestAudit();
 
-  // The audit id only exists after the POST is accepted, and `pollAfterMs`
-  // comes with it - passed through rather than chosen here, so the server can
-  // widen the interval without a frontend deploy.
   const audit = useAudit(
     request.data?.auditId,
     request.data === undefined ? {} : {pollAfterMs: request.data.pollAfterMs},
@@ -36,17 +24,6 @@ export const Home = (): React.JSX.Element => {
 
   const failure = describeFailure({
     requestError: request.error,
-    // Suppressed while a refetch is in flight, and this depends on whether the
-    // query has CACHED DATA - which is why it took three attempts to get right.
-    //
-    // With no data, React Query clears `error` when a refetch begins, so the
-    // guard changes nothing and a spec covering only that path shows no
-    // difference. With data retained from an earlier successful poll - the
-    // ordinary case, since polling succeeds before it fails - the error
-    // survives until the new request settles. Measured at this screen rather
-    // than in the library: the failure panel and its own "Try again" button
-    // stayed on screen for the whole flight, which is exactly the "button did
-    // nothing" shape `request.reset()` prevents on the mutation side.
     pollError: audit.isFetching ? null : audit.error,
     audit: audit.data,
   });
@@ -117,15 +94,7 @@ export const Home = (): React.JSX.Element => {
     startedAt === null && failure === null ? null : (
       <>
         {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
-
-        {/*
-          ALWAYS mounted once anything has been asked for, and empty until
-          there is something to say. A region whose content is present when it
-          appears is initial content, announced by nothing - and one that
-          unmounts when the audit ends cannot announce that it ended.
-        */}
         <AuditStatus message={announcement} />
-
         {failure === null && done && audit.data !== undefined && (
           <>
             <AuditResult audit={audit.data} />
@@ -138,17 +107,6 @@ export const Home = (): React.JSX.Element => {
   return <Landing urlField={<UrlField onSubmit={submit} disabled={waiting} />} live={live} />;
 };
 
-/**
- * The signup CTA, and it lives HERE rather than inside `AuditResult`.
- *
- * That component is rendered by the share page (#23) and audit detail (#21) as
- * well, where the ask is wrong: someone following a link a colleague sent has
- * no page of their own in mind yet, and someone already signed in is being
- * offered an account. The screen that knows the context owns the framing.
- *
- * Sells the monitoring rather than the signup - the audit they just ran is
- * already free, so the reason to have an account is what happens tomorrow.
- */
 const TrackThisPage = (): React.JSX.Element => (
   <section aria-labelledby="track-heading">
     <h2 id="track-heading">Keep an eye on this page</h2>

@@ -40,17 +40,13 @@ const SIGNUP_HEADING = 'You have used your free audits';
 export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.Element => (
   <section role="alert" aria-labelledby="audit-failure-heading">
     <h2 id="audit-failure-heading">{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
-
     <p>{failure.message}</p>
-
     {failure.action === 'retry' && (
       <button type="button" onClick={onRetry}>
         Try again
       </button>
     )}
-
     {failure.action === 'check-url' && <p>Check the address and try a different one.</p>}
-
     {failure.action === 'signup' && <RateLimitOffer failure={failure} />}
   </section>
 );

@@ -9,17 +9,6 @@ export type UrlFieldProps = {
   disabled?: boolean;
 };
 
-/**
- * The URL input, and the product's first interaction.
- *
- * VALIDATION IS DEFERRED UNTIL SUBMIT, then live afterwards. Validating on
- * every keystroke tells someone typing `e` that `e` is not a URL, which is both
- * true and useless - the error appears before they could possibly have finished
- * and reads as the form arguing with them. Once they have submitted, they have
- * asked for a verdict, so from then on it updates as they type.
- *
- * `onSubmit` receives the normalised URL, never the raw text.
- */
 export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX.Element => {
   const [raw, setRaw] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -69,13 +58,11 @@ export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX
           invalid={problem !== null}
           aria-describedby={problem === null ? undefined : errorId}
         />
-
         <Button type="submit" variant="primary" size="lg" disabled={disabled}>
           Audit this page
           <Zap size="md" aria-hidden="true" />
         </Button>
       </div>
-
       <p id={errorId} role="alert">
         {problem}
       </p>
