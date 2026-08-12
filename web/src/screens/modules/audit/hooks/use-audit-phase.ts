@@ -32,11 +32,6 @@ export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, 
 
   if (status !== seenStatus) {
     setSeenStatus(status);
-    // EVERY transition into `running`, not only the first. This hook lives on
-    // the home screen, which outlives any one audit: guarded on
-    // `runningSince === null`, a second audit inherited the first one's epoch
-    // and opened on "Scoring" - phases counted from a job that had already
-    // finished, possibly minutes earlier.
     if (status === 'running') {
       setRunningSince(Date.now());
     }

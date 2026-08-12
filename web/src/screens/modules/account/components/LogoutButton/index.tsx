@@ -5,7 +5,11 @@ import {authFailureMessage} from '../../failure';
 import {useSignOut} from '../../hooks/use-sign-out';
 import type {LogoutMutation} from '../../mutations';
 
-export const LogoutButton = ({logout}: {logout: LogoutMutation}): React.JSX.Element => {
+type LogoutButtonProps = {
+  logout: LogoutMutation;
+};
+
+export const LogoutButton = ({logout}: LogoutButtonProps): React.JSX.Element => {
   const signOut = useSignOut(logout);
   const alertRef = useRef<HTMLDivElement>(null);
 

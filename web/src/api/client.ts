@@ -58,16 +58,6 @@ const readBody = async (response: Response): Promise<unknown> => {
   return await response.json().catch(() => null);
 };
 
-/**
- * Our defaults, then the caller's, with the caller winning.
- *
- * Through `Headers` rather than object spread: `RequestInit.headers` has three
- * legal forms, and spreading a `Headers` instance or an array of pairs yields
- * `{}` - silently dropping an authorization or idempotency key.
- *
- * `content-type` only when there is a body to describe, since announcing JSON
- * on a bodyless GET can turn a simple request into a preflighted one.
- */
 const headersFor = (init: RequestInit): Headers => {
   const headers = new Headers({accept: 'application/json'});
   if (init.body !== undefined) {
@@ -81,13 +71,6 @@ const headersFor = (init: RequestInit): Headers => {
   return headers;
 };
 
-/**
- * The only place the app calls `fetch`.
- *
- * `credentials: 'include'` is not optional: the session is an httpOnly cookie
- * (#10), and without this a valid session returns 401 while looking exactly
- * like a backend bug.
- */
 export const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -108,14 +91,6 @@ export const post = async <T>(path: string, payload: unknown): Promise<T> =>
 
 export const isApiError = (error: unknown): error is ApiError => error instanceof ApiError;
 
-/**
- * The 429 details, or null if this was not a usable rate-limit response.
- *
- * Validated against what the server promises rather than against JavaScript's
- * type tags: a caller renders these, so a bad shape shows a person
- * `Invalid Date` or a countdown that starts negative. Null is always safe -
- * the caller falls back to `error.message`.
- */
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value > 0;
 

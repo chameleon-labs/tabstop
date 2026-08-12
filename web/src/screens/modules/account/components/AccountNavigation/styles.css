@@ -1,0 +1,4 @@
+.nav-main {
+  display: flex;
+  gap: var(--lat-gap-md);
+}

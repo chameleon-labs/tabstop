@@ -4,6 +4,7 @@ import {AccountMenu} from '../AccountMenu';
 import {LogoutButton} from '../LogoutButton';
 import type {LogoutMutation} from '../../mutations';
 import {useSession} from '../../session';
+import './styles.css';
 
 export type AccountNavigationProps = {
   logout: LogoutMutation;
@@ -24,19 +25,19 @@ export const AccountNavigation = ({logout, sessionFree = false}: AccountNavigati
 
   if (logout.isRevoked) {
     return (
-      <nav aria-label="Main">
+      <nav className="nav-main" aria-label="Main">
         <LogoutButton logout={logout} />
       </nav>
     );
   }
 
   if (error !== null || (isPending && !sessionFree)) {
-    return <nav aria-label="Main" />;
+    return <nav className="nav-main" aria-label="Main" />;
   }
 
   if (account === null || account === undefined) {
     return (
-      <nav aria-label="Main">
+      <nav className="nav-main" aria-label="Main">
         <Button variant="link" size="sm" render={<Link to="/login" />}>
           Log in
         </Button>
@@ -48,7 +49,7 @@ export const AccountNavigation = ({logout, sessionFree = false}: AccountNavigati
   }
 
   return (
-    <nav aria-label="Main">
+    <nav className="nav-main" aria-label="Main">
       <Button variant="link" size="sm" render={<Link to="/dashboard" />}>
         Dashboard
       </Button>
