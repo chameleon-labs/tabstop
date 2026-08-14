@@ -129,15 +129,71 @@ describe('the home screen', () => {
 
     await submit('example.com');
 
-    // Two matches by design: the visible sentence and the live region that
-    // announces it. Both should say the same thing, and neither should claim a
-    // queue place.
+    // The sentence lives only in the polite region. The visible pending state
+    // belongs to the disabled button, and neither should claim a queue place.
     await waitFor(() => {
       expect(statusLine()).toHaveTextContent(/Requesting the audit/);
     });
     expect(screen.getAllByText(/Requesting the audit/)).toHaveLength(1);
     expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument();
     // Releasing it navigates, so React updates: `act` or the console gate trips.
+    await act(() => {
+      release();
+    });
+  });
+
+  it('keeps the sample report visible while the request is in flight', async () => {
+    let release = (): void => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+        }
+        return jsonResponse(200, auditBody());
+      }),
+    );
+    renderAt('/');
+
+    await submit('example.com');
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Page to audit')).toBeDisabled();
+    });
+    expect(screen.getByText('https://acme.example')).toBeVisible();
+
+    await act(() => {
+      release();
+    });
+  });
+
+  it('keeps request narration available without adding it to the visible landing layout', async () => {
+    let release = (): void => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+        }
+        return jsonResponse(200, auditBody());
+      }),
+    );
+    renderAt('/');
+
+    await submit('example.com');
+
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('Requesting the audit');
+    });
+    expect(statusLine().parentElement).toHaveClass('visually-hidden');
+    expect(screen.queryByRole('alert')).not.toHaveTextContent('Requesting the audit');
+
     await act(() => {
       release();
     });

@@ -6,6 +6,8 @@ export type AuditFailureProps = {
   failure: DescribedFailure;
   /** Absent where there is nothing to retry, as on a share link someone else made. */
   onRetry?: (() => void) | undefined;
+  /** The failure is a page title on Share and a section title everywhere else. */
+  headingLevel?: 1 | 2;
 };
 
 /**
@@ -39,12 +41,13 @@ const SIGNUP_HEADING = 'You have used your free audits';
  * is the one place in this flow where interrupting is correct: they asked a
  * question thirty seconds ago and the answer is that it failed.
  */
-export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.Element => {
+export const AuditFailure = ({failure, onRetry, headingLevel = 2}: AuditFailureProps): React.JSX.Element => {
   const headingId = useId();
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
 
   return (
     <section role="alert" aria-labelledby={headingId}>
-      <h2 id={headingId}>{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
+      <Heading id={headingId}>{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</Heading>
       <p>{failure.message}</p>
       {failure.action === 'retry' && onRetry !== undefined && (
         <button type="button" onClick={onRetry}>

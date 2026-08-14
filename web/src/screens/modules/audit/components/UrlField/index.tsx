@@ -59,8 +59,14 @@ export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX
           aria-describedby={problem === null ? undefined : errorId}
         />
         <Button type="submit" variant="primary" size="lg" disabled={disabled}>
-          Audit this page
-          <Zap size="md" aria-hidden="true" />
+          {disabled ? (
+            'Requesting…'
+          ) : (
+            <>
+              Audit this page
+              <Zap size="md" aria-hidden="true" />
+            </>
+          )}
         </Button>
       </div>
       <p id={errorId} role="alert">

@@ -14,6 +14,7 @@ import {CopyLink} from '../../components/CopyLink';
 import {UrlField} from '../../components/UrlField';
 import {describeFailure} from '../../failure';
 import {useAuditPhase} from '../../hooks/use-audit-phase';
+import {useAuditPresentation} from '../../hooks/use-audit-presentation';
 import {useStartAudit} from '../../hooks/use-start-audit';
 import {EXPECTED_DURATION, completionAnnouncement} from '../../phase';
 import {pollAfterMsFrom, shareUrlFor, startedHereFrom} from '../../share';
@@ -48,34 +49,66 @@ const SharedReport = ({auditId, audit, owner}: SharedReportProps): React.JSX.Ele
     audit: data,
   });
 
-  const done = data?.status === 'done';
-  const waiting = failure === null && data !== undefined && !done;
-
-  const reasking = data === undefined && audit.isFetching && audit.errorUpdateCount > 0;
-
+  const phaseActive = failure === null && (data === undefined || data.status === 'queued' || data.status === 'running');
   const phase = useAuditPhase(
     data?.status ?? 'queued',
     data === undefined ? null : Date.parse(data.createdAt),
-    waiting,
+    phaseActive,
   );
+  const presentation = useAuditPresentation({
+    auditId,
+    status: data?.status,
+    phase,
+    owner,
+    failure: failure !== null,
+  });
+
+  const focused = presentation.view === 'progress' || presentation.view === 'exiting';
+  const completed = presentation.view === 'report' && data?.status === 'done';
 
   let announcement: string | null = null;
-  if (reasking) {
+  if (failure === null && data === undefined && audit.isFetching) {
     announcement = 'Looking for that audit…';
-  } else if (waiting && phase !== null) {
+  } else if (
+    failure === null &&
+    focused &&
+    (data?.status === 'queued' || data?.status === 'running') &&
+    phase !== null
+  ) {
     announcement = `${phase}… ${EXPECTED_DURATION}`;
-  } else if (done && owner && data !== undefined) {
+  } else if (completed && presentation.completedInSession && data !== undefined) {
     announcement = completionAnnouncement(data.score, data.violations.length);
   }
+  const visibleMessage = focused ? presentation.headline : announcement;
 
   return (
-    <div className="report-page">
-      <ReportHeader audit={data} auditId={auditId} />
-      <AuditStatus message={announcement} />
-      {failure !== null && <ReportFailure failure={failure} audit={audit} owner={owner} />}
-      {waiting && data !== undefined && <AuditProgress status={data.status} phase={phase} />}
-      {done && data !== undefined && <AuditResult audit={data} />}
-      {owner ? <TrackThisPage url={data?.url} /> : <CheckYourOwnSite />}
+    <div className="report-page" data-view={presentation.view}>
+      {focused && (
+        <>
+          <h1 className="visually-hidden">Audit in progress</h1>
+          <p className="report-page__progress-eyebrow" aria-hidden="true">
+            Audit in progress
+          </p>
+        </>
+      )}
+      <AuditStatus message={announcement} visibleMessage={visibleMessage} />
+      {focused && (
+        <div className="report-page__progress-body">
+          <p className="report-page__progress-duration">{EXPECTED_DURATION}</p>
+          {data?.url === undefined ? null : <p className="report-page__progress-url">{data.url}</p>}
+          <AuditProgress phase={presentation.phase} complete={presentation.complete} />
+        </div>
+      )}
+      {presentation.view === 'failure' && failure !== null && (
+        <ReportFailure failure={failure} audit={audit} owner={owner} />
+      )}
+      {completed && data !== undefined && (
+        <>
+          <ReportHeader audit={data} auditId={auditId} />
+          <AuditResult audit={data} />
+          {owner ? <TrackThisPage url={data.url} /> : <CheckYourOwnSite />}
+        </>
+      )}
     </div>
   );
 };
@@ -142,7 +175,7 @@ const ReportFailure = ({failure, audit, owner}: ReportFailureProps): React.JSX.E
 
   return (
     <>
-      <AuditFailure failure={failure} onRetry={retry} />
+      <AuditFailure failure={failure} onRetry={retry} headingLevel={1} />
       {reaudit.failure !== null && <AuditFailure failure={reaudit.failure} onRetry={reaudit.retry} />}
     </>
   );
