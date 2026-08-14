@@ -41,7 +41,7 @@ describe('ViolationList', () => {
     expect(rows[1]).toContain('a');
   });
 
-  it('carries the severity in each row own name, since there are no longer sections', () => {
+  it("carries the severity in each row's own name, since there are no longer sections", () => {
     // What grouping used to provide. A reader hears "critical" before the rule
     // rather than having to find the section that holds it.
     render(<ViolationList violations={[violation('critical', 'b')]} />);

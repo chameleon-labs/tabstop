@@ -156,7 +156,7 @@ describe('the home screen', () => {
       });
     });
 
-    it('marks the audit as this visitor own, which the report reads', async () => {
+    it("marks the audit as this visitor's own, which the report reads", async () => {
       // The same page serves whoever they send the link to, and only the state
       // of this navigation tells the two apart.
       const {router} = renderAt('/');

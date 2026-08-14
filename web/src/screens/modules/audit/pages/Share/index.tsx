@@ -1,5 +1,6 @@
 import type {AuditResultResponse} from '@tabstop/contract';
 import type {UseQueryResult} from '@tanstack/react-query';
+import {Button} from '@chameleon-labs/lattice-react';
 import {Link, useLocation, useParams} from 'react-router';
 import {isApiError} from '@/api/client';
 import {NotFound} from '@/screens/components/NotFound';
@@ -115,7 +116,7 @@ type ReportFailureProps = {
 };
 
 const ReportFailure = ({failure, audit, owner}: ReportFailureProps): React.JSX.Element | null => {
-  const {start} = useStartAudit();
+  const reaudit = useStartAudit();
   const url = audit.data?.url;
 
   if (failure === null) {
@@ -129,11 +130,16 @@ const ReportFailure = ({failure, audit, owner}: ReportFailureProps): React.JSX.E
     };
   } else if (failure.source === 'audit' && owner && url !== undefined) {
     retry = (): void => {
-      start(url);
+      reaudit.start(url);
     };
   }
 
-  return <AuditFailure failure={failure} onRetry={retry} />;
+  return (
+    <>
+      <AuditFailure failure={failure} onRetry={retry} />
+      {reaudit.failure !== null && <AuditFailure failure={reaudit.failure} onRetry={reaudit.retry} />}
+    </>
+  );
 };
 
 const CheckYourOwnSite = (): React.JSX.Element => {
@@ -156,8 +162,8 @@ const TrackThisPage = ({url}: {url: string | undefined}): React.JSX.Element => (
       tabstop can re-audit {url === undefined ? 'it' : hostOf(url)} every day and email you when the score drops or a
       new serious issue appears.
     </p>
-    <p>
-      <Link to="/signup">Track this page</Link>
-    </p>
+    <Button variant="primary" size="sm" render={<Link to="/signup" />}>
+      Track this page
+    </Button>
   </section>
 );

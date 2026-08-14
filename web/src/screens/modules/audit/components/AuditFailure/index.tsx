@@ -1,3 +1,4 @@
+import {useId} from 'react';
 import {Link} from 'react-router';
 import type {DescribedFailure, FailureSource} from '../../failure';
 
@@ -38,19 +39,23 @@ const SIGNUP_HEADING = 'You have used your free audits';
  * is the one place in this flow where interrupting is correct: they asked a
  * question thirty seconds ago and the answer is that it failed.
  */
-export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.Element => (
-  <section role="alert" aria-labelledby="audit-failure-heading">
-    <h2 id="audit-failure-heading">{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
-    <p>{failure.message}</p>
-    {failure.action === 'retry' && onRetry !== undefined && (
-      <button type="button" onClick={onRetry}>
-        Try again
-      </button>
-    )}
-    {failure.action === 'check-url' && <p>Check the address and try a different one.</p>}
-    {failure.action === 'signup' && <RateLimitOffer failure={failure} />}
-  </section>
-);
+export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.Element => {
+  const headingId = useId();
+
+  return (
+    <section role="alert" aria-labelledby={headingId}>
+      <h2 id={headingId}>{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
+      <p>{failure.message}</p>
+      {failure.action === 'retry' && onRetry !== undefined && (
+        <button type="button" onClick={onRetry}>
+          Try again
+        </button>
+      )}
+      {failure.action === 'check-url' && <p>Check the address and try a different one.</p>}
+      {failure.action === 'signup' && <RateLimitOffer failure={failure} />}
+    </section>
+  );
+};
 
 /**
  * The conversion moment, and it is deliberately not styled as an error above.

@@ -198,6 +198,20 @@ describe('the share screen', () => {
   });
 
   describe('an audit that failed', () => {
+    it('says why a re-run was refused, rather than swallowing it', async () => {
+      // The rate limit is the likeliest answer here, and the owner would
+      // otherwise press Try again and watch nothing happen.
+      server(
+        () => jsonResponse(200, auditBody({status: 'failed', score: null, error: 'The page took too long to load'})),
+        () => jsonResponse(429, {error: 'Too many requests', retryAfter: 45, resetAt: '2026-08-13T10:00:00.000Z'}),
+      );
+      renderShare({owner: true});
+
+      await userEvent.click(await screen.findByRole('button', {name: 'Try again'}));
+
+      expect(await screen.findByRole('heading', {name: 'You have used your free audits'})).toBeVisible();
+    });
+
     it('quotes the server and offers no retry, because there is nothing here to retry', async () => {
       // Re-running it would either do nothing or start a different audit under
       // a different link. The way forward is the field above.

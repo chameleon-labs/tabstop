@@ -4,12 +4,12 @@ import {App} from './app';
 import {makeQueryClient} from './api/query-client';
 import {mountApp} from './hydrate';
 import {makeRoutes} from './routes';
-import './styles.css';
 // Tokens before components, and both before the app's own sheet. `lattice.css`
 // declares the custom properties `styles.css` reads, so the reverse order
 // leaves every colour and spacing value resolving to nothing.
 import '@chameleon-labs/lattice-tokens/lattice.css';
 import '@chameleon-labs/lattice-react/styles.css';
+import './styles.css';
 
 const container = document.getElementById('root');
 if (container === null) {

@@ -40,7 +40,7 @@ export const useAudit = (
 
   return useQuery({
     queryKey: auditKeys.detail(auditId ?? ''),
-    queryFn: async () => await request<AuditResultResponse>(`/api/audits/${auditId ?? ''}`),
+    queryFn: async () => await request<AuditResultResponse>(`/api/audits/${encodeURIComponent(auditId ?? '')}`),
     enabled: (options.enabled ?? true) && auditId !== undefined,
     // A running audit is stale the moment it arrives; that is what polling means.
     staleTime: 0,
