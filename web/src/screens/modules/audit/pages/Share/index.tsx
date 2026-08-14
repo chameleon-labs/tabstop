@@ -16,14 +16,14 @@ import {describeFailure} from '../../failure';
 import {useAuditPhase} from '../../hooks/use-audit-phase';
 import {useStartAudit} from '../../hooks/use-start-audit';
 import {EXPECTED_DURATION, completionAnnouncement} from '../../phase';
-import {shareUrlFor, startedHereFrom} from '../../share';
+import {pollAfterMsFrom, shareUrlFor, startedHereFrom} from '../../share';
 import {hostOf} from '../../url';
 import './share.css';
 
 export const Share = (): React.JSX.Element => {
   const {uuid} = useParams<{uuid: string}>();
   const location = useLocation();
-  const audit = useAudit(uuid);
+  const audit = useAudit(uuid, {pollAfterMs: pollAfterMsFrom(location.state)});
 
   if (isApiError(audit.error) && audit.error.status === 404) {
     return <NotFound />;
@@ -128,7 +128,13 @@ const ReportFailure = ({failure, audit, owner}: ReportFailureProps): React.JSX.E
     retry = (): void => {
       void audit.refetch();
     };
-  } else if (failure.source === 'audit' && owner && url !== undefined) {
+  } else if (
+    failure.source === 'audit' &&
+    owner &&
+    url !== undefined &&
+    !reaudit.isPending &&
+    reaudit.failure === null
+  ) {
     retry = (): void => {
       reaudit.start(url);
     };

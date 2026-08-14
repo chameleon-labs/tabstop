@@ -17,7 +17,7 @@ export const useStartAudit = (): StartAudit => {
   const start = (url: string): void => {
     request.mutate(url, {
       onSuccess: (accepted) => {
-        void navigate(sharePathFor(accepted.auditId), {state: startedHere()});
+        void navigate(sharePathFor(accepted.auditId), {state: startedHere(accepted.pollAfterMs)});
       },
     });
   };

@@ -18,7 +18,7 @@ const isSettled = (status: AuditResultResponse['status']): boolean => status ===
 
 export type UseAuditOptions = {
   /** From `POST /api/audits`. Falls back to `FALLBACK_POLL_AFTER_MS`. */
-  pollAfterMs?: number;
+  pollAfterMs?: number | undefined;
   /** Skip the query entirely, e.g. before an audit has been requested. */
   enabled?: boolean;
 };

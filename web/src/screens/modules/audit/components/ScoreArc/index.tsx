@@ -8,26 +8,9 @@ export interface ScoreArcProps {
   size?: number;
 }
 
-/**
- * The hero audit card's circular score gauge.
- *
- * Page-local by design, not a library component: one consumer (the landing
- * page's mock audit card), one arrangement, no guarantee a caller would
- * otherwise have to remember — the same admission test that keeps
- * `EmptyState` out of the library. See the design spec's §7.3 and the gap
- * list's "Deliberate omissions" section.
- *
- * Ported from Lattice's `ScoreArc` (`packages/react/src/pages/score-arc.tsx`)
- * with its geometry untouched — the −210°→30° sweep, the `size * 0.38`
- * radius, the `size * 0.22` / `size * 0.09` text sizes are all proportional
- * to the `size` prop, not CSS roles, so they stay inline rather than moving
- * to `pages.css`. Colour is the one thing that changes: every stroke here is
- * `currentColor`, set by a `color` declaration on a `score-arc--*`
- * modifier class in `pages.css`, rather than the source's literal hex —
- * `stroke="var(--lat-...)"` was avoided because an inline SVG presentation
- * attribute reading a custom property is not reliable across browsers,
- * while `currentColor` inheritance is universally supported.
- */
+/* Strokes are `currentColor`, set by the `score-arc--*` modifiers: an inline
+   SVG presentation attribute reading a custom property is not reliable across
+   browsers. */
 const toRad = (deg: number): number => (deg * Math.PI) / 180;
 
 export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import {describe, expect, it} from 'vitest';
-import {shareUrlFor, startedHere, startedHereFrom} from './share';
+import {pollAfterMsFrom, shareUrlFor, startedHere, startedHereFrom} from './share';
 
 describe('shareUrlFor', () => {
   it('builds the public result address for an audit', () => {
@@ -41,6 +41,24 @@ describe('telling the owner of an audit from a stranger', () => {
   it('is not satisfied by a value that merely looks truthy', () => {
     for (const state of [{startedHere: 'yes'}, {startedHere: 1}, {startedHere: false}]) {
       expect(startedHereFrom(state)).toBe(false);
+    }
+  });
+});
+
+describe('the poll interval carried with a new audit', () => {
+  it('survives the trip, so the server can still widen it', () => {
+    expect(pollAfterMsFrom(startedHere(5000))).toBe(5000);
+  });
+
+  it('is absent on a link someone opened cold, which falls back', () => {
+    for (const state of [null, undefined, {}, startedHere()]) {
+      expect(pollAfterMsFrom(state)).toBeUndefined();
+    }
+  });
+
+  it('refuses a value that would poll wrongly or not at all', () => {
+    for (const state of [{pollAfterMs: 0}, {pollAfterMs: -1}, {pollAfterMs: '2000'}, {pollAfterMs: Number.NaN}]) {
+      expect(pollAfterMsFrom(state)).toBeUndefined();
     }
   });
 });

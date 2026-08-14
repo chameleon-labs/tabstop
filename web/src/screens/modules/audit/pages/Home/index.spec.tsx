@@ -156,6 +156,20 @@ describe('the home screen', () => {
       });
     });
 
+    it("carries the server's poll interval, so it can still be widened without a deploy", async () => {
+      // The old flow handed `pollAfterMs` straight to `useAudit`. Through a
+      // redirect it has to travel in state, or every new audit polls at the
+      // hard-coded fallback.
+      server({post: () => jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 750})});
+      const {router} = renderAt('/');
+
+      await submit('example.com');
+
+      await waitFor(() => {
+        expect(router.state.location.state).toEqual({startedHere: true, pollAfterMs: 750});
+      });
+    });
+
     it("marks the audit as this visitor's own, which the report reads", async () => {
       // The same page serves whoever they send the link to, and only the state
       // of this navigation tells the two apart.
@@ -164,7 +178,7 @@ describe('the home screen', () => {
       await submit('example.com');
 
       await waitFor(() => {
-        expect(router.state.location.state).toEqual({startedHere: true});
+        expect(router.state.location.state).toEqual({startedHere: true, pollAfterMs: 20});
       });
     });
 

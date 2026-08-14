@@ -198,6 +198,21 @@ describe('the share screen', () => {
   });
 
   describe('an audit that failed', () => {
+    it('withdraws the first retry once a re-run is under way, so it cannot be sent twice', async () => {
+      // The original failure stays mounted, so its button would otherwise sit
+      // beside the rate-limit message and start another audit.
+      server(
+        () => jsonResponse(200, auditBody({status: 'failed', score: null, error: 'The page took too long to load'})),
+        () => jsonResponse(429, {error: 'Too many requests', retryAfter: 45, resetAt: '2026-08-13T10:00:00.000Z'}),
+      );
+      renderShare({owner: true});
+
+      await userEvent.click(await screen.findByRole('button', {name: 'Try again'}));
+      await screen.findByRole('heading', {name: 'You have used your free audits'});
+
+      expect(screen.queryByRole('button', {name: 'Try again'})).not.toBeInTheDocument();
+    });
+
     it('says why a re-run was refused, rather than swallowing it', async () => {
       // The rate limit is the likeliest answer here, and the owner would
       // otherwise press Try again and watch nothing happen.
@@ -563,7 +578,7 @@ describe('the share screen', () => {
       });
       // Marked as theirs, so the page offers monitoring rather than the field
       // they just used.
-      expect(router.state.location.state).toEqual({startedHere: true});
+      expect(router.state.location.state).toEqual({startedHere: true, pollAfterMs: 20});
     });
   });
 });
