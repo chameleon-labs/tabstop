@@ -324,6 +324,15 @@ describe('the share screen', () => {
   });
 
   describe('an audit that failed', () => {
+    it('uses the failure title as the page heading when the report header is absent', async () => {
+      server(() =>
+        jsonResponse(200, auditBody({status: 'failed', score: null, error: 'The page took too long to load'})),
+      );
+      renderShare();
+
+      expect(await screen.findByRole('heading', {level: 1, name: 'That audit did not finish'})).toBeVisible();
+    });
+
     it('withdraws the first retry once a re-run is under way, so it cannot be sent twice', async () => {
       // The original failure stays mounted, so its button would otherwise sit
       // beside the rate-limit message and start another audit.

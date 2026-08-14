@@ -175,7 +175,7 @@ const ReportFailure = ({failure, audit, owner}: ReportFailureProps): React.JSX.E
 
   return (
     <>
-      <AuditFailure failure={failure} onRetry={retry} />
+      <AuditFailure failure={failure} onRetry={retry} headingLevel={1} />
       {reaudit.failure !== null && <AuditFailure failure={reaudit.failure} onRetry={reaudit.retry} />}
     </>
   );
