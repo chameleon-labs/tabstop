@@ -1,3 +1,4 @@
+import type {AuditResultResponse} from '@tabstop/contract';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {act, render, screen, waitFor} from '@testing-library/react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
@@ -10,12 +11,29 @@ import {destinationFrom, returnToSearch} from './screens/modules/account/return-
 import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
+const completedAudit: AuditResultResponse = {
+  auditId: 'abc-123',
+  url: 'https://example.com/',
+  status: 'done',
+  createdAt: '2026-08-14T12:00:00.000Z',
+  completedAt: '2026-08-14T12:00:30.000Z',
+  score: 100,
+  countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+  axeVersion: '4.12.1',
+  settled: true,
+  error: null,
+  violations: [],
+};
 
 describe('the route table', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
+    fetchMock = vi.fn((path) =>
+      Promise.resolve(
+        path === '/api/audits/abc-123' ? jsonResponse(200, completedAudit) : jsonResponse(401, {error: 'Unauthorized'}),
+      ),
+    );
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -24,7 +42,9 @@ describe('the route table', () => {
   });
 
   const withSession = (): void => {
-    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, signedIn)));
+    fetchMock.mockImplementation((path) =>
+      Promise.resolve(path === '/api/audits/abc-123' ? jsonResponse(200, completedAudit) : jsonResponse(200, signedIn)),
+    );
   };
 
   it('resolves / to the home screen', async () => {
@@ -92,7 +112,7 @@ describe('the route table', () => {
     // in order to show it would be the first step toward gating it.
     renderAt('/r/abc-123');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Accessibility report'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
     // The audit it was asked for, and nothing else. The screen has a request of
     // its own now, so "never called" would no longer say anything about identity.
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/audits/abc-123']);
@@ -119,7 +139,7 @@ describe('the route table', () => {
     await act(async () => {
       await router.navigate('/r/abc-123');
     });
-    expect(await screen.findByRole('heading', {level: 1, name: 'Accessibility report'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
     await act(async () => {
       await queryClient.invalidateQueries({queryKey: sessionKeys.me, exact: true});
     });

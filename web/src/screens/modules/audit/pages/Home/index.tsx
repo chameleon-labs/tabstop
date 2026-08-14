@@ -1,4 +1,4 @@
-import {EXPECTED_DURATION, phaseFor} from '../../phase';
+import {phaseFor} from '../../phase';
 import {AuditFailure} from '../../components/AuditFailure';
 import {AuditStatus} from '../../components/AuditStatus';
 import {UrlField} from '../../components/UrlField';
@@ -12,15 +12,16 @@ export const Home = (): React.JSX.Element => {
   const {start, retry, failure, isPending} = useStartAudit();
 
   const phase = isPending ? phaseFor('submitting', 0) : null;
-  const announcement = phase === null ? null : `${phase}… ${EXPECTED_DURATION}`;
+  const announcement = phase === null ? null : `${phase}…`;
 
-  const live =
-    failure === null && !isPending ? null : (
-      <>
-        {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
+  const feedback = (
+    <>
+      {failure !== null && <AuditFailure failure={failure} onRetry={retry} />}
+      <div className="visually-hidden">
         <AuditStatus message={announcement} />
-      </>
-    );
+      </div>
+    </>
+  );
 
-  return <Landing urlField={<UrlField onSubmit={start} disabled={isPending} />} live={live} />;
+  return <Landing urlField={<UrlField onSubmit={start} disabled={isPending} />} feedback={feedback} />;
 };

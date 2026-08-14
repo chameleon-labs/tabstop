@@ -127,7 +127,7 @@ describe('UrlField', () => {
     const onSubmit = vi.fn();
     render(<UrlField onSubmit={onSubmit} disabled />);
 
-    expect(screen.getByRole('button', {name: 'Audit this page'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Requesting…'})).toBeDisabled();
     expect(field()).toBeDisabled();
   });
 });

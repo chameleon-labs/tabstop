@@ -1,4 +1,4 @@
-import {act, render, screen} from '@testing-library/react';
+import {act, render, screen, within} from '@testing-library/react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {AuditStatus} from './index';
@@ -31,6 +31,29 @@ describe('AuditStatus', () => {
     expect(screen.getAllByText(/Fetching the page/)).toHaveLength(1);
     expect(region()).toHaveTextContent('Fetching the page');
     expect(region()).toBeVisible();
+    expect(region()).not.toHaveAttribute('class');
+  });
+
+  it('can advance visible copy without announcing a synthetic phase', () => {
+    render(<AuditStatus message={null} visibleMessage="Scoring…" />);
+
+    expect(screen.getByText('Scoring…')).toHaveAttribute('aria-hidden', 'true');
+    expect(region().querySelector('.visually-hidden')).toBeEmptyDOMElement();
+  });
+
+  it('keeps announced copy delayed when visible copy is immediate', () => {
+    render(
+      <AuditStatus
+        message="Fetching the page… this usually takes about 30 seconds"
+        visibleMessage="Fetching the page…"
+      />,
+    );
+
+    expect(screen.getByText('Fetching the page…')).toBeVisible();
+    expect(within(region()).queryByText(/30 seconds/)).not.toBeInTheDocument();
+
+    settle();
+    expect(within(region()).getByText(/30 seconds/, {selector: '.visually-hidden'})).toBeInTheDocument();
   });
 
   it('renders empty, so the region exists before its first content', () => {

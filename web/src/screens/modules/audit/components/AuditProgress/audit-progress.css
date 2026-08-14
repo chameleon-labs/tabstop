@@ -51,6 +51,9 @@
   display: flex;
   align-items: center;
   gap: var(--lat-space-3);
+  transition:
+    color 160ms ease-out,
+    opacity 160ms ease-out;
 }
 
 /* A step not yet reached is dimmed rather than hidden, so the whole shape of
@@ -75,21 +78,18 @@
   background: currentcolor;
 }
 
-.audit-progress__step[data-state='active'] .audit-progress__pip {
-  animation: audit-progress-pulse 1.2s ease-in-out infinite;
+.audit-progress__spinner {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border: 1.5px solid currentcolor;
+  border-inline-end-color: transparent;
+  border-radius: var(--lat-radius-full);
+  animation: audit-progress-spin 800ms linear infinite;
 }
 
-/* Honoured, because a pulsing dot is decoration and some readers cannot look
-   away from motion. */
-@media (prefers-reduced-motion: reduce) {
-  .audit-progress__step[data-state='active'] .audit-progress__pip {
-    animation: none;
-  }
-}
-
-@keyframes audit-progress-pulse {
-  50% {
-    opacity: 0.3;
+@keyframes audit-progress-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
@@ -103,6 +103,17 @@
   block-size: 100%;
   background: var(--lat-accent-solid);
   transition: inline-size 0.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-progress__step,
+  .audit-progress__fill {
+    transition: none;
+  }
+
+  .audit-progress__spinner {
+    animation: none;
+  }
 }
 
 .audit-progress__footer {

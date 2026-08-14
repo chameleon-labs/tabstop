@@ -218,7 +218,7 @@ function BoolCell({value}: {value: boolean}): React.JSX.Element {
   );
 }
 
-function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}): React.JSX.Element {
+function Hero({urlField, feedback}: {urlField: ReactNode; feedback: ReactNode}): React.JSX.Element {
   return (
     <Section id="audit" className="landing-page__hero">
       <div className="landing-page__hero-grid">
@@ -249,86 +249,76 @@ function Hero({urlField, live}: {urlField: ReactNode; live: ReactNode}): React.J
 
           {urlField}
 
+          {feedback}
+
           <p className="landing-page__meta">No account needed · Results in ~30 seconds</p>
         </div>
 
         <div className="landing-page__audit-wrap">
           <div className="landing-page__audit-glow" aria-hidden="true" />
 
-          {/*
-            The sample card is an ILLUSTRATION, and it is replaced rather than
-            pushed aside once there is a real audit. Leaving a fabricated score
-            for acme.example on screen beside a running audit of the visitor's
-            own page invites reading one as the other - the same reason this
-            screen has always kept its states mutually exclusive.
-          */}
-          {live !== null && live !== false ? (
-            <div className="landing-page__audit-card lat-surface">{live}</div>
-          ) : (
-            <Card data-elevation="floating" className="landing-page__audit-card">
-              {/* Browser chrome, not a panel header — deliberately not `CardHeader`,
+          {/* This remains a sample illustration until an accepted audit moves
+              the visitor to its own result route. Request feedback belongs to
+              the form, not inside a card labelled as acme.example. */}
+          <Card data-elevation="floating" className="landing-page__audit-card">
+            {/* Browser chrome, not a panel header — deliberately not `CardHeader`,
                 whose eyebrow convention (uppercase, letter-spaced) is wrong for a
                 URL bar. Built as page markup instead of a `CardHeader` variant,
                 per the resolution recorded in the design spec. */}
-              <div className="landing-page__audit-header">
-                <div className="landing-page__audit-dots" aria-hidden="true">
-                  <span className="landing-page__audit-dot landing-page__audit-dot--critical" />
-                  <span className="landing-page__audit-dot landing-page__audit-dot--serious" />
-                  <span className="landing-page__audit-dot landing-page__audit-dot--primary" />
-                </div>
-                <span className="landing-page__audit-url">https://acme.example</span>
-                <span className="landing-page__audit-meta">audited 4 min ago</span>
+            <div className="landing-page__audit-header">
+              <div className="landing-page__audit-dots" aria-hidden="true">
+                <span className="landing-page__audit-dot landing-page__audit-dot--critical" />
+                <span className="landing-page__audit-dot landing-page__audit-dot--serious" />
+                <span className="landing-page__audit-dot landing-page__audit-dot--primary" />
               </div>
-
-              <CardBody className="landing-page__audit-summary">
-                <ScoreArc score={71} size={100} />
-
-                <div className="landing-page__audit-signals">
-                  <div>
-                    <div className="landing-page__audit-violations-label">Violations</div>
-                    <div className="landing-page__audit-counts">
-                      {VIOLATIONS.map((v) => (
-                        <span
-                          key={v.impact}
-                          className={`landing-page__audit-count landing-page__audit-count--${v.impact}`}
-                        >
-                          {v.count} {v.impact}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="landing-page__audit-trend">
-                    <TrendingDown size="sm" />
-                    <span>−23 pts on the Jul 21 deploy</span>
-                  </div>
-                  <div className="landing-page__audit-alert">
-                    <Mail size="sm" />
-                    <span>Alert sent</span>
+              <span className="landing-page__audit-url">https://acme.example</span>
+              <span className="landing-page__audit-meta">audited 4 min ago</span>
+            </div>
+            <CardBody className="landing-page__audit-summary">
+              <ScoreArc score={71} size={100} />
+              <div className="landing-page__audit-signals">
+                <div>
+                  <div className="landing-page__audit-violations-label">Violations</div>
+                  <div className="landing-page__audit-counts">
+                    {VIOLATIONS.map((v) => (
+                      <span
+                        key={v.impact}
+                        className={`landing-page__audit-count landing-page__audit-count--${v.impact}`}
+                      >
+                        {v.count} {v.impact}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              </CardBody>
-
-              <ul className="landing-page__audit-violations">
-                {VIOLATIONS.slice(0, 3).map((v) => (
-                  <li key={v.rule} className="landing-page__audit-violation">
-                    <ImpactBadge impact={v.impact} />
-                    <div className="landing-page__audit-violation-copy">
-                      <p className="landing-page__audit-violation-rule">{v.rule}</p>
-                      <p className="landing-page__audit-violation-desc">{v.desc}</p>
-                    </div>
-                    <span className="landing-page__audit-violation-count">{v.count}×</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="landing-page__audit-footer">
-                <Button variant="link" size="sm">
-                  View full report
-                  <ExternalLink size="sm" />
-                </Button>
+                <div className="landing-page__audit-trend">
+                  <TrendingDown size="sm" />
+                  <span>−23 pts on the Jul 21 deploy</span>
+                </div>
+                <div className="landing-page__audit-alert">
+                  <Mail size="sm" />
+                  <span>Alert sent</span>
+                </div>
               </div>
-            </Card>
-          )}
+            </CardBody>
+            <ul className="landing-page__audit-violations">
+              {VIOLATIONS.slice(0, 3).map((v) => (
+                <li key={v.rule} className="landing-page__audit-violation">
+                  <ImpactBadge impact={v.impact} />
+                  <div className="landing-page__audit-violation-copy">
+                    <p className="landing-page__audit-violation-rule">{v.rule}</p>
+                    <p className="landing-page__audit-violation-desc">{v.desc}</p>
+                  </div>
+                  <span className="landing-page__audit-violation-count">{v.count}×</span>
+                </li>
+              ))}
+            </ul>
+            <div className="landing-page__audit-footer">
+              <Button variant="link" size="sm">
+                View full report
+                <ExternalLink size="sm" />
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     </Section>
@@ -583,15 +573,15 @@ const Footer = memo(() => (
 export type LandingProps = {
   /** tabstop's real URL form, wired to the audit flow by `Home`. */
   urlField: ReactNode;
-  /** Progress, failure or result. `null` while idle, when the sample shows. */
-  live: ReactNode;
+  /** Request feedback beside the form; the sample card remains illustrative. */
+  feedback: ReactNode;
 };
 
-export function Landing({urlField, live}: LandingProps): React.JSX.Element {
+export function Landing({urlField, feedback}: LandingProps): React.JSX.Element {
   return (
     <div className="lat-page lat-surface landing-page">
       <main id="main" tabIndex={-1} className="landing-page__main">
-        <Hero urlField={urlField} live={live} />
+        <Hero urlField={urlField} feedback={feedback} />
         <TrustBar />
         <HowItWorks />
         <ScoreHistory />

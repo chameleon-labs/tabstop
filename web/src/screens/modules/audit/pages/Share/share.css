@@ -10,6 +10,83 @@
   padding: var(--lat-space-12) var(--lat-space-6);
 }
 
+.report-page[data-view='progress'],
+.report-page[data-view='exiting'],
+.report-page[data-view='failure'] {
+  justify-content: center;
+  min-block-size: calc(100dvh - 3.5rem);
+  max-inline-size: 32rem;
+}
+
+.report-page__progress-eyebrow {
+  color: var(--lat-accent-solid);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-3xs);
+  font-weight: var(--lat-font-weight-bold);
+  letter-spacing: var(--lat-letter-spacing-wider);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.report-page[data-view='progress'] .audit-status,
+.report-page[data-view='exiting'] .audit-status {
+  text-align: center;
+  font-size: var(--lat-font-size-xl);
+  font-weight: var(--lat-font-weight-bold);
+  letter-spacing: var(--lat-letter-spacing-tight);
+}
+
+.audit-status__visual:empty {
+  display: none;
+}
+
+.report-page__progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-3);
+}
+
+.report-page__progress-duration,
+.report-page__progress-url {
+  text-align: center;
+}
+
+.report-page__progress-duration {
+  color: var(--lat-text-subtle);
+  font-size: var(--lat-font-size-xs);
+}
+
+.report-page__progress-url {
+  overflow: hidden;
+  color: color-mix(in oklch, var(--lat-accent-solid) 60%, transparent);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-page[data-view='exiting'] {
+  animation: audit-progress-exit 200ms ease-in forwards;
+}
+
+.report-page[data-view='report'] {
+  animation: audit-report-enter 250ms ease-out;
+}
+
+@keyframes audit-progress-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+}
+
+@keyframes audit-report-enter {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
 @media (width >= 48rem) {
   .report-page {
     padding-inline: var(--lat-space-10);
@@ -19,6 +96,13 @@
 @media (width >= 64rem) {
   .report-page {
     padding-inline: var(--lat-space-12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-page[data-view='exiting'],
+  .report-page[data-view='report'] {
+    animation: none;
   }
 }
 

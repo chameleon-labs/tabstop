@@ -1,12 +1,14 @@
 import type {AuditResultResponse} from '@tabstop/contract';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {act, render, screen, waitFor} from '@testing-library/react';
+import {act, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {makeQueryClient} from '@/api/query-client';
+import {ANNOUNCE_DELAY_MS} from '@/a11y/announce';
 import {jsonResponse} from '@/test/http';
 import {FALLBACK_POLL_AFTER_MS} from '../../audits';
+import {COMPLETE_HOLD_MS, FAST_PHASE_MS, PROGRESS_EXIT_MS, SCORING_HOLD_MS} from '../../hooks/use-audit-presentation';
 import {startedHere} from '../../share';
 import {Share} from './index';
 
@@ -157,7 +159,130 @@ describe('the share screen', () => {
   });
 
   describe('a link opened before the audit finished', () => {
-    it('waits, says what is happening, and shows the result when it lands', async () => {
+    it('shows Scoring and all-complete before revealing a fast result', async () => {
+      vi.useFakeTimers({shouldAdvanceTime: true});
+      server(
+        () => jsonResponse(200, auditBody({status: 'running', score: null, completedAt: null, violations: []})),
+        () => jsonResponse(200, auditBody()),
+      );
+      renderShare({owner: true});
+
+      await waitFor(() => expect(screen.getByText('Fetching the page…')).toBeVisible());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FALLBACK_POLL_AFTER_MS);
+      });
+
+      expect(screen.queryByRole('heading', {name: /Result for/})).not.toBeInTheDocument();
+      expect(screen.getByText('Running the accessibility engine…')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FAST_PHASE_MS);
+      });
+      expect(screen.getByText('Scoring…')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SCORING_HOLD_MS);
+      });
+      expect(screen.getByText('3/3 steps')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(COMPLETE_HOLD_MS + PROGRESS_EXIT_MS);
+      });
+      expect(await result()).toBeVisible();
+    });
+
+    it('uses the focused screen during first lookup and queueing', async () => {
+      let answer = (_response: Response): void => undefined;
+      const held = new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => held),
+      );
+      renderShare({owner: true});
+
+      expect(screen.getByRole('heading', {level: 1, name: 'Audit in progress'})).toBeInTheDocument();
+      expect(screen.getByText('Looking for that audit…')).toBeVisible();
+      expect(screen.queryByRole('heading', {name: /Result for/})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Keep an eye on this page'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Check your own site'})).not.toBeInTheDocument();
+
+      answer(jsonResponse(200, auditBody({status: 'queued', score: null, completedAt: null, violations: []})));
+
+      expect(await screen.findByText('Waiting for a free worker…')).toBeVisible();
+      expect(screen.getByText('0/3 steps')).toBeVisible();
+    });
+
+    it('does not delay a historical completed link', async () => {
+      server(() => jsonResponse(200, auditBody()));
+      renderShare();
+
+      expect(await result()).toBeVisible();
+    });
+
+    it('plays all phases when an owner first observes done', async () => {
+      vi.useFakeTimers({shouldAdvanceTime: true});
+      server(() => jsonResponse(200, auditBody()));
+      renderShare({owner: true});
+
+      await waitFor(() => expect(screen.getByText('Fetching the page…')).toBeVisible());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FAST_PHASE_MS);
+      });
+      expect(screen.getByText('Running the accessibility engine…')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FAST_PHASE_MS);
+      });
+      expect(screen.getByText('Scoring…')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SCORING_HOLD_MS);
+      });
+      expect(screen.getByText('3/3 steps')).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(COMPLETE_HOLD_MS);
+      });
+      expect(document.querySelector('.report-page')).toHaveAttribute('data-view', 'exiting');
+      expect(screen.queryByRole('heading', {name: /Result for/})).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PROGRESS_EXIT_MS);
+      });
+      expect(await result()).toBeVisible();
+    });
+
+    it('does not announce synthetic finish phases', async () => {
+      vi.useFakeTimers({shouldAdvanceTime: true});
+      server(() => jsonResponse(200, auditBody()));
+      renderShare({owner: true});
+
+      await waitFor(() => expect(screen.getByText('Fetching the page…')).toBeVisible());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FAST_PHASE_MS * 2);
+      });
+
+      expect(screen.getByText('Scoring…')).toBeVisible();
+      expect(within(statusLine()).queryByText(/Scoring/, {selector: '.visually-hidden'})).not.toBeInTheDocument();
+      expect(
+        within(statusLine()).queryByText(/Audit complete/, {selector: '.visually-hidden'}),
+      ).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SCORING_HOLD_MS + COMPLETE_HOLD_MS + PROGRESS_EXIT_MS);
+      });
+      expect(await result()).toBeVisible();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ANNOUNCE_DELAY_MS);
+      });
+      expect(within(statusLine()).getByText(/Audit complete/, {selector: '.visually-hidden'})).toBeInTheDocument();
+    });
+
+    it('announces completion to a non-owner who observed the audit running', async () => {
       vi.useFakeTimers({shouldAdvanceTime: true});
       server(
         () => jsonResponse(200, auditBody({status: 'running', score: null, completedAt: null, violations: []})),
@@ -165,17 +290,18 @@ describe('the share screen', () => {
       );
       renderShare();
 
-      // The library's `waitFor`, not vitest's: the phase clock ticks once a
-      // second while this waits, and only this one wraps those renders in act.
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/this usually takes about 30 seconds/);
+      await waitFor(() => expect(screen.getByText('Fetching the page…')).toBeVisible());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          FALLBACK_POLL_AFTER_MS + FAST_PHASE_MS + SCORING_HOLD_MS + COMPLETE_HOLD_MS + PROGRESS_EXIT_MS,
+        );
       });
+      expect(await result()).toBeVisible();
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
+        await vi.advanceTimersByTimeAsync(ANNOUNCE_DELAY_MS);
       });
-
-      expect(await result()).toBeVisible();
+      expect(statusLine()).toHaveTextContent('Audit complete. Score 72. 1 issue found.');
     });
   });
 
@@ -385,7 +511,7 @@ describe('the share screen', () => {
       expect(screen.getByRole('button', {name: 'Try again'})).toBeVisible();
     });
 
-    it('clears the failure WHILE a retry is in flight, with data already cached', async () => {
+    it('interrupts completion with failure and restores progress on retry', async () => {
       // The path that made the `isFetching` guard necessary, and the one two
       // earlier tests missed: both let the retry resolve immediately, so the
       // in-flight window was never observable. React Query clears a query's
@@ -415,7 +541,9 @@ describe('the share screen', () => {
       );
 
       renderShare();
-      await screen.findByText('Internal server error');
+      expect(await screen.findByText('Internal server error')).toBeVisible();
+      expect(document.querySelector('.report-page')).toHaveAttribute('data-view', 'failure');
+      expect(document.querySelector('.audit-progress')).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', {name: 'Try again'}));
 
@@ -426,6 +554,9 @@ describe('the share screen', () => {
       await waitFor(() => {
         expect(statusLine()).toHaveTextContent(/about 30 seconds/);
       });
+      expect(document.querySelector('.report-page')).toHaveAttribute('data-view', 'progress');
+      expect(document.querySelector('.audit-progress')).toBeVisible();
+      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument();
       release();
     });
 
@@ -502,34 +633,29 @@ describe('the share screen', () => {
       expect(screen.queryByRole('heading', {name: /Result for/})).not.toBeInTheDocument();
     });
 
-    it('shows progress while running, and nothing else once done', async () => {
-      let status: AuditResultResponse['status'] = 'running';
-      server(() => jsonResponse(200, auditBody({status})));
-      renderShare({owner: true});
-
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/about 30 seconds/);
+    it('never renders report header or either CTA while progress or failure is primary', async () => {
+      let answer = (_response: Response): void => undefined;
+      const held = new Promise<Response>((resolve) => {
+        answer = resolve;
       });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => held),
+      );
+      renderShare();
 
-      status = 'done';
+      expect(screen.getByRole('heading', {name: 'Audit in progress'})).toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Accessibility report'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Copy link'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Keep an eye on this page'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Check your own site'})).not.toBeInTheDocument();
 
-      expect(await screen.findByRole('heading', {level: 2, name: /Result for/})).toBeVisible();
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/Audit complete/);
-      });
-    });
-
-    it('announces completion, which nothing else would say', async () => {
-      // The result appears without the route changing, so the route announcer
-      // is silent, and the progress region used to unmount at exactly this
-      // moment. Someone who waited thirty seconds got no indication at all.
-      renderShare({owner: true});
-
-      await screen.findByRole('heading', {level: 2, name: /Result for/});
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/Audit complete/);
-      });
-      expect(statusLine()).toHaveTextContent(/Score 72/);
+      answer(jsonResponse(500, {error: 'Internal server error'}));
+      expect(await screen.findByText('Internal server error')).toBeVisible();
+      expect(screen.queryByRole('heading', {name: 'Accessibility report'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Copy link'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Keep an eye on this page'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Check your own site'})).not.toBeInTheDocument();
     });
 
     it('offers the finished audit as a link to send to someone', async () => {
@@ -568,7 +694,10 @@ describe('the share screen', () => {
     it('audits the address they type and takes them to its own page', async () => {
       // Not back to the landing to type it again: an accepted audit has an
       // address of its own from the moment the server answers.
-      server(() => jsonResponse(202, {auditId: 'new-1', status: 'queued', pollAfterMs: 20}));
+      server(
+        () => jsonResponse(200, auditBody()),
+        () => jsonResponse(202, {auditId: 'new-1', status: 'queued', pollAfterMs: 20}),
+      );
       const router = renderShare();
 
       await userEvent.type(await screen.findByLabelText('Page to audit'), 'example.org{Enter}');

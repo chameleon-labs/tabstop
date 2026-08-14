@@ -4,11 +4,13 @@ import {ANNOUNCE_DELAY_MS} from '@/a11y/announce';
 export type AuditStatusProps = {
   /** Null while there is nothing to say. */
   message: string | null;
+  /** Optional immediate visual copy, separate from the delayed announcement. */
+  visibleMessage?: string | null;
 };
 
 /**
  * The single status line for an audit, from before it starts until after it
- * finishes. Visible, and the live region.
+ * finishes. By default it is both visible and the live region.
  *
  * ONE NODE, and getting here took four attempts worth recording, because each
  * fix broke the next requirement:
@@ -29,9 +31,12 @@ export type AuditStatusProps = {
  * route has not changed, so the route announcer is silent.
  *
  * `polite`, because none of this should interrupt. Only a failure is urgent,
- * and `AuditFailure` is a `role="alert"` of its own.
+ * and `AuditFailure` is a `role="alert"` of its own. When a caller supplies
+ * separate visual copy, the visible span is aria-hidden and the hidden span is
+ * the sole delayed live-region value, so they are not duplicate accessible
+ * content.
  */
-export const AuditStatus = ({message}: AuditStatusProps): React.JSX.Element => {
+export const AuditStatus = ({message, visibleMessage}: AuditStatusProps): React.JSX.Element => {
   const [shown, setShown] = useState('');
 
   useEffect(() => {
@@ -77,9 +82,19 @@ export const AuditStatus = ({message}: AuditStatusProps): React.JSX.Element => {
     };
   }, [message, shown]);
 
+  const separate = visibleMessage !== undefined;
   return (
-    <p role="status" aria-live="polite" aria-atomic="true">
-      {shown}
+    <p className={separate ? 'audit-status' : undefined} role="status" aria-live="polite" aria-atomic="true">
+      {separate ? (
+        <>
+          <span className="audit-status__visual" aria-hidden="true">
+            {visibleMessage}
+          </span>
+          <span className="visually-hidden">{shown}</span>
+        </>
+      ) : (
+        shown
+      )}
     </p>
   );
 };
