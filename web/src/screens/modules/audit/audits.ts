@@ -18,7 +18,7 @@ const isSettled = (status: AuditResultResponse['status']): boolean => status ===
 
 export type UseAuditOptions = {
   /** From `POST /api/audits`. Falls back to `FALLBACK_POLL_AFTER_MS`. */
-  pollAfterMs?: number;
+  pollAfterMs?: number | undefined;
   /** Skip the query entirely, e.g. before an audit has been requested. */
   enabled?: boolean;
 };
@@ -40,7 +40,7 @@ export const useAudit = (
 
   return useQuery({
     queryKey: auditKeys.detail(auditId ?? ''),
-    queryFn: async () => await request<AuditResultResponse>(`/api/audits/${auditId ?? ''}`),
+    queryFn: async () => await request<AuditResultResponse>(`/api/audits/${encodeURIComponent(auditId ?? '')}`),
     enabled: (options.enabled ?? true) && auditId !== undefined,
     // A running audit is stale the moment it arrives; that is what polling means.
     staleTime: 0,

@@ -1,3 +1,5 @@
+import './score-arc.css';
+
 export interface ScoreArcProps {
   /** 0–100. Drives both the sweep and the threshold colour. */
   score: number;
@@ -6,26 +8,9 @@ export interface ScoreArcProps {
   size?: number;
 }
 
-/**
- * The hero audit card's circular score gauge.
- *
- * Page-local by design, not a library component: one consumer (the landing
- * page's mock audit card), one arrangement, no guarantee a caller would
- * otherwise have to remember — the same admission test that keeps
- * `EmptyState` out of the library. See the design spec's §7.3 and the gap
- * list's "Deliberate omissions" section.
- *
- * Ported from Lattice's `ScoreArc` (`packages/react/src/pages/score-arc.tsx`)
- * with its geometry untouched — the −210°→30° sweep, the `size * 0.38`
- * radius, the `size * 0.22` / `size * 0.09` text sizes are all proportional
- * to the `size` prop, not CSS roles, so they stay inline rather than moving
- * to `pages.css`. Colour is the one thing that changes: every stroke here is
- * `currentColor`, set by a `color` declaration on a `landing-page__score-arc--*`
- * modifier class in `pages.css`, rather than the source's literal hex —
- * `stroke="var(--lat-...)"` was avoided because an inline SVG presentation
- * attribute reading a custom property is not reliable across browsers,
- * while `currentColor` inheritance is universally supported.
- */
+/* Strokes are `currentColor`, set by the `score-arc--*` modifiers: an inline
+   SVG presentation attribute reading a custom property is not reliable across
+   browsers. */
 const toRad = (deg: number): number => (deg * Math.PI) / 180;
 
 export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element {
@@ -49,27 +34,22 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
   const trackP2 = arc(endAngle);
   const trackLarge = range > 180 ? 1 : 0;
 
-  let thresholdClass = 'landing-page__score-arc--bad';
+  let thresholdClass = 'score-arc--bad';
   if (score >= 80) {
-    thresholdClass = 'landing-page__score-arc--good';
+    thresholdClass = 'score-arc--good';
   } else if (score >= 60) {
-    thresholdClass = 'landing-page__score-arc--warn';
+    thresholdClass = 'score-arc--warn';
   }
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className={`landing-page__score-arc ${thresholdClass}`}
-    >
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={`score-arc ${thresholdClass}`}>
       <path
         d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${trackLarge} 1 ${trackP2.x} ${trackP2.y}`}
         fill="none"
         stroke="currentColor"
         strokeWidth={6}
         strokeLinecap="round"
-        className="landing-page__score-arc-track"
+        className="score-arc-track"
       />
       {score > 0 && (
         <path
@@ -87,7 +67,7 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
         dominantBaseline="middle"
         fill="currentColor"
         fontSize={size * 0.22}
-        className="landing-page__score-arc-value"
+        className="score-arc-value"
       >
         {score}
       </text>
@@ -98,7 +78,7 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
         dominantBaseline="middle"
         fill="currentColor"
         fontSize={size * 0.09}
-        className="landing-page__score-arc-suffix"
+        className="score-arc-suffix"
       >
         / 100
       </text>

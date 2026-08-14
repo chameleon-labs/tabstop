@@ -63,6 +63,20 @@ describe('AuditFailure', () => {
 
       expect(onRetry).toHaveBeenCalledOnce();
     });
+
+    it('offers no button when the caller has nothing to retry', () => {
+      // The share page reads someone else's finished audit. Re-running it there
+      // would either do nothing or start a different audit under a different
+      // link, so the button would lie either way.
+      render(
+        <Providers>
+          <AuditFailure failure={{message: 'The page took too long to load', action: 'retry', source: 'audit'}} />
+        </Providers>,
+      );
+
+      expect(screen.getByText('The page took too long to load')).toBeVisible();
+      expect(screen.queryByRole('button', {name: 'Try again'})).not.toBeInTheDocument();
+    });
   });
 
   describe('check-url', () => {

@@ -1,0 +1,145 @@
+/* `px-5 py-3.5 border-b border-border` — the card's own header row. */
+.violations__heading {
+  padding: var(--lat-space-3) var(--lat-space-5);
+  border-block-end: 1px solid var(--lat-border);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--lat-letter-spacing-eyebrow);
+}
+
+.violations__list {
+  list-style: none;
+}
+
+/* `divide-y divide-border/50`: a hairline between rows at half the border's
+   usual strength, and none above the first. */
+.violations__item:not(:first-child) {
+  border-block-start: 1px solid color-mix(in oklch, var(--lat-border) 50%, transparent);
+}
+
+/* `w-full flex items-start gap-3 px-5 py-4 text-left` — a full-width row that
+   happens to be a button, so the whole line is the target rather than the
+   words in it. */
+.violations__trigger {
+  inline-size: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lat-space-3);
+  padding: var(--lat-space-4) var(--lat-space-5);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+/* `hover:bg-foreground/[0.02]` — 2% of the ink, which is a hint rather than a
+   highlight: the row is a disclosure, not a selection. */
+.violations__trigger:hover {
+  background: color-mix(in oklch, var(--lat-text) 2%, transparent);
+}
+
+.violations__copy {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-0-5);
+}
+
+/* `font-mono text-xs` — the rule id is an identifier, and reads as one. */
+.violations__rule {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-xs);
+}
+
+.violations__description {
+  color: var(--lat-text-subtle);
+  font-size: var(--lat-font-size-xs);
+}
+
+.violations__count,
+.violations__chevron {
+  flex: none;
+  color: var(--lat-text-subtle);
+}
+
+.violations__count {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+}
+
+/* Rotated rather than swapped for a second glyph, so the state change reads as
+   one thing moving. */
+.violations__chevron {
+  transition: transform 0.15s;
+}
+
+.violations__trigger[aria-expanded='true'] .violations__chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .violations__trigger,
+  .violations__chevron {
+    transition: none;
+  }
+}
+
+/* `bg-muted/20 border-t border-border/50` — the panel is recessed, so an open
+   row reads as one block rather than as two rows. */
+.violations__panel[data-enter],
+.violations__panel:not([hidden]) {
+  padding: var(--lat-space-1) var(--lat-space-5) var(--lat-space-4);
+  border-block-start: 1px solid color-mix(in oklch, var(--lat-border) 50%, transparent);
+  background: color-mix(in oklch, var(--lat-text) 2%, transparent);
+}
+
+.violations__panel-eyebrow {
+  margin-block-end: var(--lat-space-2);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--lat-letter-spacing-eyebrow);
+}
+
+.violations__nodes {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-2);
+  margin-block-end: var(--lat-space-3);
+}
+
+.violations__nodes code {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+}
+
+.violations__nodes pre {
+  overflow-x: auto;
+  padding: var(--lat-space-2);
+  border: 1px solid var(--lat-border);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg);
+}
+
+.violations__help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lat-space-1);
+  color: var(--lat-accent-solid);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+}
+
+.violations__empty {
+  padding: var(--lat-space-5);
+  color: var(--lat-text-subtle);
+  font-size: var(--lat-font-size-sm);
+}

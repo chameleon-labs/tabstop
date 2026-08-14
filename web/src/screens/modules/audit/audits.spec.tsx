@@ -182,3 +182,21 @@ describe('useRequestAudit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('the audit id on the wire', () => {
+  it('cannot walk out of its own endpoint', async () => {
+    // React Router decodes `%2F` before this ever sees it, so a crafted share
+    // link would otherwise resolve to `/api/me` - a credentialed endpoint,
+    // fetched and rendered by a page whose whole premise is that the uuid is
+    // the only credential.
+    const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse(200, audit('done'))));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderHook(() => useAudit('../me'), {wrapper});
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/audits/..%2Fme']);
+  });
+});

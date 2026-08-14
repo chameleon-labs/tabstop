@@ -1,7 +1,7 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {render, type RenderResult} from '@testing-library/react';
-import {useState} from 'react';
-import {RouterProvider, createMemoryRouter} from 'react-router';
+import {StrictMode, useState} from 'react';
+import {RouterProvider, createMemoryRouter, type InitialEntry} from 'react-router';
 import {makeRoutes} from '../routes';
 
 export type AppMemoryRouter = ReturnType<typeof createMemoryRouter>;
@@ -52,7 +52,8 @@ export const Providers = ({children}: ProvidersProps): React.JSX.Element => {
 export const wrapper = Providers;
 
 /**
- * The app's real route table, mounted at a chosen path.
+ * The app's real route table, mounted at a chosen path - or at a whole entry,
+ * for the screens that read `location.state`.
  *
  * `makeRoutes` is called rather than a table rebuilt here on purpose: a test
  * that declares its own routes asserts that React Router works, which is not in
@@ -64,15 +65,24 @@ export const wrapper = Providers;
  * the provider, as in `main.tsx`: two would make a guarded page cost two
  * requests here and one in production, which is the wrong way round.
  */
-export const renderAt = (path: string): RenderResult & {router: AppMemoryRouter} => {
+export const renderAt = (
+  path: InitialEntry,
+  {strict = false}: {strict?: boolean} = {},
+): RenderResult & {router: AppMemoryRouter} => {
   const queryClient = testQueryClient();
   const router = createMemoryRouter(makeRoutes(queryClient), {initialEntries: [path]});
 
-  const result = render(
+  const tree = (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+
+  // `main.tsx` renders inside `StrictMode`, which invokes every mount effect
+  // twice in development. Off by default because it doubles the renders in
+  // every spec; on where a screen ACTS on mount, and firing twice is a bug a
+  // production build would never show.
+  const result = render(strict ? <StrictMode>{tree}</StrictMode> : tree);
 
   // Returned so a spec can navigate the way the app does. `window.history` is
   // not an option: a memory router does not listen to it, and a spec that goes

@@ -16,6 +16,8 @@
 
 * {
   box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 body {
@@ -123,4 +125,8 @@ main:focus {
 .icon--lg {
   inline-size: var(--lat-font-size-base);
   block-size: var(--lat-font-size-base);
+}
+
+li {
+  list-style: none;
 }

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {URL_PROBLEMS, normaliseUrl} from './url';
+import {URL_PROBLEMS, hostOf, normaliseUrl} from './url';
 
 const urlOf = (raw: string): string => {
   const result = normaliseUrl(raw);
@@ -109,5 +109,25 @@ describe('normaliseUrl', () => {
       // a hostname rule is how a client starts disagreeing with its server.
       expect(urlOf('exampl')).toBe('https://exampl/');
     });
+  });
+});
+
+describe('hostOf', () => {
+  it('names a report after the site it audited', () => {
+    expect(hostOf('https://example.com/checkout?step=2')).toBe('example.com');
+  });
+
+  it('keeps a port, which is how a staging host is told apart', () => {
+    expect(hostOf('http://localhost:3000/')).toBe('localhost:3000');
+  });
+
+  it('drops the credentials some URLs carry, which are not part of a name', () => {
+    expect(hostOf('https://user:secret@example.com/')).toBe('example.com');
+  });
+
+  it('hands back whatever it was given rather than throwing', () => {
+    // The server accepted this string; a heading is no place to discover that
+    // the two sides disagree about what parses.
+    expect(hostOf('not a url')).toBe('not a url');
   });
 });

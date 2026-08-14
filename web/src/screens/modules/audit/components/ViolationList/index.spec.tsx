@@ -23,12 +23,30 @@ describe('ViolationList', () => {
     expect(screen.getByText(/No accessibility violations were found/)).toBeVisible();
   });
 
-  it('groups by severity, most severe first', () => {
+  it('reports the tally the reader is looking for', () => {
     render(<ViolationList violations={[violation('minor', 'a'), violation('critical', 'b')]} />);
 
-    const headings = screen.getAllByRole('heading', {level: 3}).map((h) => h.textContent);
+    expect(screen.getByRole('region', {name: 'Violations — 2 total'})).toBeInTheDocument();
+  });
 
-    expect(headings).toEqual(['Critical (1)', 'Minor (1)']);
+  it('lists every finding in one list, most severe first', () => {
+    // Flat rather than grouped: one ordering, as the design has it.
+    render(<ViolationList violations={[violation('minor', 'a'), violation('critical', 'b')]} />);
+
+    // The disclosure triggers specifically: an open panel contributes list
+    // items and a copy button of its own, and this is about the findings.
+    const rows = screen.getAllByRole('button', {expanded: true}).map((row) => row.textContent);
+
+    expect(rows[0]).toContain('b');
+    expect(rows[1]).toContain('a');
+  });
+
+  it("carries the severity in each row's own name, since there are no longer sections", () => {
+    // What grouping used to provide. A reader hears "critical" before the rule
+    // rather than having to find the section that holds it.
+    render(<ViolationList violations={[violation('critical', 'b')]} />);
+
+    expect(screen.getByRole('button', {name: /^critical b Description for b/})).toBeVisible();
   });
 
   it('shows unrated findings rather than hiding them', () => {
@@ -36,7 +54,7 @@ describe('ViolationList', () => {
     // list that drops them is the product failing at its one job.
     render(<ViolationList violations={[violation(null, 'a')]} />);
 
-    expect(screen.getByRole('heading', {level: 3, name: 'Unrated (1)'})).toBeVisible();
+    expect(screen.getByRole('button', {name: /^unrated a/})).toBeVisible();
   });
 
   describe('the disclosure', () => {
@@ -53,15 +71,22 @@ describe('ViolationList', () => {
       expect(button).toHaveAttribute('aria-expanded', 'true');
     });
 
-    it('points at a panel that exists even while collapsed', () => {
-      // `aria-controls` naming a missing id is a broken relationship, not a
-      // collapsed one - so the panel is hidden rather than unmounted.
+    it('names no panel while there is none, rather than pointing at a missing id', async () => {
+      // The panel is unmounted while collapsed, so `aria-controls` goes with
+      // it. That is the correct half of the trade: an attribute naming an id
+      // that is not in the document is a broken relationship, and Ariakit
+      // removes it rather than leaving one behind. `aria-expanded` is what
+      // announces the state either way.
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />);
+      const trigger = screen.getAllByRole('button')[0] as HTMLElement;
 
-      const id = screen.getAllByRole('button')[0]?.getAttribute('aria-controls') ?? '';
+      expect(trigger).not.toHaveAttribute('aria-controls');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
-      expect(document.getElementById(id)).not.toBeNull();
-      expect(document.getElementById(id)).not.toBeVisible();
+      await userEvent.click(trigger);
+
+      const id = trigger.getAttribute('aria-controls') ?? '';
+      expect(document.getElementById(id)).toBeVisible();
     });
 
     it('does not build the panel contents while collapsed', async () => {
@@ -94,8 +119,12 @@ describe('ViolationList', () => {
     it('opens everything on a short list, so two problems need no clicks', () => {
       render(<ViolationList violations={many(EXPAND_ALL_BELOW - 1)} />);
 
-      for (const button of screen.getAllByRole('button')) {
-        expect(button).toHaveAttribute('aria-expanded', 'true');
+      // Only the rows: the panels carry a copy button each, which is not a
+      // disclosure and has no expanded state to report.
+      const triggers = screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-expanded'));
+      expect(triggers).toHaveLength(EXPAND_ALL_BELOW - 1);
+      for (const trigger of triggers) {
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
       }
     });
 
@@ -186,8 +215,9 @@ describe('ViolationList', () => {
       );
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      // The rule is still named, so the finding is not less useful.
-      expect(screen.getByText('a')).toBeVisible();
+      // The rule is still named in the panel, so the finding is not less
+      // useful. Scoped to the `code`, since the row above names it too.
+      expect(screen.getByText('a', {selector: 'code'})).toBeVisible();
     });
 
     it('says so when a rule reported no specific elements', () => {
@@ -210,10 +240,10 @@ describe('ViolationList', () => {
         />,
       );
 
-      const group = screen.getByRole('heading', {level: 3}).parentElement as HTMLElement;
+      const panel = screen.getByRole('button', {name: /^critical a/}).nextElementSibling as HTMLElement;
 
-      expect(within(group).getByText('#one')).toBeVisible();
-      expect(within(group).getByText('#two')).toBeVisible();
+      expect(within(panel).getByText('#one')).toBeVisible();
+      expect(within(panel).getByText('#two')).toBeVisible();
     });
   });
 });

@@ -34,6 +34,15 @@ describe('the application colour contract', () => {
     expect(contrast(onSolid!, '#6a9b00')).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('loads the app sheet after the tokens it corrects', () => {
+    // Both declare `--lat-accent-on-solid` at `:root`, so the later import
+    // wins. Ahead of them, the correction above is simply overwritten.
+    const main = readFileSync('src/main.tsx', 'utf8');
+
+    expect(main.indexOf("import './styles.css'")).toBeGreaterThan(main.indexOf("lattice-tokens/lattice.css'"));
+    expect(main.indexOf("import './styles.css'")).toBeGreaterThan(main.indexOf("lattice-react/styles.css'"));
+  });
+
   it('uses the high-contrast text semantic for link buttons', () => {
     expect(styles).toContain(".lat-button[data-variant='link'] {\n  color: var(--lat-text);\n}");
   });

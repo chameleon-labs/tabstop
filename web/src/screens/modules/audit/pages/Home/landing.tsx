@@ -17,22 +17,10 @@ import {
   Tr,
   VisuallyHidden,
 } from '@chameleon-labs/lattice-react';
-import type {BadgeVariant} from '@chameleon-labs/lattice-react';
-import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  ChevronRight,
-  ExternalLink,
-  Info,
-  Mail,
-  TrendingDown,
-  X,
-} from '@/screens/components/Icons';
-import type {IconProps} from '@/screens/components/Icons';
+import {ArrowRight, Check, ChevronRight, ExternalLink, Mail, TrendingDown, X} from '@/screens/components/Icons';
 import {BrandMark} from '@/screens/components/BrandMark';
-import {ScoreArc} from './LandingParts/score-arc';
+import {ImpactBadge} from '../../components/ImpactBadge';
+import {ScoreArc} from '../../components/ScoreArc';
 import {ScoreChart} from './LandingParts/score-chart';
 import './landing.css';
 
@@ -57,13 +45,6 @@ import './landing.css';
  */
 
 type Impact = 'critical' | 'serious' | 'moderate' | 'minor';
-
-const IMPACT_ICON: Record<Impact, (props: IconProps) => ReactNode> = {
-  critical: AlertCircle,
-  serious: AlertTriangle,
-  moderate: AlertTriangle,
-  minor: Info,
-};
 
 /**
  * The in-page anchors this screen offers in the shared header.
@@ -217,16 +198,6 @@ function Section({id, className, children}: {id?: string; className?: string; ch
     <section id={id} className={cls}>
       {children}
     </section>
-  );
-}
-
-function ImpactBadge({impact, count}: {impact: Impact; count?: number}): React.JSX.Element {
-  const Icon = IMPACT_ICON[impact];
-  return (
-    <Badge variant={impact as BadgeVariant}>
-      <Icon size="sm" />
-      {count === undefined ? impact : `${count} ${impact}`}
-    </Badge>
   );
 }
 

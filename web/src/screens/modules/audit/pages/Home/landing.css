@@ -261,36 +261,6 @@
   border-block-end: 1px solid var(--lat-border);
 }
 
-.landing-page__score-arc {
-  flex: 0 0 auto;
-}
-
-.landing-page__score-arc-track {
-  color: var(--lat-border);
-  opacity: 0.4;
-}
-
-.landing-page__score-arc-value {
-  font-family: var(--lat-font-mono);
-  font-weight: var(--lat-font-weight-bold);
-}
-
-.landing-page__score-arc-suffix {
-  color: var(--lat-text);
-  opacity: 0.5;
-  font-family: var(--lat-font-sans);
-}
-
-.landing-page__score-arc--good {
-  color: var(--lat-accent-vivid);
-}
-.landing-page__score-arc--warn {
-  color: var(--lat-severity-serious);
-}
-.landing-page__score-arc--bad {
-  color: var(--lat-severity-critical);
-}
-
 .landing-page__audit-signals {
   display: flex;
   flex-direction: column;

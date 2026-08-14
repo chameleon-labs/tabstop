@@ -82,3 +82,18 @@ export const normaliseUrl = (raw: string): UrlInput => {
 
   return {ok: true, url: parsed.href};
 };
+
+/**
+ * The host, for naming a report after the page it audited.
+ *
+ * Falls back to the whole string rather than throwing: this renders a URL the
+ * SERVER accepted, and a heading is no place to discover that the two disagree
+ * about what parses.
+ */
+export const hostOf = (url: string): string => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};

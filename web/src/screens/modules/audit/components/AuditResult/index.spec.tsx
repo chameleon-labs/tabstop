@@ -105,8 +105,8 @@ describe('AuditResult', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', {level: 3, name: 'Critical (1)'})).toBeVisible();
-    expect(screen.getByRole('button', {name: 'Images need alt text'})).toBeVisible();
+    expect(screen.getByRole('region', {name: 'Violations — 1 total'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /^critical image-alt Images need alt text/})).toBeVisible();
   });
 
   it('needs nothing but a response, so #23 can render it too', () => {
