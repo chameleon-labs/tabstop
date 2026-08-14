@@ -1,0 +1,29 @@
+/* Moved out of `landing.css` when the share page became a second consumer.
+   The geometry is untouched: every dimension is a proportion of `size`, set
+   inline by the component, so this file carries only colour and type. */
+
+.score-arc {
+  flex: 0 0 auto;
+}
+.score-arc-track {
+  color: var(--lat-border);
+  opacity: 0.4;
+}
+.score-arc-value {
+  font-family: var(--lat-font-mono);
+  font-weight: var(--lat-font-weight-bold);
+}
+.score-arc-suffix {
+  color: var(--lat-text);
+  opacity: 0.5;
+  font-family: var(--lat-font-sans);
+}
+.score-arc--good {
+  color: var(--lat-accent-vivid);
+}
+.score-arc--warn {
+  color: var(--lat-severity-serious);
+}
+.score-arc--bad {
+  color: var(--lat-severity-critical);
+}

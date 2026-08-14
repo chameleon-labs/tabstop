@@ -3,7 +3,8 @@ import type {DescribedFailure, FailureSource} from '../../failure';
 
 export type AuditFailureProps = {
   failure: DescribedFailure;
-  onRetry: () => void;
+  /** Absent where there is nothing to retry, as on a share link someone else made. */
+  onRetry?: (() => void) | undefined;
 };
 
 /**
@@ -41,7 +42,7 @@ export const AuditFailure = ({failure, onRetry}: AuditFailureProps): React.JSX.E
   <section role="alert" aria-labelledby="audit-failure-heading">
     <h2 id="audit-failure-heading">{failure.action === 'signup' ? SIGNUP_HEADING : HEADINGS[failure.source]}</h2>
     <p>{failure.message}</p>
-    {failure.action === 'retry' && (
+    {failure.action === 'retry' && onRetry !== undefined && (
       <button type="button" onClick={onRetry}>
         Try again
       </button>

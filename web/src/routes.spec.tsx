@@ -92,9 +92,10 @@ describe('the route table', () => {
     // in order to show it would be the first step toward gating it.
     renderAt('/r/abc-123');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Audit result'})).toBeVisible();
-    expect(screen.getByText(/abc-123/)).toBeVisible();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Accessibility report'})).toBeVisible();
+    // The audit it was asked for, and nothing else. The screen has a request of
+    // its own now, so "never called" would no longer say anything about identity.
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/audits/abc-123']);
   });
 
   it('disables session fetching only while moving through a public share route', async () => {
@@ -107,24 +108,29 @@ describe('the route table', () => {
       </QueryClientProvider>,
     );
 
+    // Counted rather than listed: the share screen fetches its own audit, and
+    // the question here is only ever how often identity is asked for.
+    const sessionCalls = (): string[] =>
+      fetchMock.mock.calls.map(([path]) => path).filter((path) => path === '/api/me');
+
     expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+    expect(sessionCalls()).toHaveLength(1);
 
     await act(async () => {
       await router.navigate('/r/abc-123');
     });
-    expect(await screen.findByRole('heading', {level: 1, name: 'Audit result'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Accessibility report'})).toBeVisible();
     await act(async () => {
       await queryClient.invalidateQueries({queryKey: sessionKeys.me, exact: true});
     });
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+    expect(sessionCalls()).toHaveLength(1);
 
     await act(async () => {
       await router.navigate('/dashboard');
     });
     expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
     await waitFor(() => {
-      expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/me']);
+      expect(sessionCalls()).toHaveLength(2);
     });
   });
 

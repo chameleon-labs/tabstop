@@ -1,5 +1,5 @@
 import type {AuditResultResponse} from '@tabstop/contract';
-import {screen, waitFor} from '@testing-library/react';
+import {act, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {ANNOUNCE_DELAY_MS} from '@/a11y/announce';
@@ -54,7 +54,10 @@ const server = (handlers: {post?: () => Response; get?: () => Response}): Return
  * first in the document, so the audit's status line is the later one.
  */
 const statusLine = (): HTMLElement => {
-  const regions = screen.getAllByRole('status');
+  // Filtered by `aria-atomic`, which is what separates the two regions that
+  // narrate an audit - the shell's announcer and this screen's status line -
+  // from the copy confirmation beside the result, which is neither.
+  const regions = screen.getAllByRole('status').filter((region) => region.getAttribute('aria-atomic') === 'true');
   return regions[regions.length - 1] as HTMLElement;
 };
 
@@ -68,6 +71,7 @@ describe('the home screen', () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    Object.defineProperty(navigator, 'clipboard', {value: undefined, configurable: true});
   });
 
   it('leads with what the product does', () => {
@@ -92,17 +96,6 @@ describe('the home screen', () => {
     expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('data-variant', 'primary');
   });
 
-  it('takes a bare domain through to a result', async () => {
-    // The whole hook, end to end: paste, wait, get something worth sharing.
-    renderAt('/');
-
-    await submit('example.com');
-
-    expect(await screen.findByRole('heading', {level: 2, name: /Result for/})).toBeVisible();
-    expect(screen.getByText('72')).toBeVisible();
-    expect(screen.getByRole('button', {name: 'Images need alt text'})).toBeVisible();
-  });
-
   it('submits the normalised URL, not the typed one', async () => {
     const fetchMock = server({});
     renderAt('/');
@@ -114,24 +107,6 @@ describe('the home screen', () => {
     });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.body).toBe('{"url":"https://example.com/"}');
-  });
-
-  it('shows progress while running, and nothing else once done', async () => {
-    let status: AuditResultResponse['status'] = 'running';
-    server({get: () => jsonResponse(200, auditBody({status}))});
-    renderAt('/');
-
-    await submit('example.com');
-    await waitFor(() => {
-      expect(statusLine()).toHaveTextContent(/about 30 seconds/);
-    });
-
-    status = 'done';
-
-    expect(await screen.findByRole('heading', {level: 2, name: /Result for/})).toBeVisible();
-    await waitFor(() => {
-      expect(statusLine()).toHaveTextContent(/Audit complete/);
-    });
   });
 
   it('does not claim a queue place while the request is still in flight', async () => {
@@ -162,17 +137,68 @@ describe('the home screen', () => {
     });
     expect(screen.getAllByText(/Requesting the audit/)).toHaveLength(1);
     expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument();
-    release();
+    // Releasing it navigates, so React updates: `act` or the console gate trips.
+    await act(() => {
+      release();
+    });
   });
 
-  it('will not accept a second URL while one is running', async () => {
-    server({get: () => jsonResponse(200, auditBody({status: 'running'}))});
-    renderAt('/');
+  describe('handing over to the audit page', () => {
+    it('leaves for the audit as soon as the server accepts it', async () => {
+      // An accepted audit is addressable from that moment, so this screen has
+      // nothing left to show. One result view, at one address.
+      const {router} = renderAt('/');
 
-    await submit('example.com');
+      await submit('example.com');
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('Page to audit')).toBeDisabled();
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe('/r/abc');
+      });
+    });
+
+    it('marks the audit as this visitor own, which the report reads', async () => {
+      // The same page serves whoever they send the link to, and only the state
+      // of this navigation tells the two apart.
+      const {router} = renderAt('/');
+
+      await submit('example.com');
+
+      await waitFor(() => {
+        expect(router.state.location.state).toEqual({startedHere: true});
+      });
+    });
+
+    it('shows the report it handed over to', async () => {
+      // End to end through the redirect: paste, wait, read the result.
+      renderAt('/');
+
+      await submit('example.com');
+
+      expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
+      expect(screen.getByText('72')).toBeVisible();
+    });
+
+    it('keeps the field out of use while the request is in flight', async () => {
+      let release = (): void => undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
+        }),
+      );
+      renderAt('/');
+
+      await submit('example.com');
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Page to audit')).toBeDisabled();
+      });
+      await act(() => {
+        release();
+      });
     });
   });
 
@@ -208,27 +234,6 @@ describe('the home screen', () => {
       await userEvent.click(screen.getByRole('link', {name: 'Create an account'}));
       expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
       expect(screen.queryByText('Page not found')).not.toBeInTheDocument();
-    });
-
-    it('offers a retry when the audit itself failed', async () => {
-      server({
-        get: () =>
-          jsonResponse(
-            200,
-            auditBody({
-              status: 'failed',
-              error: 'The page took too long to load',
-              score: null,
-              violations: [],
-            }),
-          ),
-      });
-      renderAt('/');
-
-      await submit('example.com');
-
-      expect(await screen.findByText('The page took too long to load')).toBeVisible();
-      expect(screen.getByRole('button', {name: 'Try again'})).toBeVisible();
     });
 
     it('re-runs the same URL on retry, without asking for it again', async () => {
@@ -281,286 +286,6 @@ describe('the home screen', () => {
         expect(statusLine()).toBeEmptyDOMElement();
       });
     });
-
-    it('reports a failed POLL instead of spinning forever', async () => {
-      // The audit query exhausts its retries, the POST error stays null, and
-      // nothing was left to notice: `waiting` held, so the progress indicator
-      // spun indefinitely on an audit nobody was still asking about.
-      server({get: () => jsonResponse(500, {error: 'Internal server error'})});
-      renderAt('/');
-
-      await submit('example.com');
-
-      expect(await screen.findByText('Internal server error')).toBeVisible();
-      expect(statusLine()).not.toHaveTextContent(/Fetching the page|Requesting the audit/);
-    });
-
-    it('retries a failed poll by ASKING AGAIN, not by auditing again', async () => {
-      // Re-submitting would spend another thirty seconds of Chromium, and
-      // another of the caller's rate limit, to answer a question already being
-      // answered.
-      const fetchMock = server({get: () => jsonResponse(500, {error: 'Internal server error'})});
-      renderAt('/');
-      await submit('example.com');
-      await screen.findByRole('button', {name: 'Try again'});
-      const postsBefore = fetchMock.mock.calls.filter(
-        (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
-      ).length;
-
-      await userEvent.click(screen.getByRole('button', {name: 'Try again'}));
-
-      await waitFor(() => {
-        const gets = fetchMock.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method !== 'POST');
-        expect(gets.length).toBeGreaterThan(1);
-      });
-      const postsAfter = fetchMock.mock.calls.filter(
-        (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
-      ).length;
-      expect(postsAfter).toBe(postsBefore);
-    });
-
-    it('shows progress again WHILE a poll retry is in flight', async () => {
-      // This pins a REACT QUERY behaviour rather than one of ours: it clears a
-      // query's error when a refetch begins, where it keeps a mutation's until
-      // the next settles. A guard was written here first and removed once no
-      // mutation of it changed anything observable. If a future version starts
-      // retaining query errors, this fails rather than quietly stranding a
-      // "Try again" button on screen for the whole retry.
-      //
-      // The retry is HELD OPEN deliberately. A mocked refetch that resolves
-      // immediately never leaves the intermediate state observable, and a first
-      // version of this test passed for exactly that reason.
-      let release = (): void => undefined;
-      let failing = true;
-      const held = async (): Promise<Response> => {
-        await new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        return jsonResponse(200, auditBody({status: 'running'}));
-      };
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (_url: string, init?: RequestInit) => {
-          if (init?.method === 'POST') {
-            return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
-          }
-          if (failing) {
-            return jsonResponse(500, {error: 'Internal server error'});
-          }
-          return await held();
-        }),
-      );
-
-      renderAt('/');
-      await submit('example.com');
-      await screen.findByRole('button', {name: 'Try again'});
-
-      failing = false;
-      await userEvent.click(screen.getByRole('button', {name: 'Try again'}));
-
-      // Still in flight: the error must already be gone.
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/about 30 seconds/);
-      });
-      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument();
-      release();
-    });
-
-    it('reports a poll that fails AFTER an earlier one succeeded', async () => {
-      // A different path through React Query than the initial-failure case, and
-      // for a while the only one covered was the initial one. With data already
-      // in the cache the library tolerates the first failure silently - the
-      // query stays `success` with the previous body - and only demotes to
-      // `error` after another. Both were measured; what matters is that the
-      // screen ends up saying something rather than spinning.
-      let gets = 0;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn((_url: string, init?: RequestInit) => {
-          if (init?.method === 'POST') {
-            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
-          }
-          gets += 1;
-          return Promise.resolve(
-            gets === 1
-              ? jsonResponse(200, auditBody({status: 'running'}))
-              : jsonResponse(500, {error: 'Internal server error'}),
-          );
-        }),
-      );
-
-      renderAt('/');
-      await submit('example.com');
-
-      expect(await screen.findByText('Internal server error')).toBeVisible();
-      expect(screen.getByRole('button', {name: 'Try again'})).toBeVisible();
-    });
-
-    it('clears the failure WHILE a retry is in flight, with data already cached', async () => {
-      // The path that made the `isFetching` guard necessary, and the one two
-      // earlier tests missed: both let the retry resolve immediately, so the
-      // in-flight window was never observable. React Query clears a query's
-      // error on refetch only when there is NO cached data; with a `running`
-      // body retained from an earlier poll it survives, and the failure panel
-      // and its own button sat there for the whole request.
-      let gets = 0;
-      let release = (): void => undefined;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async (_url: string, init?: RequestInit) => {
-          if (init?.method === 'POST') {
-            return jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20});
-          }
-          gets += 1;
-          if (gets === 1) {
-            return jsonResponse(200, auditBody({status: 'running'}));
-          }
-          if (gets === 2) {
-            return jsonResponse(500, {error: 'Internal server error'});
-          }
-          await new Promise<void>((resolve) => {
-            release = resolve;
-          });
-          return jsonResponse(200, auditBody({status: 'running'}));
-        }),
-      );
-
-      renderAt('/');
-      await submit('example.com');
-      await screen.findByText('Internal server error');
-
-      await userEvent.click(screen.getByRole('button', {name: 'Try again'}));
-
-      // Still in flight: the failure must already be gone, and the status line
-      // back to describing the wait. Phase-independent, because which phase it
-      // is depends on how long the audit has been going.
-      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument();
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/about 30 seconds/);
-      });
-      release();
-    });
-
-    it('restores progress when retrying from a post-success poll failure', async () => {
-      // The other half of the same path: the retry must not leave the failure
-      // and its own button on screen for the whole flight, which is the
-      // "button did nothing" shape.
-      let gets = 0;
-      let recovered = false;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn((_url: string, init?: RequestInit) => {
-          if (init?.method === 'POST') {
-            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
-          }
-          gets += 1;
-          if (gets === 1) {
-            return Promise.resolve(jsonResponse(200, auditBody({status: 'running'})));
-          }
-          return Promise.resolve(
-            recovered
-              ? jsonResponse(200, auditBody({status: 'running'}))
-              : jsonResponse(500, {error: 'Internal server error'}),
-          );
-        }),
-      );
-
-      renderAt('/');
-      await submit('example.com');
-      await screen.findByText('Internal server error');
-
-      recovered = true;
-      await userEvent.click(screen.getByRole('button', {name: 'Try again'}));
-
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/Fetching the page/);
-      });
-      expect(screen.queryByText('Internal server error')).not.toBeInTheDocument();
-    });
-
-    it('stops polling once it has given up, rather than retrying behind the message', async () => {
-      // The screen said "Lost track of that audit" and offered a Try again
-      // button while silently re-requesting several times a second, for as
-      // long as the tab stayed open: `refetchInterval` read only the RETAINED
-      // `data.status`, which stays `running` when a later fetch fails. A button
-      // that claims to be the way to retry must be the way to retry.
-      let gets = 0;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn((_url: string, init?: RequestInit) => {
-          if (init?.method === 'POST') {
-            return Promise.resolve(jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 20}));
-          }
-          gets += 1;
-          return Promise.resolve(
-            gets === 1
-              ? jsonResponse(200, auditBody({status: 'running'}))
-              : jsonResponse(500, {error: 'Internal server error'}),
-          );
-        }),
-      );
-
-      renderAt('/');
-      await submit('example.com');
-      await screen.findByText('Internal server error');
-
-      const settled = gets;
-      await new Promise((resolve) => {
-        setTimeout(resolve, 300);
-      });
-
-      expect(gets).toBe(settled);
-    });
-
-    it('never shows a result alongside a failure', async () => {
-      server({get: () => jsonResponse(200, auditBody({status: 'failed', error: 'boom'}))});
-      renderAt('/');
-
-      await submit('example.com');
-
-      await screen.findByText('boom');
-      expect(screen.queryByRole('heading', {name: /Result for/})).not.toBeInTheDocument();
-    });
-  });
-
-  describe('the CTA on a finished audit', () => {
-    it('offers to track the page, which is what an account is for', async () => {
-      // The audit they just ran was free. The reason to have an account is what
-      // happens tomorrow, so the offer sells the monitoring rather than signup.
-      renderAt('/');
-
-      await submit('example.com');
-      await screen.findByRole('heading', {level: 2, name: /Result for/});
-
-      const cta = screen.getByRole('link', {name: 'Track this page'});
-      expect(cta).toBeVisible();
-      await userEvent.click(cta);
-      expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
-    });
-
-    it('does not offer it while the audit is still running', async () => {
-      server({get: () => jsonResponse(200, auditBody({status: 'running'}))});
-      renderAt('/');
-
-      await submit('example.com');
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/Fetching the page/);
-      });
-
-      expect(screen.queryByRole('link', {name: 'Track this page'})).not.toBeInTheDocument();
-    });
-
-    it('does not offer it when the audit failed', async () => {
-      server({
-        get: () => jsonResponse(200, auditBody({status: 'failed', error: 'boom'})),
-      });
-      renderAt('/');
-
-      await submit('example.com');
-      await screen.findByText('boom');
-
-      expect(screen.queryByRole('link', {name: 'Track this page'})).not.toBeInTheDocument();
-    });
   });
 
   describe('what a screen reader is told', () => {
@@ -573,21 +298,6 @@ describe('the home screen', () => {
       await waitFor(() => {
         expect(statusLine()).toHaveTextContent(/Fetching the page/);
       });
-    });
-
-    it('announces completion, which nothing else would say', async () => {
-      // The result appears without the route changing, so the route announcer
-      // is silent, and the progress region used to unmount at exactly this
-      // moment. Someone who waited thirty seconds got no indication at all.
-      renderAt('/');
-
-      await submit('example.com');
-
-      await screen.findByRole('heading', {level: 2, name: /Result for/});
-      await waitFor(() => {
-        expect(statusLine()).toHaveTextContent(/Audit complete/);
-      });
-      expect(statusLine()).toHaveTextContent(/Score 72/);
     });
   });
 

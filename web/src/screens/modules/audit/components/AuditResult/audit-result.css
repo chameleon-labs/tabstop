@@ -1,0 +1,88 @@
+.audit-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-4);
+}
+
+/* `border border-border rounded-sm bg-card` — the panel the whole report is
+   built from, shared with the progress log and the closing offer. */
+.report-card {
+  overflow: hidden;
+  border: 1px solid var(--lat-border);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg-raised);
+}
+
+/* `font-mono text-[10px] uppercase tracking-widest text-muted-foreground` */
+.report-card__eyebrow {
+  margin: 0 0 var(--lat-space-2);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--lat-letter-spacing-eyebrow);
+}
+
+/* The arc and its correction sit on one row, so no layout drops one. */
+.audit-result__score {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-6);
+  padding: var(--lat-space-6);
+  flex-wrap: wrap;
+}
+
+.audit-result__counts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-1-5);
+}
+
+/* Each count is a row of `dt` then `dd`, so the pairing survives the flex. */
+.audit-result__count {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-2);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-font-size-xs);
+}
+
+.audit-result__count dd {
+  margin: 0;
+  color: var(--lat-text-subtle);
+}
+
+/* A dot in the severity's own colour, ahead of the label: the four counts are
+   otherwise four identical rows of text. */
+.audit-result__count::before {
+  content: '';
+  inline-size: 0.375rem;
+  block-size: 0.375rem;
+  border-radius: var(--lat-radius-full);
+  background: currentcolor;
+  flex: none;
+}
+
+.audit-result__count[data-impact='critical'] {
+  color: var(--lat-severity-critical);
+}
+
+.audit-result__count[data-impact='serious'] {
+  color: var(--lat-severity-serious);
+}
+
+.audit-result__count[data-impact='moderate'] {
+  color: var(--lat-severity-moderate);
+}
+
+.audit-result__count[data-impact='minor'] {
+  color: var(--lat-text-subtle);
+}
+
+.audit-result__unscored,
+.audit-result__provisional {
+  margin: 0;
+  color: var(--lat-text);
+  font-size: var(--lat-font-size-sm);
+}

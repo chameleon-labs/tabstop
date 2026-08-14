@@ -1,3 +1,5 @@
+import './score-arc.css';
+
 export interface ScoreArcProps {
   /** 0–100. Drives both the sweep and the threshold colour. */
   score: number;
@@ -20,7 +22,7 @@ export interface ScoreArcProps {
  * radius, the `size * 0.22` / `size * 0.09` text sizes are all proportional
  * to the `size` prop, not CSS roles, so they stay inline rather than moving
  * to `pages.css`. Colour is the one thing that changes: every stroke here is
- * `currentColor`, set by a `color` declaration on a `landing-page__score-arc--*`
+ * `currentColor`, set by a `color` declaration on a `score-arc--*`
  * modifier class in `pages.css`, rather than the source's literal hex —
  * `stroke="var(--lat-...)"` was avoided because an inline SVG presentation
  * attribute reading a custom property is not reliable across browsers,
@@ -49,27 +51,22 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
   const trackP2 = arc(endAngle);
   const trackLarge = range > 180 ? 1 : 0;
 
-  let thresholdClass = 'landing-page__score-arc--bad';
+  let thresholdClass = 'score-arc--bad';
   if (score >= 80) {
-    thresholdClass = 'landing-page__score-arc--good';
+    thresholdClass = 'score-arc--good';
   } else if (score >= 60) {
-    thresholdClass = 'landing-page__score-arc--warn';
+    thresholdClass = 'score-arc--warn';
   }
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className={`landing-page__score-arc ${thresholdClass}`}
-    >
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={`score-arc ${thresholdClass}`}>
       <path
         d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${trackLarge} 1 ${trackP2.x} ${trackP2.y}`}
         fill="none"
         stroke="currentColor"
         strokeWidth={6}
         strokeLinecap="round"
-        className="landing-page__score-arc-track"
+        className="score-arc-track"
       />
       {score > 0 && (
         <path
@@ -87,7 +84,7 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
         dominantBaseline="middle"
         fill="currentColor"
         fontSize={size * 0.22}
-        className="landing-page__score-arc-value"
+        className="score-arc-value"
       >
         {score}
       </text>
@@ -98,7 +95,7 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
         dominantBaseline="middle"
         fill="currentColor"
         fontSize={size * 0.09}
-        className="landing-page__score-arc-suffix"
+        className="score-arc-suffix"
       >
         / 100
       </text>

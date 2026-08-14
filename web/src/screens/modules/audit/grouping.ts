@@ -23,7 +23,7 @@ export type AllImpactsOrdered = MustBeNever<UnorderedImpact>;
 
 /**
  * Keyed on `Impact | 'unrated'` rather than `string`, so a new impact is a
- * compile error here too - an unlabelled group reads like a bug.
+ * compile error here too - an unlabelled severity reads like a bug.
  */
 export const IMPACT_LABELS: Readonly<Record<Impact | 'unrated', string>> = {
   critical: 'Critical',
@@ -32,35 +32,6 @@ export const IMPACT_LABELS: Readonly<Record<Impact | 'unrated', string>> = {
   minor: 'Minor',
   unrated: 'Unrated',
 };
-
-/** The key an unrated group is addressed by, since `null` is not a usable key. */
-export const UNRATED = 'unrated';
-
-export const impactKey = (impact: Impact | null): Impact | typeof UNRATED => impact ?? UNRATED;
-
-export type ViolationGroup = {
-  impact: Impact | null;
-  key: Impact | typeof UNRATED;
-  label: string;
-  violations: Violation[];
-};
-
-/**
- * Groups in fixed severity order, omitting the ones with nothing in them.
- *
- * "Critical (0)" reads as a finding at a glance, and the counts beside the
- * score already say what is absent.
- */
-export const groupByImpact = (violations: readonly Violation[]): ViolationGroup[] =>
-  IMPACT_ORDER.map((impact) => {
-    const key = impactKey(impact);
-    return {
-      impact,
-      key,
-      label: IMPACT_LABELS[key],
-      violations: violations.filter((violation) => violation.impact === impact),
-    };
-  }).filter((group) => group.violations.length > 0);
 
 /**
  * Below this many findings in total, everything starts open.
@@ -74,9 +45,11 @@ export const EXPAND_ALL_BELOW = 4;
 export const startsExpanded = (total: number): boolean => total < EXPAND_ALL_BELOW;
 
 /**
- * The total across every group.
+ * Every violation in one list, most severe first.
  *
- * Not `countsByImpact` summed: that counts only rated violations, so an unrated
- * finding would be invisible to the expand rule while visible on screen.
+ * A flat list rather than grouped sections: the report shows one heading and a
+ * tally, and each row carries its own severity. `sort` is stable, so findings
+ * of equal severity keep the order the server sent them in.
  */
-export const totalViolations = (violations: readonly Violation[]): number => violations.length;
+export const bySeverity = (violations: readonly Violation[]): Violation[] =>
+  violations.toSorted((a, b) => IMPACT_ORDER.indexOf(a.impact) - IMPACT_ORDER.indexOf(b.impact));
