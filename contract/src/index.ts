@@ -21,6 +21,18 @@ export type {
 
 export type {AccountResponse} from './account.js';
 
-export type {PageAlreadyTrackedBody, PageConflictBody, PageConflictCode, PageLimitReachedBody} from './pages.js';
+export type {
+  AddPageResponse,
+  LatestPageAudit,
+  LoadPagesResponse,
+  PageAlreadyTrackedBody,
+  PageConflictBody,
+  PageConflictCode,
+  PageLimitReachedBody,
+  PageScorePoint,
+  PageSummary,
+  PageView,
+  UpdatePageResponse,
+} from './pages.js';
 
 export type {ApiErrorBody, CodedConflictBody, RateLimitedBody} from './http.js';

@@ -1,0 +1,118 @@
+import {describe, expect, it} from 'vitest';
+import type {LoadPagesResponse, PageSummary as PageSummaryResponse} from '@tabstop/contract';
+import type {AuditModel} from '../../domain/models/audit.js';
+import type {PageModel, PageSummary} from '../../domain/models/page.js';
+import {toPageSummaryView, toPageView} from './page-view.js';
+
+const page: PageModel = {
+  id: 'page-1',
+  siteId: 'site-secret-1',
+  url: 'https://example.test/pricing',
+  monitoringEnabled: true,
+  createdAt: new Date('2026-08-15T10:00:00Z'),
+};
+
+const audit: AuditModel = {
+  id: 'audit-internal-1',
+  publicUuid: '11111111-1111-1111-1111-111111111111',
+  pageId: 'page-1',
+  url: page.url,
+  status: 'done',
+  score: 74,
+  countsByImpact: {minor: 1, moderate: 2, serious: 0, critical: 1},
+  axeVersion: '4.12.1',
+  durationMs: 1_200,
+  error: null,
+  createdAt: new Date('2026-08-15T10:01:00Z'),
+  completedAt: new Date('2026-08-15T10:01:30Z'),
+  settled: true,
+};
+
+const summary = (overrides: Partial<PageSummary> = {}): PageSummary => ({
+  page,
+  domain: 'example.test',
+  latestAudit: audit,
+  history: [
+    {score: 86, at: new Date('2026-08-14T10:00:00Z')},
+    {score: 74, at: new Date('2026-08-15T10:00:00Z')},
+  ],
+  ...overrides,
+});
+
+describe('the page view mappers', () => {
+  it('maps exactly the dashboard contract without internal ids', () => {
+    const view: PageSummaryResponse = toPageSummaryView(summary());
+    const body: LoadPagesResponse = {pages: [view], limit: 10, used: 1};
+
+    expect(body.used).toBe(1);
+    expect(view).toMatchObject({
+      id: 'page-1',
+      domain: 'example.test',
+      score: 74,
+      previousScore: 86,
+      latestAudit: {auditId: audit.publicUuid, status: 'done', score: 74},
+      history: [
+        {score: 86, at: '2026-08-14T10:00:00.000Z'},
+        {score: 74, at: '2026-08-15T10:00:00.000Z'},
+      ],
+    });
+  });
+
+  it('never puts an internal identifier on the wire', () => {
+    // `siteId` groups pages under an account and the audit's `id` is its
+    // primary key; the public uuid is the only id a client may see.
+    const serialised = JSON.stringify(toPageSummaryView(summary()));
+
+    expect(serialised).not.toContain('site-secret-1');
+    expect(serialised).not.toContain('audit-internal-1');
+  });
+
+  it('publishes exactly four page fields, so a later model column cannot leak', () => {
+    expect(Object.keys(toPageView(page)).toSorted()).toEqual(['createdAt', 'id', 'monitoringEnabled', 'url']);
+  });
+
+  it('serialises every date as an ISO string', () => {
+    const view = toPageSummaryView(summary());
+
+    expect(view.createdAt).toBe('2026-08-15T10:00:00.000Z');
+    expect(view.latestAudit?.createdAt).toBe('2026-08-15T10:01:00.000Z');
+    expect(view.latestAudit?.completedAt).toBe('2026-08-15T10:01:30.000Z');
+  });
+
+  it('reports no score rather than zero when nothing has finished', () => {
+    // A failed run rendered as zero reads as a catastrophic regression.
+    const view = toPageSummaryView(
+      summary({
+        latestAudit: {...audit, status: 'failed', score: null, completedAt: null, error: 'Navigation timeout'},
+        history: [],
+      }),
+    );
+
+    expect(view.score).toBeNull();
+    expect(view.previousScore).toBeNull();
+    expect(view.history).toEqual([]);
+    expect(view.latestAudit).toMatchObject({status: 'failed', score: null, completedAt: null});
+  });
+
+  it('keeps the last successful score when the latest run failed', () => {
+    const view = toPageSummaryView(
+      summary({latestAudit: {...audit, status: 'failed', score: null, error: 'Navigation timeout'}}),
+    );
+
+    expect(view.score).toBe(74);
+    expect(view.previousScore).toBe(86);
+  });
+
+  it('reports a single completed score with no previous score', () => {
+    const view = toPageSummaryView(summary({history: [{score: 74, at: new Date('2026-08-15T10:00:00Z')}]}));
+
+    expect(view.score).toBe(74);
+    expect(view.previousScore).toBeNull();
+  });
+
+  it('carries a null latest audit through', () => {
+    const view = toPageSummaryView(summary({latestAudit: null}));
+
+    expect(view.latestAudit).toBeNull();
+  });
+});
