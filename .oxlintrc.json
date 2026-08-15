@@ -259,6 +259,18 @@
     },
     {
       "files": [
+        "**/vite.config.ts"
+      ],
+      "env": {
+        "browser": false,
+        "node": true
+      },
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": [
         "server/**/*.ts"
       ],
       "env": {

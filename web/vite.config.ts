@@ -44,7 +44,7 @@ const reportProxyOutage = (proxy: {
   let reported = false
 
   proxy.on('error', () => {
-    if (reported) return
+    if (reported) { return }
     reported = true
     console.error(
       `\n  [api] cannot reach ${API_TARGET} - is the server running, and did it boot?` +
@@ -69,8 +69,8 @@ const quietProxyErrors = (): ReturnType<typeof createLogger> => {
   const logger = createLogger()
   const error = logger.error.bind(logger)
 
-  logger.error = (message, options) => {
-    if (message.includes('http proxy error')) return
+  logger.error = (message, options): void => {
+    if (message.includes('http proxy error')) { return }
     error(message, options)
   }
 
