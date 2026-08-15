@@ -1,0 +1,75 @@
+import type {PageSummary} from '@tabstop/contract';
+
+export const UNKNOWN_RELATIVE = 'Unknown time';
+export const UNKNOWN_EXACT = 'Unknown audit time';
+
+export type PageTimestamp = {
+  value: string;
+  prefix: 'Audited' | 'Audit started' | 'Attempted' | 'Added';
+};
+
+const SECOND = 1_000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const MONTH = 30 * DAY;
+const YEAR = 365 * DAY;
+
+const UNITS: readonly {limit: number; size: number; unit: Intl.RelativeTimeFormatUnit}[] = [
+  {limit: HOUR, size: MINUTE, unit: 'minute'},
+  {limit: DAY, size: HOUR, unit: 'hour'},
+  {limit: MONTH, size: DAY, unit: 'day'},
+  {limit: YEAR, size: MONTH, unit: 'month'},
+  {limit: Number.POSITIVE_INFINITY, size: YEAR, unit: 'year'},
+];
+
+export const relativeTime = (timestamp: string, now: number = Date.now(), locale?: string): string => {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return UNKNOWN_RELATIVE;
+  }
+
+  // Also catches a future timestamp, which clock skew between the server and
+  // the browser makes ordinary; "in 3 minutes" reads as a defect in the
+  // product rather than in the clock.
+  const elapsed = now - parsed;
+  if (elapsed < MINUTE) {
+    return 'just now';
+  }
+
+  const format = new Intl.RelativeTimeFormat(locale, {numeric: 'always'});
+  const {size, unit} = UNITS.find(({limit}) => elapsed < limit) ?? UNITS[UNITS.length - 1]!;
+
+  return format.format(-Math.floor(elapsed / size), unit);
+};
+
+export const exactTime = (timestamp: string, locale?: string, timeZone?: string): string => {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return UNKNOWN_EXACT;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    ...(timeZone === undefined ? {} : {timeZone}),
+  }).format(parsed);
+};
+
+export const pageTimestamp = (page: PageSummary): PageTimestamp => {
+  const latest = page.latestAudit;
+
+  if (latest === null) {
+    return {value: page.createdAt, prefix: 'Added'};
+  }
+
+  if (latest.status === 'done') {
+    return {value: latest.completedAt ?? latest.createdAt, prefix: 'Audited'};
+  }
+
+  if (latest.status === 'failed') {
+    return {value: latest.completedAt ?? latest.createdAt, prefix: 'Attempted'};
+  }
+
+  return {value: latest.createdAt, prefix: 'Audit started'};
+};
