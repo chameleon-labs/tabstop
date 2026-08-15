@@ -1,0 +1,40 @@
+.add-page-form__row {
+  display: flex;
+  gap: var(--lat-space-2);
+  align-items: stretch;
+}
+
+.add-page-form__field {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.add-page-form__error,
+.add-page-form__limit {
+  margin: var(--lat-space-2) 0 0;
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  line-height: var(--lat-text-meta-line-height);
+}
+
+.add-page-form__error {
+  color: var(--lat-danger-solid);
+}
+
+.add-page-form__limit {
+  color: var(--lat-text-subtle);
+}
+
+.add-page-form[data-mode='empty'] {
+  padding: var(--lat-space-6);
+  border: 1px solid var(--lat-border);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg-raised);
+}
+
+@media (width < 40rem) {
+  .add-page-form__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
