@@ -7,6 +7,9 @@ import {makeRoutes} from '@/routes';
 import {jsonResponse} from '@/test/http';
 import {returnToSearch} from '../../return-to';
 import {Login} from './index';
+import type {LoadPagesResponse} from '@tabstop/contract';
+
+const emptyPages: LoadPagesResponse = {pages: [], used: 0, limit: 10};
 
 const account = {id: '1', email: 'person@example.com', alertThreshold: 5};
 const credentials = {email: 'person@example.com', password: 'legacy-password'};
@@ -50,7 +53,9 @@ describe('Login', () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
       .mockResolvedValueOnce(jsonResponse(200, account))
-      .mockResolvedValueOnce(jsonResponse(200, account));
+      .mockResolvedValueOnce(jsonResponse(200, account))
+      // The real dashboard reads its list the moment it mounts.
+      .mockResolvedValue(jsonResponse(200, emptyPages));
   };
 
   it('presents the credential form with browser password-manager hints and the page title', async () => {
@@ -191,7 +196,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Password'), '{Enter}');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     expect(router.state.location.pathname).toBe('/dashboard');
     expect(router.state.location.search).toBe('');
     expect(router.state.location.hash).toBe('');
@@ -206,6 +211,7 @@ describe('Login', () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/me', expect.objectContaining({credentials: 'include'}));
+    expect(fetchMock).toHaveBeenCalledWith('/api/pages', expect.objectContaining({credentials: 'include'}));
   });
 
   it('replaces the login history entry after a successful standalone login', async () => {

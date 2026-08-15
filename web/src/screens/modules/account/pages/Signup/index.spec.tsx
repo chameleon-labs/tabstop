@@ -7,6 +7,9 @@ import {makeRoutes} from '@/routes';
 import {jsonResponse} from '@/test/http';
 import {returnToSearch} from '../../return-to';
 import {Signup} from './index';
+import type {LoadPagesResponse} from '@tabstop/contract';
+
+const emptyPages: LoadPagesResponse = {pages: [], used: 0, limit: 10};
 
 const account = {id: '1', email: 'person@example.com', alertThreshold: 5};
 const credentials = {email: 'person@example.com', password: 'a-secure-password'};
@@ -50,7 +53,9 @@ describe('Signup', () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
       .mockResolvedValueOnce(jsonResponse(201, account))
-      .mockResolvedValueOnce(jsonResponse(200, account));
+      .mockResolvedValueOnce(jsonResponse(200, account))
+      // The real dashboard reads its list the moment it mounts.
+      .mockResolvedValue(jsonResponse(200, emptyPages));
   };
 
   it('presents account creation with browser password-manager hints and the page title', async () => {
@@ -207,7 +212,7 @@ describe('Signup', () => {
 
     await user.type(screen.getByLabelText('Password'), '{Enter}');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     expect(router.state.location.pathname).toBe('/dashboard');
     expect(router.state.location.search).toBe('');
     expect(router.state.location.hash).toBe('');
@@ -222,6 +227,7 @@ describe('Signup', () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/me', expect.objectContaining({credentials: 'include'}));
+    expect(fetchMock).toHaveBeenCalledWith('/api/pages', expect.objectContaining({credentials: 'include'}));
   });
 
   it('returns to the full recorded destination after confirming the session', async () => {
