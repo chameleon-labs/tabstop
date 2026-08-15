@@ -9,6 +9,12 @@ export type DeletePageDialogProps = {
   target: PageSummary | null;
   /** The Remove button that opened it, for ordinary focus restoration. */
   trigger: HTMLElement | null;
+  /**
+   * Why the last attempt failed, shown in the dialog rather than only as a
+   * toast: a modal aria-hides the rest of the page, so a notification raised
+   * behind it reaches nobody until it closes.
+   */
+  error?: string | null;
   onOpenChange: (open: boolean) => void;
   /** Resolves true when the page is gone, false when it is still there. */
   onConfirm: (page: PageSummary) => Promise<boolean>;
@@ -18,6 +24,7 @@ export const DeletePageDialog = ({
   open,
   target,
   trigger,
+  error = null,
   onOpenChange,
   onConfirm,
 }: DeletePageDialogProps): React.JSX.Element => {
@@ -85,6 +92,11 @@ export const DeletePageDialog = ({
             removed, and this cannot be undone.
           </p>
         </div>
+        {error !== null && (
+          <p className="delete-page-dialog__error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="delete-page-dialog__actions">
           <DialogDismiss ref={cancelRef} disabled={pending} render={<Button variant="secondary" />}>
             Cancel

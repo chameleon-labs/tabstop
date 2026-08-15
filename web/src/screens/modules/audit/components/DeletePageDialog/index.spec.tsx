@@ -1,4 +1,4 @@
-import {act, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {useState} from 'react';
 import {describe, expect, it, vi} from 'vitest';
@@ -328,6 +328,36 @@ describe('DeletePageDialog', () => {
 
     expect(dialog()).toHaveAccessibleDescription(expect.stringContaining('https://example.test/page-2'));
     expect(screen.getByRole('button', {name: 'Remove page'})).toBeEnabled();
+  });
+
+  it('reports a failure inside itself, where the reader still is', async () => {
+    // A modal aria-hides the rest of the page, so a toast raised behind it is
+    // exposed to nobody until the dialog closes - and this dialog deliberately
+    // stays open when removal fails.
+    render(
+      <DeletePageDialog
+        open
+        target={page()}
+        trigger={null}
+        error="Could not remove https://example.test/page-1. Server error"
+        onOpenChange={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(dialog()).toBeVisible();
+    });
+    expect(within(dialog()).getByRole('alert')).toHaveTextContent('Server error');
+  });
+
+  it('says nothing about failure until there has been one', async () => {
+    render(<Harness onConfirm={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(dialog()).toBeVisible();
+    });
+    expect(within(dialog()).queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('renders the page url as text, whatever it contains', async () => {

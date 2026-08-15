@@ -239,7 +239,7 @@ export const ToastRegion = ({toasts, onDismiss}: ToastRegionProps): React.JSX.El
   return (
     <div className="toast-region">
       <LiveRegion message={announcement} />
-      <ul className="toast-region__stack">
+      <ul className="toast-region__stack" aria-label="Notifications">
         {toasts.slice(0, MAX_VISIBLE_TOASTS).map((toast) => (
           <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
         ))}

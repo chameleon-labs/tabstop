@@ -42,3 +42,11 @@
     flex-direction: column-reverse;
   }
 }
+
+.delete-page-dialog__error {
+  margin: 0 0 var(--lat-space-4);
+  color: var(--lat-danger-solid);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  line-height: var(--lat-text-meta-line-height);
+}
