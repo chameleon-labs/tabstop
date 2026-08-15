@@ -244,7 +244,9 @@ describe('Dashboard adding a page', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Score 74 out of 100')).toBeVisible();
+      expect(screen.getByRole('list', {name: 'Monitored pages'}).querySelector('.page-row__score')?.textContent).toBe(
+        'Score 74 out of 100',
+      );
     });
     await waitFor(() => {
       expect(toast('First audit complete for https://example.com/. Score 74.')).toBeVisible();

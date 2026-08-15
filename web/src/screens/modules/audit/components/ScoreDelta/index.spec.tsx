@@ -11,13 +11,15 @@ describe('ScoreDelta', () => {
   ])('renders $visible without relying on color', ({score, previousScore, visible, label}) => {
     render(<ScoreDelta score={score} previousScore={previousScore} />);
 
-    expect(screen.getByLabelText(label)).toHaveTextContent(visible);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText(visible)).toBeVisible();
   });
 
   it('says point, not points, for a single point', () => {
     render(<ScoreDelta score={90} previousScore={91} />);
 
-    expect(screen.getByLabelText('Score down 1 point since the previous audit')).toHaveTextContent('↓ 1');
+    expect(screen.getByText('Score down 1 point since the previous audit')).toBeInTheDocument();
+    expect(screen.getByText('↓ 1')).toBeVisible();
   });
 
   it.each([
@@ -39,11 +41,12 @@ describe('ScoreDelta', () => {
     expect(container.querySelector('[aria-hidden="true"]')).toHaveTextContent('↓');
   });
 
-  it('never announces the raw arrow character to assistive technology', () => {
-    render(<ScoreDelta score={74} previousScore={82} />);
+  it('carries its sentence as text, which a bare span may do and aria-label may not', () => {
+    // ARIA prohibits aria-label on a span with no role, so the name computed
+    // in jsdom was one no browser is required to expose.
+    const {container} = render(<ScoreDelta score={74} previousScore={82} />);
 
-    expect(screen.getByLabelText('Score down 8 points since the previous audit')).toHaveAccessibleName(
-      'Score down 8 points since the previous audit',
-    );
+    expect(container.querySelector('.score-delta')).not.toHaveAttribute('aria-label');
+    expect(screen.getByText('Score down 8 points since the previous audit')).toBeInTheDocument();
   });
 });

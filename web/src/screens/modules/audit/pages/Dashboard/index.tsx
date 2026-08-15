@@ -1,4 +1,4 @@
-import {Button, Callout, Eyebrow} from '@chameleon-labs/lattice-react';
+import {Button, Callout} from '@chameleon-labs/lattice-react';
 import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {useNavigate} from 'react-router';
 import type {PageSummary} from '@tabstop/contract';
@@ -59,16 +59,22 @@ export const Dashboard = (): React.JSX.Element => {
 
   useLayoutEffect(() => {
     if (pendingFocus === null) {
-      return;
+      return undefined;
     }
 
     const target = pendingFocus === 'list-heading' ? listHeadingRef.current : emptyInputRef.current;
     if (target === null) {
-      return;
+      return undefined;
     }
 
-    target.focus();
-    setPendingFocus(null);
+    const frame = requestAnimationFrame(() => {
+      target.focus();
+      setPendingFocus(null);
+    });
+
+    return (): void => {
+      cancelAnimationFrame(frame);
+    };
   }, [pendingFocus, data?.pages.length]);
 
   const submitPage = async (url: string): Promise<boolean> => {
@@ -142,7 +148,6 @@ export const Dashboard = (): React.JSX.Element => {
   return (
     <section className="dashboard">
       <header className="dashboard__header">
-        <Eyebrow tone="accent">Monitoring</Eyebrow>
         <div className="dashboard__title-row">
           <h1 className="dashboard__title">Your pages</h1>
           {data !== undefined && <p className="dashboard__count">{`${used} of ${limit} pages`}</p>}

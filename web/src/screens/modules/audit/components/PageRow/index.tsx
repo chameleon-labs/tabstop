@@ -1,4 +1,4 @@
-import {Badge, Button, Card} from '@chameleon-labs/lattice-react';
+import {Badge, Button, Card, VisuallyHidden} from '@chameleon-labs/lattice-react';
 import {useRef} from 'react';
 import {Link} from 'react-router';
 import type {PageSummary} from '@tabstop/contract';
@@ -72,8 +72,10 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
 
         <div className="page-row__metrics">
           {state.showScore && page.score !== null && (
-            <p className="page-row__score" aria-label={`${state.scoreLabel} ${page.score} out of 100`}>
+            <p className="page-row__score">
+              <VisuallyHidden>{`${state.scoreLabel} `}</VisuallyHidden>
               {page.score}
+              <VisuallyHidden> out of 100</VisuallyHidden>
             </p>
           )}
           {state.showDelta && page.score !== null && (

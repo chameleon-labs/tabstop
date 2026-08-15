@@ -126,7 +126,7 @@
 }
 
 .page-row__status--running {
-  color: var(--lat-text-accent);
+  color: var(--lat-text);
 }
 
 .page-row__actions {

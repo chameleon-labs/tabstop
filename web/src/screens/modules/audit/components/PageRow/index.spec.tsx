@@ -63,6 +63,8 @@ const renderRow = (summary: PageSummary = page(), overrides: Partial<{onToast: (
 
 const row = (): HTMLElement => screen.getByRole('listitem');
 
+const scoreText = (): string | undefined => row().querySelector('.page-row__score')?.textContent ?? undefined;
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -118,8 +120,8 @@ describe('PageRow states', () => {
     renderRow();
 
     expect(row()).toHaveAttribute('data-state', 'scored');
-    expect(screen.getByLabelText('Score 74 out of 100')).toBeVisible();
-    expect(screen.getByLabelText('Score down 8 points since the previous audit')).toBeVisible();
+    expect(scoreText()).toBe('Score 74 out of 100');
+    expect(screen.getByText('Score down 8 points since the previous audit')).toBeVisible();
     expect(screen.getByRole('img', {name: /Score trend: 82 to 74/})).toBeVisible();
     expect(screen.getByText('Audited 17 minutes ago')).toBeVisible();
   });
@@ -134,13 +136,13 @@ describe('PageRow states', () => {
       }),
     );
 
-    expect(screen.getByLabelText('Score up 8 points since the previous audit')).toBeVisible();
+    expect(screen.getByText('Score up 8 points since the previous audit')).toBeVisible();
   });
 
   it('says a first score is a first score rather than inventing a zero change', () => {
     renderRow(page({history: [{score: 74, at: '2026-08-15T10:00:00.000Z'}]}));
 
-    expect(screen.getByLabelText('First completed score')).toBeVisible();
+    expect(screen.getByText('First completed score')).toBeVisible();
   });
 
   it('never renders a failed audit as a score of zero', () => {
@@ -149,8 +151,8 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'failed');
     expect(screen.getByText(/Navigation timeout/)).toBeVisible();
-    expect(screen.getByLabelText('Last successful score 74 out of 100')).toBeVisible();
-    expect(screen.queryByLabelText('Score 0 out of 100')).not.toBeInTheDocument();
+    expect(scoreText()).toBe('Last successful score 74 out of 100');
+    expect(scoreText()).not.toContain('0 out of 100');
   });
 
   it('keeps a paused page muted but still readable', () => {
@@ -158,7 +160,7 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'paused');
     expect(screen.getByText('Paused')).toBeVisible();
-    expect(screen.getByLabelText('Last successful score 74 out of 100')).toBeVisible();
+    expect(scoreText()).toBe('Last successful score 74 out of 100');
     expect(screen.getByRole('button', {name: `Resume monitoring for ${URL}`})).toBeVisible();
   });
 
@@ -167,7 +169,7 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'first-audit');
     expect(screen.getByText(/First audit: Waiting for a free worker/)).toBeVisible();
-    expect(screen.queryByLabelText(/out of 100/)).not.toBeInTheDocument();
+    expect(scoreText()).toBeUndefined();
     // No chart at all, not even the empty one: there is nothing yet to chart.
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
@@ -177,7 +179,7 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'failed');
     expect(screen.getByText(/Navigation timeout/)).toBeVisible();
-    expect(screen.queryByLabelText(/out of 100/)).not.toBeInTheDocument();
+    expect(scoreText()).toBeUndefined();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
@@ -187,7 +189,7 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'first-audit');
     expect(screen.getByText(/First audit: /)).toBeVisible();
-    expect(screen.queryByLabelText(/out of 100/)).not.toBeInTheDocument();
+    expect(scoreText()).toBeUndefined();
   });
 
   it('keeps the last result on screen while a re-audit runs', () => {
@@ -195,7 +197,7 @@ describe('PageRow states', () => {
 
     expect(row()).toHaveAttribute('data-state', 'reaudit');
     expect(screen.getByText(/Re-audit: /)).toBeVisible();
-    expect(screen.getByLabelText('Score 74 out of 100')).toBeVisible();
+    expect(scoreText()).toBe('Score 74 out of 100');
     expect(screen.getByRole('img', {name: /Score trend/})).toBeVisible();
   });
 

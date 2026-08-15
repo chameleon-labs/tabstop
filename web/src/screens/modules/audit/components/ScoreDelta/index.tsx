@@ -1,4 +1,4 @@
-import {Badge, type BadgeVariant} from '@chameleon-labs/lattice-react';
+import {Badge, type BadgeVariant, VisuallyHidden} from '@chameleon-labs/lattice-react';
 import './score-delta.css';
 
 export type ScoreDeltaProps = {
@@ -9,8 +9,9 @@ export type ScoreDeltaProps = {
 export const ScoreDelta = ({score, previousScore}: ScoreDeltaProps): React.JSX.Element => {
   if (previousScore === null) {
     return (
-      <Badge className="score-delta" aria-label="First completed score">
-        First score
+      <Badge className="score-delta">
+        <VisuallyHidden>First completed score</VisuallyHidden>
+        <span aria-hidden="true">First score</span>
       </Badge>
     );
   }
@@ -19,8 +20,9 @@ export const ScoreDelta = ({score, previousScore}: ScoreDeltaProps): React.JSX.E
 
   if (delta === 0) {
     return (
-      <Badge className="score-delta" aria-label="Score unchanged since the previous audit">
-        No change
+      <Badge className="score-delta">
+        <VisuallyHidden>Score unchanged since the previous audit</VisuallyHidden>
+        <span aria-hidden="true">No change</span>
       </Badge>
     );
   }
@@ -31,7 +33,8 @@ export const ScoreDelta = ({score, previousScore}: ScoreDeltaProps): React.JSX.E
   const label = `Score ${down ? 'down' : 'up'} ${magnitude} ${magnitude === 1 ? 'point' : 'points'} since the previous audit`;
 
   return (
-    <Badge className="score-delta" variant={variant} aria-label={label}>
+    <Badge className="score-delta" variant={variant}>
+      <VisuallyHidden>{label}</VisuallyHidden>
       <span aria-hidden="true">
         {down ? '↓' : '↑'} {magnitude}
       </span>
