@@ -14,9 +14,9 @@ import {makeRoutes} from './routes';
  * `StaticRouterProvider` defaults to `hydrate: true`, so the returned markup
  * also carries a `<script>window.__staticRouterHydrationData = …</script>`
  * inside `#root`, which `createBrowserRouter` reads on the client and discards.
- * `/` is the only prerendered path and its route has no loader, so the payload
- * stays empty - guarded routes have loaders, but none of them is prerendered,
- * and a build-time `GET /api/me` is exactly what that must not become.
+ * The public compile-time routes have no loaders, so the payload stays empty -
+ * guarded routes have loaders, but none of them is prerendered, and a
+ * build-time `GET /api/me` is exactly what that must not become.
  */
 export const render = async (url: string): Promise<string> => {
   const queryClient = makeQueryClient();
@@ -30,7 +30,10 @@ export const render = async (url: string): Promise<string> => {
     throw new Error(`${url} answered with ${context.status} instead of rendering`);
   }
 
-  const router = createStaticRouter(routes, context);
+  // `query()` resolves lazy route modules into the handler's data routes.
+  // Rendering the original RouteObjects instead drops a resolved lazy child
+  // from the static router, leaving its matched outlet empty.
+  const router = createStaticRouter(handler.dataRoutes, context);
 
   return renderToString(
     <QueryClientProvider client={queryClient}>

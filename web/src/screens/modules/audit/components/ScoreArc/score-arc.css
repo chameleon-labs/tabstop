@@ -2,6 +2,36 @@
    The geometry is untouched: every dimension is a proportion of `size`, set
    inline by the component, so this file carries only colour and type. */
 
+.score-arc__link {
+  position: relative;
+  display: inline-flex;
+  border-radius: var(--lat-radius-full);
+  text-decoration: none;
+}
+.score-arc__link:focus-visible {
+  outline: 3px solid var(--lat-focus-ring);
+  outline-offset: var(--lat-space-1);
+}
+.score-arc__help {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--lat-space-4);
+  min-block-size: var(--lat-space-4);
+  padding: var(--lat-space-0-5);
+  border: 1px solid var(--lat-border-strong);
+  border-radius: var(--lat-radius-full);
+  background: var(--lat-bg-raised);
+  color: var(--lat-text);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  font-weight: var(--lat-text-meta-font-weight);
+  letter-spacing: var(--lat-text-meta-letter-spacing);
+  line-height: var(--lat-text-meta-line-height);
+  transform: translate(20%, -20%);
+}
 .score-arc {
   flex: 0 0 auto;
 }

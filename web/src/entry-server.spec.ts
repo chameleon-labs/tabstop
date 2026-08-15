@@ -64,4 +64,27 @@ describe('the prerenderer', () => {
 
     expect(calls).toEqual([]);
   });
+
+  it('renders the score formula without a DOM or network access', async () => {
+    const calls: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return Promise.reject(new Error('the prerenderer must not reach the network'));
+    }) as typeof fetch;
+
+    try {
+      const html = await render('/docs/score-formula');
+
+      expect(html).toContain('How the score is calculated');
+      expect(html).toContain('site-header');
+      expect(html).toContain('id="main"');
+      expect(html).toContain('href="#formula"');
+      expect(html).toContain('href="#worked-example"');
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    expect(calls).toEqual([]);
+  });
 });

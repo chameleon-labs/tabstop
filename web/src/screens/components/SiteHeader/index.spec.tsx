@@ -43,7 +43,8 @@ describe('SiteHeader', () => {
     renderHeader();
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
-    expect(screen.getByRole('link', {name: /tabstop/})).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', {name: 'tabstop'})).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', {name: 'tabstop'})).toHaveAttribute('aria-label', 'tabstop');
   });
 
   it('renders no section nav when a route declares none', () => {

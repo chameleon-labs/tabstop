@@ -1,0 +1,9 @@
+.docs-prose {
+  max-inline-size: var(--lat-container-prose);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-body-font-family);
+  font-size: var(--lat-text-body-font-size);
+  font-weight: var(--lat-text-body-font-weight);
+  letter-spacing: var(--lat-text-body-letter-spacing);
+  line-height: var(--lat-text-body-line-height);
+}

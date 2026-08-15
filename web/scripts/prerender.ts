@@ -5,20 +5,17 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 // Type-only: erased at runtime, so this does not require `dist-ssr/` to exist
 // for `tsc` to resolve it, unlike a value import of the built bundle would.
 import type * as EntryServer from '../src/entry-server.tsx';
+// @ts-expect-error Node runs this TypeScript file directly and needs its extension.
+import {outputFor, PRERENDER_PATHS} from '../src/prerender/paths.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST = join(HERE, '..', 'dist');
 
 /**
- * What gets prerendered. An array rather than a constant so adding `/signup`
- * later is one line; only `/` earns it today, because only `/` is both public
- * and built entirely from compile-time constants.
+ * Both public, session-free routes are made entirely from compile-time
+ * constants. Every other route needs a session or runtime data and therefore
+ * remains an app-shell response.
  */
-const PRERENDER_PATHS = ['/'];
-
-/** Where a path's HTML goes, following the convention static hosts already use. */
-const outputFor = (path: string): string => (path === '/' ? join(DIST, 'index.html') : join(DIST, path, 'index.html'));
-
 const main = async (): Promise<void> => {
   // Loaded dynamically, and only at runtime: `scripts/prerender.ts` runs after
   // `vite build --ssr` has produced `dist-ssr/entry-server.js`, but `tsc` runs
@@ -35,7 +32,7 @@ const main = async (): Promise<void> => {
 
   for (const path of PRERENDER_PATHS) {
     const html = await render(path);
-    const output = outputFor(path);
+    const output = outputFor(DIST, path);
 
     await mkdir(dirname(output), {recursive: true});
     await writeFile(output, injectMarkup(template, path, html));
@@ -45,11 +42,18 @@ const main = async (): Promise<void> => {
 
   // Checked against the FILESYSTEM, not against what the code above meant to
   // do - the failure this guards against is a write that silently did not
-  // happen, which reading back what was actually written is the only way to
-  // catch.
+  // happen, which reading back every page we actually wrote is the only way
+  // to catch.
   const appHtmlExists = existsSync(join(DIST, 'app.html'));
-  const writtenIndex = await readFile(join(DIST, 'index.html'), 'utf8');
-  assertBuildOutput(appHtmlExists, writtenIndex);
+  const writtenOutputs = await Promise.all(
+    PRERENDER_PATHS.map(async (path) => {
+      const output = outputFor(DIST, path);
+      const exists = existsSync(output);
+      return {path, exists, html: exists ? await readFile(output, 'utf8') : ''};
+    }),
+  );
+  const writtenIndex = writtenOutputs.find(({path}) => path === '/')?.html ?? '';
+  assertBuildOutput(appHtmlExists, writtenIndex, writtenOutputs);
 };
 
 // A prerender that fails must fail the BUILD. Emitting the empty shell and

@@ -1,3 +1,4 @@
+import {Link} from 'react-router';
 import './score-arc.css';
 
 export interface ScoreArcProps {
@@ -42,46 +43,62 @@ export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element 
   }
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={`score-arc ${thresholdClass}`}>
-      <path
-        d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${trackLarge} 1 ${trackP2.x} ${trackP2.y}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={6}
-        strokeLinecap="round"
-        className="score-arc-track"
-      />
-      {score > 0 && (
+    <Link
+      to="/docs/score-formula"
+      className="score-arc__link"
+      aria-label={`How score ${score} out of 100 is calculated`}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className={`score-arc ${thresholdClass}`}
+        aria-hidden="true"
+        focusable="false"
+      >
         <path
-          d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y}`}
+          d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${trackLarge} 1 ${trackP2.x} ${trackP2.y}`}
           fill="none"
           stroke="currentColor"
           strokeWidth={6}
           strokeLinecap="round"
+          className="score-arc-track"
         />
-      )}
-      <text
-        x={cx}
-        y={cy - 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill="currentColor"
-        fontSize={size * 0.22}
-        className="score-arc-value"
-      >
-        {score}
-      </text>
-      <text
-        x={cx}
-        y={cy + size * 0.14}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill="currentColor"
-        fontSize={size * 0.09}
-        className="score-arc-suffix"
-      >
-        / 100
-      </text>
-    </svg>
+        {score > 0 && (
+          <path
+            d={`M ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={6}
+            strokeLinecap="round"
+          />
+        )}
+        <text
+          x={cx}
+          y={cy - 2}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="currentColor"
+          fontSize={size * 0.22}
+          className="score-arc-value"
+        >
+          {score}
+        </text>
+        <text
+          x={cx}
+          y={cy + size * 0.14}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="currentColor"
+          fontSize={size * 0.09}
+          className="score-arc-suffix"
+        >
+          / 100
+        </text>
+      </svg>
+      <span className="score-arc__help" aria-hidden="true">
+        ?
+      </span>
+    </Link>
   );
 }

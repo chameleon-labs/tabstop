@@ -118,6 +118,14 @@ describe('the route table', () => {
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/audits/abc-123']);
   });
 
+  it('resolves the score formula without asking for a session', async () => {
+    renderAt('/docs/score-formula');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'How the score is calculated'})).toBeVisible();
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toHaveAttribute('href', '#main');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('disables session fetching only while moving through a public share route', async () => {
     withSession();
     const queryClient = makeQueryClient();
@@ -334,5 +342,13 @@ describe('what may be split out of the initial chunk', () => {
 
     expect(login?.lazy).toBeTypeOf('function');
     expect(login?.element).toBeUndefined();
+  });
+
+  it('keeps the score formula public and split from the initial bundle', () => {
+    const scoreFormula = inner.find((route) => route.path === 'docs/score-formula');
+
+    expect(scoreFormula?.handle).toEqual({sessionFree: true});
+    expect(scoreFormula?.lazy).toBeTypeOf('function');
+    expect(scoreFormula?.element).toBeUndefined();
   });
 });
