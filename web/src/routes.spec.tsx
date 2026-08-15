@@ -1,4 +1,4 @@
-import type {AuditResultResponse} from '@tabstop/contract';
+import type {AuditResultResponse, LoadPagesResponse} from '@tabstop/contract';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {act, render, screen, waitFor} from '@testing-library/react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
@@ -11,6 +11,7 @@ import {destinationFrom, returnToSearch} from './screens/modules/account/return-
 import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
+const emptyPages: LoadPagesResponse = {pages: [], used: 0, limit: 10};
 const completedAudit: AuditResultResponse = {
   auditId: 'abc-123',
   url: 'https://example.com/',
@@ -41,10 +42,25 @@ describe('the route table', () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * Answers by path. Returning the account for every unknown path would let a
+   * malformed dashboard fixture pass as a page list, which is exactly the sort
+   * of thing these tests exist to catch.
+   */
   const withSession = (): void => {
-    fetchMock.mockImplementation((path) =>
-      Promise.resolve(path === '/api/audits/abc-123' ? jsonResponse(200, completedAudit) : jsonResponse(200, signedIn)),
-    );
+    fetchMock.mockImplementation((path) => {
+      if (path === '/api/me') {
+        return Promise.resolve(jsonResponse(200, signedIn));
+      }
+      if (path === '/api/pages') {
+        return Promise.resolve(jsonResponse(200, emptyPages));
+      }
+      if (path === '/api/audits/abc-123') {
+        return Promise.resolve(jsonResponse(200, completedAudit));
+      }
+
+      return Promise.resolve(jsonResponse(404, {error: 'Not found'}));
+    });
   };
 
   it('resolves / to the home screen', async () => {
@@ -77,7 +93,7 @@ describe('the route table', () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    await screen.findByRole('heading', {level: 1, name: 'Dashboard'});
+    await screen.findByRole('heading', {level: 1, name: 'Your pages'});
     const beforeLanding = fetchMock.mock.calls.length;
 
     await act(async () => {
@@ -94,7 +110,7 @@ describe('the route table', () => {
 
     renderAt('/dashboard');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
   });
 
   it('resolves /pages/:id for a signed-in visitor, and passes the id through', async () => {
@@ -141,7 +157,7 @@ describe('the route table', () => {
     const sessionCalls = (): string[] =>
       fetchMock.mock.calls.map(([path]) => path).filter((path) => path === '/api/me');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     expect(sessionCalls()).toHaveLength(1);
 
     await act(async () => {
@@ -156,7 +172,7 @@ describe('the route table', () => {
     await act(async () => {
       await router.navigate('/dashboard');
     });
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     await waitFor(() => {
       expect(sessionCalls()).toHaveLength(2);
     });
@@ -173,7 +189,7 @@ describe('the route table', () => {
 
     renderAt('/login');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     expect(screen.queryByRole('heading', {level: 1, name: 'Log in'})).not.toBeInTheDocument();
   });
 
@@ -189,7 +205,7 @@ describe('the route table', () => {
 
     renderAt('/signup');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Dashboard'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
     expect(screen.queryByRole('heading', {level: 1, name: 'Create an account'})).not.toBeInTheDocument();
   });
 
@@ -198,7 +214,7 @@ describe('the route table', () => {
 
     // Landed on login, not on the dashboard behind a spinner.
     expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
-    expect(screen.queryByRole('heading', {name: 'Dashboard'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', {name: 'Your pages'})).not.toBeInTheDocument();
   });
 
   it('records the complete destination, so login can send them back', async () => {
@@ -259,9 +275,9 @@ describe('the route table', () => {
     withSession();
 
     renderAt('/dashboard');
-    await screen.findByRole('heading', {level: 1, name: 'Dashboard'});
+    await screen.findByRole('heading', {level: 1, name: 'Your pages'});
 
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me']);
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/me', '/api/pages']);
   });
 
   it('does not treat a broken /me as being signed out', async () => {

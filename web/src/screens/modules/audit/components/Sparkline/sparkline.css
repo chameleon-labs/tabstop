@@ -1,0 +1,43 @@
+.sparkline {
+  display: block;
+  inline-size: 120px;
+  block-size: 36px;
+  color: var(--lat-text-subtle);
+  overflow: visible;
+}
+
+.sparkline[data-trend='down'] {
+  color: var(--lat-danger-solid);
+}
+
+.sparkline[data-trend='up'] {
+  color: var(--lat-success-solid);
+}
+
+.sparkline__baseline {
+  stroke: var(--lat-border);
+  stroke-width: 1;
+}
+
+.sparkline__line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sparkline__end {
+  fill: currentcolor;
+}
+
+@media (forced-colors: active) {
+  .sparkline__baseline,
+  .sparkline__line {
+    stroke: CanvasText;
+  }
+
+  .sparkline__end {
+    fill: CanvasText;
+  }
+}

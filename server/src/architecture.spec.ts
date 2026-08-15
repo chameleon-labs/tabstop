@@ -305,6 +305,9 @@ describe('layer dependencies', () => {
       // client reads on every status.
       'presentation/helpers/http/http-helper.ts',
       'presentation/helpers/page-conflict-view.ts',
+      // The page endpoints' success shapes, published for the dashboard (#20)
+      // so the client cannot keep a second declaration of the same wire types.
+      'presentation/helpers/page-view.ts',
       'presentation/helpers/rate-limit-view.ts',
     ]);
   });

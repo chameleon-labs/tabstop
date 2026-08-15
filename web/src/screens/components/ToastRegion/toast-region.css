@@ -1,0 +1,108 @@
+.toast-region {
+  position: fixed;
+  z-index: 60;
+  inset-block-end: var(--lat-space-4);
+  inset-inline-end: var(--lat-space-4);
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.toast-region__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  inline-size: min(100vw - var(--lat-space-8), 26rem);
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--lat-space-2);
+  padding: var(--lat-space-3) var(--lat-space-3) var(--lat-space-3) var(--lat-space-4);
+  border: 1px solid var(--lat-border);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg-raised);
+  box-shadow: var(--lat-elevation-overlay);
+  color: var(--lat-text);
+  pointer-events: auto;
+}
+
+.toast[data-variant='success'] {
+  border-color: var(--lat-success-tint-border);
+}
+
+.toast[data-variant='info'] {
+  border-color: var(--lat-info-tint-border);
+}
+
+.toast[data-variant='warning'] {
+  border-color: var(--lat-warning-tint-border);
+}
+
+.toast[data-variant='danger'] {
+  border-color: var(--lat-danger-tint-border);
+}
+
+.toast__icon {
+  display: flex;
+  align-items: center;
+}
+
+.toast[data-variant='success'] .toast__icon {
+  color: var(--lat-success-solid);
+}
+
+.toast[data-variant='info'] .toast__icon {
+  color: var(--lat-info-solid);
+}
+
+.toast[data-variant='warning'] .toast__icon {
+  color: var(--lat-warning-solid);
+}
+
+.toast[data-variant='danger'] .toast__icon {
+  color: var(--lat-danger-solid);
+}
+
+.toast__message {
+  margin: 0;
+  font-family: var(--lat-text-ui-font-family);
+  font-size: var(--lat-text-ui-font-size);
+  line-height: var(--lat-text-ui-line-height);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-enter var(--lat-duration-swift) var(--lat-easing-out);
+  }
+
+  @keyframes toast-enter {
+    from {
+      opacity: 0;
+      transform: translateY(var(--lat-space-2));
+    }
+  }
+}
+
+@media (width < 30rem) {
+  .toast-region {
+    inset-inline: var(--lat-space-3);
+    inset-block-end: var(--lat-space-3);
+  }
+
+  .toast-region__stack {
+    inline-size: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .toast {
+    border-color: CanvasText;
+  }
+}
