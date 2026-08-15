@@ -100,6 +100,14 @@ export const makeRoutes = (queryClient: QueryClient): RouteObject[] => [
             },
           },
           {
+            path: 'docs/score-formula',
+            handle: {sessionFree: true},
+            lazy: async () => {
+              const {ScoreFormula} = await import('./screens/modules/docs/pages/ScoreFormula');
+              return {element: <ScoreFormula />};
+            },
+          },
+          {
             path: 'signup',
             loader: requireAnonymous(queryClient),
             lazy: async () => {

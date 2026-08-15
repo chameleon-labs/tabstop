@@ -96,6 +96,21 @@ describe('the home screen', () => {
     expect(screen.getByRole('link', {name: 'Sign up'})).toHaveAttribute('data-variant', 'primary');
   });
 
+  it('opens the score formula from the footer', async () => {
+    renderAt('/');
+
+    const scoreFormula = screen.getByRole('link', {name: 'Score formula'});
+    expect(scoreFormula).toHaveAttribute('href', '/docs/score-formula');
+
+    await userEvent.click(scoreFormula);
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'How the score is calculated'})).toBeVisible();
+    await waitFor(() => {
+      expect(document.title).toBe('Score formula · tabstop');
+      expect(screen.getByRole('status')).toHaveTextContent('Score formula · tabstop');
+    });
+  });
+
   it('submits the normalised URL, not the typed one', async () => {
     const fetchMock = server({});
     renderAt('/');

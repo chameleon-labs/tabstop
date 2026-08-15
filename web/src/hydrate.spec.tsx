@@ -1,7 +1,7 @@
 import {act} from '@testing-library/react';
 import {renderToString} from 'react-dom/server';
-import {afterEach, describe, expect, it} from 'vitest';
-import {mountApp} from './hydrate';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {mountApp, mountWhenRouterReady} from './hydrate';
 
 const Tree = (): React.JSX.Element => <p>hello</p>;
 
@@ -70,5 +70,70 @@ describe('mountApp', () => {
     });
 
     expect(container.textContent).toBe('hello');
+  });
+});
+
+describe('mountWhenRouterReady', () => {
+  it('waits to mount matching prerendered markup until a lazy router is ready', () => {
+    let subscriber: ((state: {initialized: boolean}) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const router = {
+      state: {initialized: false},
+      subscribe: vi.fn((next: (state: {initialized: boolean}) => void) => {
+        subscriber = next;
+        return unsubscribe;
+      }),
+    };
+    const mount = vi.fn();
+
+    mountWhenRouterReady(true, router, mount);
+
+    expect(mount).not.toHaveBeenCalled();
+    expect(router.subscribe).toHaveBeenCalledTimes(1);
+
+    router.state.initialized = true;
+    subscriber?.(router.state);
+    subscriber?.(router.state);
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+
+  it('catches readiness that arrives between the initial check and subscription', () => {
+    const state = {initialized: false};
+    const unsubscribe = vi.fn();
+    const router = {
+      state,
+      subscribe: vi.fn(() => {
+        state.initialized = true;
+        return unsubscribe;
+      }),
+    };
+    const mount = vi.fn();
+
+    mountWhenRouterReady(true, router, mount);
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+
+  it('mounts nonmatching prerendered markup immediately so its fallback remains available', () => {
+    const router = {state: {initialized: false}, subscribe: vi.fn()};
+    const mount = vi.fn();
+
+    mountWhenRouterReady(false, router, mount);
+
+    expect(router.subscribe).not.toHaveBeenCalled();
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+
+  it('mounts an initialized error state immediately', () => {
+    const router = {state: {initialized: true}, subscribe: vi.fn()};
+    const mount = vi.fn();
+
+    mountWhenRouterReady(true, router, mount);
+
+    expect(router.subscribe).not.toHaveBeenCalled();
+    expect(mount).toHaveBeenCalledTimes(1);
   });
 });

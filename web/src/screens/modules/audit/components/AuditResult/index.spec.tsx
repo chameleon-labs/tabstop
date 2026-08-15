@@ -1,6 +1,7 @@
 import type {AuditResultResponse} from '@tabstop/contract';
 import {render, screen} from '@testing-library/react';
 import {describe, expect, it} from 'vitest';
+import {Providers} from '@/test/render';
 import {AuditResult} from './index';
 
 const audit = (over: Partial<AuditResultResponse> = {}): AuditResultResponse => ({
@@ -20,7 +21,7 @@ const audit = (over: Partial<AuditResultResponse> = {}): AuditResultResponse => 
 
 describe('AuditResult', () => {
   it('names the page it is a result for', () => {
-    render(<AuditResult audit={audit()} />);
+    render(<AuditResult audit={audit()} />, {wrapper: Providers});
 
     expect(screen.getByRole('heading', {level: 2})).toHaveTextContent('https://example.com/');
   });
@@ -31,7 +32,7 @@ describe('AuditResult', () => {
       // invites "72 is a B-", and the score exists for noticing regressions
       // rather than for grading a site - two pages can score identically with
       // very different problems.
-      render(<AuditResult audit={audit()} />);
+      render(<AuditResult audit={audit()} />, {wrapper: Providers});
 
       expect(screen.getByText('72')).toBeVisible();
       for (const label of ['Critical', 'Serious', 'Moderate', 'Minor']) {
@@ -48,13 +49,14 @@ describe('AuditResult', () => {
             countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
           })}
         />,
+        {wrapper: Providers},
       );
 
       expect(screen.getAllByText('0')).toHaveLength(4);
     });
 
     it('says so rather than showing nothing when there is no score', () => {
-      render(<AuditResult audit={audit({score: null})} />);
+      render(<AuditResult audit={audit({score: null})} />, {wrapper: Providers});
 
       expect(screen.getByText('Not scored')).toBeVisible();
     });
@@ -62,7 +64,7 @@ describe('AuditResult', () => {
     it('pairs each count with its label programmatically', () => {
       // A description list, so the association survives without the visual
       // layout that usually carries it.
-      render(<AuditResult audit={audit()} />);
+      render(<AuditResult audit={audit()} />, {wrapper: Providers});
 
       const term = screen.getByText('Critical');
       expect(term.tagName).toBe('DT');
@@ -76,13 +78,13 @@ describe('AuditResult', () => {
       // above was measured against a page still in motion. Publishing a clean
       // score from it silently would be the product asserting something it does
       // not know - on a page someone shares with a colleague.
-      render(<AuditResult audit={audit({settled: false})} />);
+      render(<AuditResult audit={audit({settled: false})} />, {wrapper: Providers});
 
       expect(screen.getByRole('note')).toHaveTextContent(/provisional/);
     });
 
     it('says nothing extra when the page did settle', () => {
-      render(<AuditResult audit={audit({settled: true})} />);
+      render(<AuditResult audit={audit({settled: true})} />, {wrapper: Providers});
 
       expect(screen.queryByRole('note')).not.toBeInTheDocument();
     });
@@ -103,6 +105,7 @@ describe('AuditResult', () => {
           ],
         })}
       />,
+      {wrapper: Providers},
     );
 
     expect(screen.getByRole('region', {name: 'Violations — 1 total'})).toBeInTheDocument();
@@ -110,9 +113,8 @@ describe('AuditResult', () => {
   });
 
   it('needs nothing but a response, so #23 can render it too', () => {
-    // No router, no query client, no knowledge of how it was reached. The share
-    // page and audit detail render this same component; a dependency on either
-    // of those would make it unusable in the other.
-    expect(() => render(<AuditResult audit={audit()} />)).not.toThrow();
+    // The share page and audit detail render this same component; it needs only
+    // the app-level router and query client, not route-specific data.
+    expect(() => render(<AuditResult audit={audit()} />, {wrapper: Providers})).not.toThrow();
   });
 });

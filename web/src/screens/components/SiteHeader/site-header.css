@@ -63,6 +63,7 @@
    cannot reach a badge another screen puts here later. */
 .site-header__brand .lat-badge[data-variant='default'] {
   padding: var(--lat-space-0-5) var(--lat-space-1-5);
+  color: var(--lat-text);
   font-size: var(--lat-font-size-3xs);
   letter-spacing: var(--lat-letter-spacing-wider);
 }

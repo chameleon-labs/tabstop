@@ -12,3 +12,5 @@ coverage/
 .playwright-mcp/
 .superpowers/
 docs/
+!web/src/screens/modules/docs/
+!web/src/screens/modules/docs/**

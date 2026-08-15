@@ -1,7 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    // Node runs these scripts as TypeScript, so their imports of `src/` carry
+    // the real extension. Declared here rather than suppressed per import: the
+    // `@ts-expect-error` it replaces reported as unused under other TypeScript
+    // versions, which made opening the file an error in the editor.
+    "allowImportingTsExtensions": true
   },
   "include": ["scripts"]
 }

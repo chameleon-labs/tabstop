@@ -14,6 +14,12 @@ describe('the site header stylesheet', () => {
     expect(styles).toContain('padding-inline: var(--lat-space-4)');
   });
 
+  it('keeps the small beta label readable in both themes', () => {
+    expect(styles).toMatch(
+      /\.site-header__brand \.lat-badge\[data-variant='default'\]\s*\{[^}]*color:\s*var\(--lat-text\)/s,
+    );
+  });
+
   it('layers above positioned page content while sticky', () => {
     // With `z-index: auto` the landing hero's card scrolls over it.
     expect(styles).toMatch(/\.site-header\s*{[^}]*z-index:\s*50/s);

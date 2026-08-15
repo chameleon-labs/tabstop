@@ -44,7 +44,7 @@ const reportProxyOutage = (proxy: {
   let reported = false
 
   proxy.on('error', () => {
-    if (reported) return
+    if (reported) { return }
     reported = true
     console.error(
       `\n  [api] cannot reach ${API_TARGET} - is the server running, and did it boot?` +
@@ -69,8 +69,8 @@ const quietProxyErrors = (): ReturnType<typeof createLogger> => {
   const logger = createLogger()
   const error = logger.error.bind(logger)
 
-  logger.error = (message, options) => {
-    if (message.includes('http proxy error')) return
+  logger.error = (message, options): void => {
+    if (message.includes('http proxy error')) { return }
     error(message, options)
   }
 
@@ -85,6 +85,10 @@ export default defineConfig({
   // compiler and the bundler cannot disagree.
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   customLogger: quietProxyErrors(),
+  // Read by `scripts/prerender.ts`. A lazy route's stylesheets are attached to
+  // its chunk, and the manifest is the only record of which ones - without it
+  // a prerendered page paints unstyled until its JavaScript arrives.
+  build: { manifest: true },
   server: {
     proxy: {
       // The proxy is what makes the session cookie work in development, and the

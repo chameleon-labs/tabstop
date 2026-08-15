@@ -26,7 +26,7 @@ export const SiteHeader = ({sections, sessionFree = false, logout}: SiteHeaderPr
   <header className="site-header">
     <div className="site-header__inner">
       <div className="site-header__brand">
-        <Link to="/" className="site-header__home">
+        <Link to="/" className="site-header__home" aria-label="tabstop">
           <BrandMark size="sm" />
           <span className="site-header__wordmark">tabstop</span>
         </Link>

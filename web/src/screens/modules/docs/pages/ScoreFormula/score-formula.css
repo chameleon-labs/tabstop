@@ -1,0 +1,342 @@
+.score-formula {
+  inline-size: 100%;
+  min-inline-size: 0;
+  background: var(--lat-bg);
+  color: var(--lat-text);
+}
+
+.score-formula__container {
+  inline-size: 100%;
+  max-inline-size: var(--lat-container-content);
+  margin-inline: auto;
+  padding: var(--lat-space-12) var(--lat-space-6) var(--lat-space-24);
+}
+
+.score-formula__header {
+  display: grid;
+  gap: var(--lat-space-4);
+  max-inline-size: var(--lat-container-prose);
+  margin-block-end: var(--lat-space-12);
+}
+
+.score-formula__back-link {
+  justify-self: start;
+  margin-block-end: var(--lat-space-2);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  font-weight: var(--lat-text-meta-font-weight);
+  letter-spacing: var(--lat-text-meta-letter-spacing);
+  line-height: var(--lat-text-meta-line-height);
+  text-decoration: none;
+  transition: color var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.score-formula__back-link:hover {
+  color: var(--lat-text);
+}
+
+.score-formula__back-link:focus-visible,
+.score-formula__table-scroll:focus-visible {
+  outline: 2px solid var(--lat-focus-ring);
+  outline-offset: var(--lat-space-1);
+}
+
+.score-formula__title {
+  font-family: var(--lat-text-h1-font-family);
+  font-size: var(--lat-text-h1-font-size);
+  font-weight: var(--lat-text-h1-font-weight);
+  letter-spacing: var(--lat-text-h1-letter-spacing);
+  line-height: var(--lat-text-h1-line-height);
+}
+
+.score-formula__lede {
+  max-inline-size: var(--lat-container-prose);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-lead-font-family);
+  font-size: var(--lat-text-lead-font-size);
+  font-weight: var(--lat-text-lead-font-weight);
+  letter-spacing: var(--lat-text-lead-letter-spacing);
+  line-height: var(--lat-text-lead-line-height);
+}
+
+.score-formula__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-inline-size: 0;
+}
+
+.score-formula__content {
+  min-inline-size: 0;
+}
+
+.score-formula .doc-section:last-child {
+  padding-block-end: var(--lat-space-0);
+}
+
+.score-formula .doc-section__body {
+  display: grid;
+  gap: var(--lat-space-4);
+}
+
+.score-formula .docs-prose strong {
+  color: var(--lat-text);
+  font-weight: var(--lat-text-body-strong-font-weight);
+}
+
+.score-formula .docs-prose a {
+  color: var(--lat-text-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--lat-space-1);
+  transition: color var(--lat-duration-default) var(--lat-easing-out);
+}
+
+.score-formula .docs-prose a:hover {
+  color: var(--lat-text);
+}
+
+.score-formula .docs-prose a:focus-visible {
+  outline: 2px solid var(--lat-focus-ring);
+  outline-offset: var(--lat-space-1);
+}
+
+.score-formula__callout {
+  border-radius: var(--lat-radius-sm);
+}
+
+.score-formula__formula-card,
+.score-formula__example-card {
+  border-color: var(--lat-border-strong);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg-raised);
+}
+
+.score-formula__formula-body {
+  display: grid;
+  gap: var(--lat-space-3);
+  background: var(--lat-bg-subtle);
+}
+
+.score-formula__formula-line {
+  min-inline-size: 0;
+  color: var(--lat-text);
+  font-family: var(--lat-text-code-font-family);
+  font-size: var(--lat-text-code-font-size);
+  font-weight: var(--lat-text-code-font-weight);
+  letter-spacing: var(--lat-text-code-letter-spacing);
+  line-height: var(--lat-text-code-line-height);
+  overflow-wrap: anywhere;
+}
+
+.score-formula__formula-rule {
+  block-size: 1px;
+  background: var(--lat-border);
+}
+
+.score-formula__table-scroll {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  border-radius: var(--lat-radius-sm);
+}
+
+.score-formula__table-scroll .lat-table {
+  min-inline-size: var(--lat-container-prose);
+}
+
+.score-formula__table-scroll .lat-table__caption {
+  padding: var(--lat-space-2) var(--lat-space-4);
+  background: var(--lat-bg-subtle);
+  border: 1px solid var(--lat-border);
+  border-block-end: 0;
+}
+
+.score-formula__table-scroll .lat-table__header,
+.score-formula__table-scroll .lat-table__cell {
+  background: var(--lat-bg-raised);
+}
+
+.score-formula__table-scroll .lat-table__header:first-child,
+.score-formula__table-scroll .lat-table__cell:first-child {
+  border-inline-start: 1px solid var(--lat-border);
+}
+
+.score-formula__table-scroll .lat-table__header:last-child,
+.score-formula__table-scroll .lat-table__cell:last-child {
+  border-inline-end: 1px solid var(--lat-border);
+}
+
+.score-formula__impact-cell {
+  text-align: start;
+}
+
+.score-formula__numeric-cell,
+.score-formula__rule-cell,
+.score-formula__example-header,
+.score-formula__example-summary {
+  font-family: var(--lat-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-formula__numeric-cell {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.score-formula__example-header {
+  flex-wrap: wrap;
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.score-formula__example-header .lat-card__label {
+  margin-inline-end: auto;
+}
+
+.score-formula__example-body {
+  padding: var(--lat-space-0);
+}
+
+.score-formula__example-body .score-formula__table-scroll {
+  border-radius: var(--lat-radius-none);
+}
+
+.score-formula__example-body .lat-table__caption {
+  border-inline: 0;
+}
+
+.score-formula__rule-cell {
+  white-space: nowrap;
+}
+
+.score-formula__cap-note {
+  margin-inline-start: var(--lat-space-2);
+  color: var(--lat-text-accent);
+  font-size: var(--lat-text-caption-font-size);
+}
+
+.score-formula__impact-text {
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-text-small-font-size);
+  font-weight: var(--lat-text-small-font-weight);
+  text-align: start;
+  text-transform: lowercase;
+}
+
+.score-formula__impact-text--critical {
+  color: var(--lat-severity-critical);
+}
+
+.score-formula__impact-text--serious {
+  color: var(--lat-severity-serious);
+}
+
+.score-formula__impact-text--minor {
+  color: var(--lat-severity-minor);
+}
+
+.score-formula__penalty-cell {
+  color: var(--lat-text);
+  font-weight: var(--lat-font-weight-semibold);
+}
+
+.score-formula__total-row .lat-table__header,
+.score-formula__total-row .lat-table__cell {
+  border-block-start: 1px solid var(--lat-border-strong);
+}
+
+.score-formula__total-label {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-font-mono);
+  font-size: var(--lat-text-small-font-size);
+  font-weight: var(--lat-text-small-font-weight);
+  text-align: end;
+  text-transform: none;
+}
+
+.score-formula__score-cell {
+  color: var(--lat-severity-serious);
+  font-size: var(--lat-text-numeric-font-size);
+  font-weight: var(--lat-text-numeric-font-weight);
+}
+
+.score-formula__example-summary {
+  padding: var(--lat-space-3) var(--lat-space-5);
+  border-block-start: 1px solid var(--lat-border);
+  background: var(--lat-bg-subtle);
+  color: var(--lat-text-subtle);
+  font-size: var(--lat-text-meta-font-size);
+}
+
+.score-formula__list {
+  display: grid;
+  gap: var(--lat-space-3);
+  max-inline-size: var(--lat-container-prose);
+  padding-inline-start: var(--lat-space-6);
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-body-font-family);
+  font-size: var(--lat-text-body-font-size);
+  line-height: var(--lat-text-body-line-height);
+}
+
+.score-formula__list > li {
+  list-style: disc;
+}
+
+.score-formula__list li::marker {
+  color: var(--lat-text-accent);
+}
+
+.score-formula__list--compact {
+  gap: var(--lat-space-2);
+  color: var(--lat-text);
+}
+
+.score-formula__limitations {
+  border-color: var(--lat-severity-critical);
+}
+
+/* Lattice's subtle, accent, and severity ink falls below 4.5:1 for several
+   small labels in one or both themes. The page already states severity in
+   text, so the full-contrast text token preserves every distinction without
+   relying on color. */
+.score-formula
+  :is(
+    .score-formula__back-link,
+    .score-formula__lede,
+    .docs-prose,
+    .docs-prose a,
+    .score-formula__cap-note,
+    .score-formula__impact-text,
+    .score-formula__total-label,
+    .score-formula__example-summary,
+    .score-formula__list,
+    .lat-eyebrow__text,
+    .lat-badge[data-variant],
+    .section-nav__link,
+    .doc-section__permalink,
+    .lat-table__caption,
+    .lat-table__header,
+    .lat-card__label,
+    .score-formula__example-header
+  ) {
+  color: var(--lat-text);
+}
+
+@media (min-width: 64rem) {
+  .score-formula__container {
+    padding-inline: var(--lat-space-12);
+  }
+
+  .score-formula__layout {
+    grid-template-columns: max-content minmax(0, var(--lat-container-prose));
+    gap: var(--lat-space-12);
+    align-items: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score-formula__back-link,
+  .score-formula .docs-prose a,
+  .score-formula .doc-section__permalink {
+    transition: none;
+  }
+}

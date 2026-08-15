@@ -1,6 +1,7 @@
 import type {ReactNode} from 'react';
 import type {HeaderSection} from '@/screens/components/SiteHeader';
 import {memo} from 'react';
+import {Link} from 'react-router';
 import {
   Badge,
   Button,
@@ -190,7 +191,7 @@ const V1_OUT = [
   'WCAG level config',
 ];
 
-const FOOTER_LINKS = ['DECISIONS.md', 'GitHub', 'How it works', 'Score formula'];
+const FOOTER_PLACEHOLDER_LINKS = ['DECISIONS.md', 'GitHub', 'How it works'];
 
 function Section({id, className, children}: {id?: string; className?: string; children: ReactNode}): React.JSX.Element {
   const cls = ['landing-page__section', className].filter((value): value is string => Boolean(value)).join(' ');
@@ -559,12 +560,15 @@ const Footer = memo(() => (
       <nav className="landing-page__footer-links" aria-label="Footer links">
         {/* The footer targets do not exist yet; the placeholder keeps these
               rendering as links so the layout and focus order are final. */}
-        {FOOTER_LINKS.map((label) => (
+        {FOOTER_PLACEHOLDER_LINKS.map((label) => (
           // oxlint-disable-next-line jsx-a11y/anchor-is-valid
           <Button key={label} variant="link" size="sm" render={<a href="#" />}>
             {label}
           </Button>
         ))}
+        <Button variant="link" size="sm" render={<Link to="/docs/score-formula" />}>
+          Score formula
+        </Button>
       </nav>
     </Section>
   </footer>
