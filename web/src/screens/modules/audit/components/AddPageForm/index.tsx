@@ -5,12 +5,10 @@ import {URL_PROBLEMS, normaliseUrl} from '../../url';
 import './add-page-form.css';
 
 export type AddPageFormProps = {
-  /** `empty` is the onboarding surface; `compact` is the bar above the list. */
   mode: 'empty' | 'compact';
   used: number;
   limit: number;
   inputRef?: React.RefObject<HTMLInputElement | null>;
-  /** Resolves true when the page was added, so the field knows to empty. */
   onSubmit: (canonicalUrl: string) => Promise<boolean>;
 };
 
@@ -65,8 +63,6 @@ export const AddPageForm = ({mode, used, limit, inputRef, onSubmit}: AddPageForm
           id={inputId}
           ref={field}
           aria-label="Page URL"
-          // `type="url"` would let the browser reject `example.com` before this
-          // component sees it, which is precisely the input to accept.
           type="text"
           inputMode="url"
           autoComplete="url"
@@ -78,8 +74,6 @@ export const AddPageForm = ({mode, used, limit, inputRef, onSubmit}: AddPageForm
           onChange={(event) => {
             setRaw(event.target.value);
           }}
-          // Lattice's own prop: `Input` applies its version after spreading,
-          // so `aria-invalid` passed directly is silently overwritten.
           invalid={problem !== null}
           aria-describedby={describedBy === '' ? undefined : describedBy}
         />

@@ -39,12 +39,6 @@ export const Dashboard = (): React.JSX.Element => {
 
   usePageAuditToasts(data?.pages, push);
 
-  /**
-   * A refresh that fails behind rows already on screen reports nothing by
-   * itself: the observer keeps saying success while it still has something to
-   * show, and polling has stopped. One toast per failure episode, counted so a
-   * repeated failure of the same kind is not repeated on every render.
-   */
   useEffect(() => {
     if (data === undefined || error === null || errorUpdateCount <= reportedFailures.current) {
       return;
@@ -63,11 +57,6 @@ export const Dashboard = (): React.JSX.Element => {
     });
   }, [data, error, errorUpdateCount, push, refetch]);
 
-  /**
-   * Runs after the new list has rendered, keyed on its length: the button that
-   * removal was triggered from no longer exists, and the destination depends
-   * on whether a list or the empty state replaced it.
-   */
   useLayoutEffect(() => {
     if (pendingFocus === null) {
       return;
@@ -115,9 +104,6 @@ export const Dashboard = (): React.JSX.Element => {
               }),
         });
       } else if (conflict?.code === 'page_limit_reached') {
-        // The cached count said there was room, so it is stale - another tab
-        // filled the last slot. Refresh it before repeating the server's
-        // sentence, so the form disables itself for the right reason.
         await refetch();
         push({variant: 'warning', message: conflict.error});
       } else {
@@ -143,8 +129,6 @@ export const Dashboard = (): React.JSX.Element => {
       return true;
     } catch (caught) {
       const message = `Could not remove ${page.url}. ${caught instanceof Error ? caught.message : ''}`.trim();
-      // Shown inside the dialog as well: it stays open on failure, and a modal
-      // aria-hides the toast region behind it.
       setRemovalError(message);
       push({variant: 'danger', message});
 

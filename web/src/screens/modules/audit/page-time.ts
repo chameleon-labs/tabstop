@@ -29,9 +29,6 @@ export const relativeTime = (timestamp: string, now: number = Date.now(), locale
     return UNKNOWN_RELATIVE;
   }
 
-  // Also catches a future timestamp, which clock skew between the server and
-  // the browser makes ordinary; "in 3 minutes" reads as a defect in the
-  // product rather than in the clock.
   const elapsed = now - parsed;
   if (elapsed < MINUTE) {
     return 'just now';

@@ -8,7 +8,6 @@ import {
 } from '@tanstack/react-query';
 import {post, request} from '@/api/client';
 
-/** Matches the audit fallback: what "work is happening" is worth costing. */
 export const ACTIVE_PAGE_POLL_MS = 2_000;
 export const IDLE_PAGE_POLL_MS = 60_000;
 
@@ -25,14 +24,6 @@ const pagePath = (pageId: string): string => `/api/pages/${encodeURIComponent(pa
 const hasActiveAudit = (data: LoadPagesResponse | undefined): boolean =>
   data?.pages.some(({latestAudit}) => latestAudit?.status === 'queued' || latestAudit?.status === 'running') ?? false;
 
-/**
- * The monitored list, polled at a rate the list itself decides.
- *
- * A query that has ERRORED returns no interval at all, which is not the same
- * condition as having no data yet: TanStack keeps the last successful body, so
- * an outage would otherwise become one request every two seconds for as long
- * as the tab stays open, behind a Retry button that claims to be the way back.
- */
 export const useMonitoredPages = (): UseQueryResult<LoadPagesResponse, Error> =>
   useQuery({
     queryKey: pageKeys.list(),
@@ -54,8 +45,6 @@ export const useAddMonitoredPage = (): UseMutationResult<AddPageResponse, Error,
 
   return useMutation({
     mutationFn: async (url: string) => await post<AddPageResponse>('/api/pages', {url}),
-    // No fabricated row: the summary carries a domain, a latest audit and a
-    // history that only the server can describe.
     onSuccess: async () => {
       await queryClient.invalidateQueries({queryKey: pageKeys.list(), exact: true});
     },
@@ -76,13 +65,6 @@ const withMonitoring = (
         pages: current.pages.map((page) => (page.id === pageId ? {...page, monitoringEnabled} : page)),
       };
 
-/**
- * Optimistic, because a toggle that waits for a round trip feels broken.
- *
- * The rollback restores one page's previous value rather than the whole list:
- * another row may have changed successfully while this request was in flight,
- * and a snapshot of the entire response would undo that too.
- */
 export const useSetPageMonitoring = (): UseMutationResult<
   UpdatePageResponse,
   Error,
@@ -122,11 +104,6 @@ export const useSetPageMonitoring = (): UseMutationResult<
   });
 };
 
-/**
- * Deliberately not optimistic. Removal cascades through audits and share
- * links with no undo behind it, so the row may not disappear before the
- * server says it has.
- */
 export const useDeleteMonitoredPage = (): UseMutationResult<null, Error, DeletePageVariables> => {
   const queryClient = useQueryClient();
 

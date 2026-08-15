@@ -13,7 +13,6 @@ import './page-row.css';
 
 export type PageRowProps = {
   page: PageSummary;
-  /** Shared clock, so every relative label in the list agrees. */
   now: number;
   onToast: (toast: ToastInput) => void;
   onRequestRemove: (page: PageSummary, trigger: HTMLButtonElement) => void;
@@ -55,9 +54,6 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
 
   const monitoringLabel = page.monitoringEnabled ? 'Pause' : 'Resume';
   const pendingLabel = page.monitoringEnabled ? 'Pausing' : 'Resuming';
-  // Named for what it is doing, not only what it does: an `aria-label` fixed
-  // at "Pause" hides the whole pending state from anyone not reading the
-  // button's visible text.
   const actionName = `${monitoring.isPending ? pendingLabel : monitoringLabel} monitoring for ${page.url}`;
 
   return (
@@ -77,14 +73,16 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
         <div className="page-row__metrics">
           {state.showScore && page.score !== null && (
             <p className="page-row__score" aria-label={`${state.scoreLabel} ${page.score} out of 100`}>
-              <span className="page-row__score-value">{page.score}</span>
-              <span className="page-row__score-label" aria-hidden="true">
-                {state.scoreLabel}
-              </span>
+              {page.score}
             </p>
           )}
           {state.showDelta && page.score !== null && (
             <ScoreDelta score={page.score} previousScore={page.previousScore} />
+          )}
+          {state.scoreLabel !== null && state.showScore && (
+            <span className="page-row__score-label" aria-hidden="true">
+              {state.scoreLabel}
+            </span>
           )}
         </div>
 

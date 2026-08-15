@@ -13,10 +13,6 @@ export type DashboardRowState = {
 
 const inFlight = (status: AuditStatus | undefined): boolean => status === 'queued' || status === 'running';
 
-/**
- * One classifier, so the row's markup, its styling and its tests cannot each
- * invent their own precedence.
- */
 export const dashboardRowState = (page: PageSummary): DashboardRowState => {
   const hasScore = page.score !== null;
   const hasHistory = page.history.length > 0;

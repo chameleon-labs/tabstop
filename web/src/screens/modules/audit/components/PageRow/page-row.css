@@ -4,7 +4,7 @@
 
 .page-row__card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(0, 1fr) 11rem 7.5rem minmax(0, 11rem) 10.5rem;
   align-items: center;
   gap: var(--lat-space-4);
   padding: var(--lat-space-4) var(--lat-space-5);
@@ -59,23 +59,31 @@
   color: var(--lat-text-subtle);
   font-family: var(--lat-text-meta-font-family);
   font-size: var(--lat-text-meta-font-size);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .page-row__metrics {
-  display: flex;
+  display: grid;
+  grid-template-columns: 3.5rem 6rem;
+  justify-content: end;
   align-items: center;
-  gap: var(--lat-space-3);
+  gap: var(--lat-space-1) var(--lat-space-2);
+  min-inline-size: 0;
+}
+
+.page-row__metrics > .score-delta {
+  justify-self: start;
+}
+
+.page-row__trend {
+  min-inline-size: 0;
 }
 
 .page-row__score {
-  display: flex;
-  flex-direction: column;
   margin: 0;
   text-align: end;
-}
-
-.page-row__score-value {
   font-family: var(--lat-text-numeric-font-family);
   font-size: var(--lat-text-h3-font-size);
   font-variant-numeric: var(--lat-text-numeric-font-variant-numeric);
@@ -83,12 +91,16 @@
 }
 
 .page-row__score-label {
+  grid-column: 1 / -1;
+  justify-self: end;
   color: var(--lat-text-subtle);
   font-family: var(--lat-text-meta-font-family);
   font-size: var(--lat-text-meta-font-size);
+  white-space: nowrap;
 }
 
 .page-row__meta {
+  min-inline-size: 0;
   display: flex;
   flex-direction: column;
   gap: var(--lat-space-1);
@@ -126,7 +138,7 @@
 
 @media (width < 64rem) {
   .page-row__card {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 11rem 7.5rem;
   }
 
   .page-row__meta,
@@ -155,8 +167,17 @@
     grid-column: 1 / -1;
   }
 
-  .page-row__score {
-    text-align: start;
+  .page-row__metrics {
+    justify-content: start;
+  }
+
+  .page-row__score-label {
+    justify-self: start;
+  }
+
+  .page-row__url {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 

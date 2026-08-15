@@ -25,7 +25,6 @@ export type ToastQueue = {
   dismiss: (id: string) => void;
 };
 
-/** Warning and danger report something to act on, so they wait to be read. */
 const PERSISTS: Readonly<Record<ToastVariant, boolean>> = {
   success: false,
   info: false,
@@ -122,9 +121,6 @@ const ToastItem = ({toast, onDismiss}: ToastItemProps): React.JSX.Element => {
     return stop;
   }, [start, stop]);
 
-  // Listeners rather than JSX props: a countdown that pauses under the pointer
-  // is not an interaction the element offers, and `<li onMouseEnter>` reads to
-  // a linter as a control built out of the wrong element.
   useEffect(() => {
     const node = element.current;
     if (node === null) {
@@ -225,8 +221,6 @@ export const ToastRegion = ({toasts, onDismiss}: ToastRegionProps): React.JSX.El
       return undefined;
     }
 
-    // Returning to empty is what lets an identical sentence be read again:
-    // `LiveRegion` ignores a repeated value.
     const timer = setTimeout(() => {
       setAnnouncement('');
     }, TOAST_ANNOUNCEMENT_GAP_MS);

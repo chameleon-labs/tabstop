@@ -5,20 +5,11 @@ import type {ToastInput} from '@/screens/components/ToastRegion';
 type Watched = {
   auditId: string;
   status: string;
-  /** Whether the run was the page's first when it was last seen in flight. */
   wasFirst: boolean;
 };
 
 const inFlight = (status: string): boolean => status === 'queued' || status === 'running';
 
-/**
- * Announces a first audit reaching its end, once.
- *
- * The list is polled, so the finished row arrives again every interval; the
- * previous state is what separates "this just happened" from "this is still
- * true". Pages are tracked by id and audit id rather than by position, since
- * the array reorders whenever the server does.
- */
 export const usePageAuditToasts = (
   pages: readonly PageSummary[] | undefined,
   push: (toast: ToastInput) => void,
@@ -33,8 +24,6 @@ export const usePageAuditToasts = (
       return;
     }
 
-    // The first list to arrive is a baseline, never news: everything in it
-    // finished before this screen was open.
     const previous = watched.current;
     const next = new Map<string, Watched>();
 

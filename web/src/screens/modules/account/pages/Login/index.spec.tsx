@@ -55,7 +55,7 @@ describe('Login', () => {
       .mockResolvedValueOnce(jsonResponse(200, account))
       .mockResolvedValueOnce(jsonResponse(200, account))
       // The real dashboard reads its list the moment it mounts.
-      .mockResolvedValue(jsonResponse(200, emptyPages));
+      .mockImplementation(() => Promise.resolve(jsonResponse(200, emptyPages)));
   };
 
   it('presents the credential form with browser password-manager hints and the page title', async () => {
