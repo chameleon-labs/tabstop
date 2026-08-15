@@ -391,6 +391,39 @@ describe('Dashboard background failures', () => {
   });
 });
 
+describe('Dashboard pausing a page', () => {
+  it('says what it is doing, not what the optimistic row already claims', async () => {
+    // onMutate flips monitoringEnabled in the cache before the PATCH settles,
+    // so a row that derives its pending verb from the row itself announces
+    // the opposite of the request in flight.
+    const user = userEvent.setup();
+    let release!: (value: Response) => void;
+    stub({
+      '/api/pages': () => jsonResponse(200, list([page('page-1', URL_A)])),
+      'PATCH /api/pages/page-1': async () =>
+        await new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    });
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(rows()).toHaveLength(1);
+    });
+    await user.click(screen.getByRole('button', {name: `Pause monitoring for ${URL_A}`}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: `Pausing monitoring for ${URL_A}`})).toBeDisabled();
+    });
+    expect(screen.queryByRole('button', {name: /Resuming/})).not.toBeInTheDocument();
+
+    await act(async () => {
+      release(jsonResponse(200, {id: 'page-1', url: URL_A, monitoringEnabled: false, createdAt: 'x'}));
+      await Promise.resolve();
+    });
+  });
+});
+
 describe('Dashboard removing a page', () => {
   const twoPages = [page('page-1', URL_A), page('page-2', 'https://example.test/pricing')];
 

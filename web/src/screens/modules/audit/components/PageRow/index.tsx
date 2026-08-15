@@ -18,6 +18,14 @@ export type PageRowProps = {
   onRequestRemove: (page: PageSummary, trigger: HTMLButtonElement) => void;
 };
 
+const verbFor = (pending: boolean, requestedEnabled: boolean | undefined, enabled: boolean): string => {
+  if (pending) {
+    return requestedEnabled === false ? 'Pausing' : 'Resuming';
+  }
+
+  return enabled ? 'Pause' : 'Resume';
+};
+
 export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): React.JSX.Element => {
   const state = dashboardRowState(page);
   const timestamp = pageTimestamp(page);
@@ -52,9 +60,8 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
     );
   };
 
-  const monitoringLabel = page.monitoringEnabled ? 'Pause' : 'Resume';
-  const pendingLabel = page.monitoringEnabled ? 'Pausing' : 'Resuming';
-  const actionName = `${monitoring.isPending ? pendingLabel : monitoringLabel} monitoring for ${page.url}`;
+  const monitoringVerb = verbFor(monitoring.isPending, monitoring.variables?.monitoringEnabled, page.monitoringEnabled);
+  const actionName = `${monitoringVerb} monitoring for ${page.url}`;
 
   return (
     <li className="page-row" data-state={state.kind}>
@@ -124,7 +131,7 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
             aria-label={actionName}
             onClick={toggleMonitoring}
           >
-            {monitoring.isPending ? `${pendingLabel}…` : monitoringLabel}
+            {monitoring.isPending ? `${monitoringVerb}…` : monitoringVerb}
           </Button>
           <Button
             ref={removeRef}

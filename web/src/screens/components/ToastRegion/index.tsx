@@ -47,7 +47,11 @@ export const useToastQueue = (): ToastQueue => {
   const push = useCallback(
     (input: ToastInput): void => {
       setToasts((current) => {
-        const duplicate = current.some((toast) => toast.variant === input.variant && toast.message === input.message);
+        const duplicate =
+          input.action === undefined &&
+          current.some(
+            (toast) => toast.action === undefined && toast.variant === input.variant && toast.message === input.message,
+          );
         if (duplicate) {
           return current;
         }

@@ -65,6 +65,42 @@ describe('useToastQueue', () => {
     expect(result.current.toasts).toHaveLength(1);
   });
 
+  it('keeps two messages that differ only in what their action does', () => {
+    // The server's already-tracked sentence names no page, so two of them are
+    // byte-identical; collapsing them leaves one View page button pointing at
+    // whichever page came first.
+    const {result} = renderHook(() => useToastQueue());
+    const first = vi.fn();
+    const second = vi.fn();
+
+    act(() => {
+      result.current.push({
+        variant: 'info',
+        message: 'You are already tracking that page',
+        action: {label: 'View page', onClick: first},
+      });
+      result.current.push({
+        variant: 'info',
+        message: 'You are already tracking that page',
+        action: {label: 'View page', onClick: second},
+      });
+    });
+
+    expect(result.current.toasts).toHaveLength(2);
+    expect(result.current.toasts.map((queued) => queued.action?.onClick)).toEqual([first, second]);
+  });
+
+  it('still collapses an identical message with nothing to act on', () => {
+    const {result} = renderHook(() => useToastQueue());
+
+    act(() => {
+      result.current.push({variant: 'danger', message: 'Could not refresh your pages'});
+      result.current.push({variant: 'danger', message: 'Could not refresh your pages'});
+    });
+
+    expect(result.current.toasts).toHaveLength(1);
+  });
+
   it('gives every message its own identity', () => {
     const {result} = renderHook(() => useToastQueue());
 
