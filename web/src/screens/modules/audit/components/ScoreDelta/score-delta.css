@@ -1,0 +1,6 @@
+.score-delta {
+  font-family: var(--lat-text-numeric-font-family);
+  font-variant-numeric: var(--lat-text-numeric-font-variant-numeric);
+  letter-spacing: var(--lat-text-numeric-letter-spacing);
+  white-space: nowrap;
+}
