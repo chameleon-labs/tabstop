@@ -62,6 +62,15 @@ const Formula = (): React.JSX.Element => (
       Each audit produces a violation list from <a href="https://github.com/dequelabs/axe-core">axe-core</a>. Every
       unique rule that fired contributes a penalty.
     </Prose>
+    <Prose>
+      axe-core reports violations and does not produce a score. Ranking one violation against another takes a judgement
+      about which barriers matter most to which people, and that judgement belongs to the product rather than to the
+      engine, so every scored tool has to invent its own number.
+    </Prose>
+    <Prose>
+      The number below is that invention. It is not a standard, no specification defines it, and no other tool computes
+      it the same way — so compare a tabstop score only with another tabstop score.
+    </Prose>
     <Card className="score-formula__formula-card">
       <CardHeader label="formula" />
       <CardBody className="score-formula__formula-body">
@@ -247,8 +256,7 @@ const Versioning = (): React.JSX.Element => (
 const NotMeasured = (): React.JSX.Element => (
   <>
     <Prose>The automated score does not establish:</Prose>
-    {/* oxlint-disable-next-line jsx-a11y/no-redundant-roles -- Explicit role preserves Safari/VoiceOver semantics when list markers are removed. */}
-    <ul className="score-formula__list" role="list">
+    <ul className="score-formula__list">
       <li>Whether alt text is meaningful, accurate, or helpful—not merely present</li>
       <li>Whether focus order is logical for keyboard navigation</li>
       <li>Whether the page is actually usable with a screen reader</li>
@@ -293,9 +301,11 @@ const Limitations = (): React.JSX.Element => (
       title="Do not use this score to claim a page is accessible"
       className="score-formula__callout score-formula__limitations"
     >
-      {/* oxlint-disable-next-line jsx-a11y/no-redundant-roles -- Explicit role preserves Safari/VoiceOver semantics when list markers are removed. */}
-      <ul className="score-formula__list score-formula__list--compact" role="list">
-        <li>Automated rules can identify some barriers, but they cannot prove accessibility.</li>
+      <ul className="score-formula__list score-formula__list--compact">
+        <li>
+          Automated rules catch a minority of real accessibility barriers — commonly estimated at roughly a third, and
+          the share varies substantially from site to site.
+        </li>
         <li>100 means no automated violations were detected, not that the page is accessible.</li>
         <li>Manual testing and testing with disabled people remain necessary.</li>
         <li>

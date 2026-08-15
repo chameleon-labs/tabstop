@@ -85,6 +85,10 @@ export default defineConfig({
   // compiler and the bundler cannot disagree.
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   customLogger: quietProxyErrors(),
+  // Read by `scripts/prerender.ts`. A lazy route's stylesheets are attached to
+  // its chunk, and the manifest is the only record of which ones - without it
+  // a prerendered page paints unstyled until its JavaScript arrives.
+  build: { manifest: true },
   server: {
     proxy: {
       // The proxy is what makes the session cookie work in development, and the

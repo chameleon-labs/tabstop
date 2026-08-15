@@ -1,10 +1,25 @@
 import {describe, expect, it} from 'vitest';
-import {outputFor, PRERENDER_PATHS} from './paths';
+import {outputFor, PRERENDER_PAGES, PRERENDER_PATHS} from './paths';
 
 describe('prerender paths', () => {
   it('includes every public compile-time page and maps each to its host output', () => {
     expect(PRERENDER_PATHS).toEqual(['/', '/docs/score-formula']);
     expect(outputFor('/build/dist', '/')).toBe('/build/dist/index.html');
     expect(outputFor('/build/dist', '/docs/score-formula')).toBe('/build/dist/docs/score-formula/index.html');
+  });
+
+  it('gives every page but the landing its own head metadata and route chunk', () => {
+    // Every artifact is built from the same template, so a page that declares
+    // nothing publishes the landing page's title and description under its own
+    // URL - and its lazy chunk's stylesheets are never linked.
+    const landing = PRERENDER_PAGES.find(({path}) => path === '/');
+    const formula = PRERENDER_PAGES.find(({path}) => path === '/docs/score-formula');
+
+    expect(landing?.title).toBeUndefined();
+    expect(landing?.entry).toBeUndefined();
+
+    expect(formula?.title).toBe('Score formula · tabstop');
+    expect(formula?.description).toMatch(/formula/i);
+    expect(formula?.entry).toBe('src/screens/modules/docs/pages/ScoreFormula/index.tsx');
   });
 });

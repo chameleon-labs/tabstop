@@ -1,5 +1,6 @@
 import {render, screen, within} from '@testing-library/react';
 import {describe, expect, it} from 'vitest';
+import {PRERENDER_PAGES} from '@/prerender/paths';
 import {Providers} from '@/test/render';
 import {ScoreFormula} from './index';
 
@@ -56,6 +57,14 @@ describe('ScoreFormula', () => {
         `#${section.id}`,
       );
     }
+  });
+
+  it('sets the same title its prerendered artifact publishes', () => {
+    // Two writers, one tab title: this hook after hydration, and the static
+    // head a crawler or a no-JavaScript visit gets instead.
+    renderPage();
+
+    expect(document.title).toBe(PRERENDER_PAGES.find(({path}) => path === '/docs/score-formula')?.title);
   });
 
   it('leaves the main landmark to the shared application shell', () => {
@@ -139,6 +148,16 @@ describe('ScoreFormula', () => {
     expect(screen.getByText(/Consumers can distinguish version boundaries/i)).toBeVisible();
   });
 
+  it('says why axe-core ships no score, and that this one is not a standard', () => {
+    const {container} = renderPage();
+    const formula = container.querySelector<HTMLElement>('section#formula')!;
+    const text = formula.textContent?.replace(/\s+/g, ' ') ?? '';
+
+    expect(text).toMatch(/axe-core reports violations and does not produce a score/i);
+    expect(text).toMatch(/is not a standard/i);
+    expect(text).toMatch(/no specification defines it/i);
+  });
+
   it('uses primary sources and accurately distinguishes Lighthouse scoring', () => {
     renderPage();
 
@@ -161,9 +180,11 @@ describe('ScoreFormula', () => {
     const notMeasuredList = within(notMeasured).getByRole('list');
     const limitationsList = within(limitations).getByRole('list');
 
-    expect(container.querySelectorAll('ul.score-formula__list[role="list"]')).toHaveLength(2);
-    expect(notMeasuredList).toHaveAttribute('role', 'list');
-    expect(limitationsList).toHaveAttribute('role', 'list');
+    // No explicit `role="list"`: these keep their markers, so nothing strips
+    // the implicit role that `getByRole` above already found.
+    expect(container.querySelectorAll('ul.score-formula__list')).toHaveLength(2);
+    expect(notMeasuredList).not.toHaveAttribute('role');
+    expect(limitationsList).not.toHaveAttribute('role');
 
     expect(
       within(notMeasuredList)
@@ -184,7 +205,7 @@ describe('ScoreFormula', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent?.replace(/\s+/g, ' ').trim()),
     ).toEqual([
-      'Automated rules can identify some barriers, but they cannot prove accessibility.',
+      'Automated rules catch a minority of real accessibility barriers — commonly estimated at roughly a third, and the share varies substantially from site to site.',
       '100 means no automated violations were detected, not that the page is accessible.',
       'Manual testing and testing with disabled people remain necessary.',
       'One Chromium snapshot with JavaScript enabled at one viewport omits dynamic states, other widths, and other browsers.',

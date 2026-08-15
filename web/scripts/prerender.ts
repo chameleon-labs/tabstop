@@ -5,8 +5,10 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 // Type-only: erased at runtime, so this does not require `dist-ssr/` to exist
 // for `tsc` to resolve it, unlike a value import of the built bundle would.
 import type * as EntryServer from '../src/entry-server.tsx';
-// @ts-expect-error Node runs this TypeScript file directly and needs its extension.
-import {outputFor, PRERENDER_PATHS} from '../src/prerender/paths.ts';
+// The real extensions, because Node runs this file as TypeScript. See
+// `tsconfig.scripts.json`, which is what lets the compiler read them too.
+import {type BuildManifest, stylesheetsFor} from '../src/prerender/assets.ts';
+import {outputFor, PRERENDER_PAGES, type PrerenderedPage} from '../src/prerender/paths.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST = join(HERE, '..', 'dist');
@@ -25,19 +27,27 @@ const main = async (): Promise<void> => {
   const {injectMarkup, render, assertBuildOutput} = (await import(bundle)) as typeof EntryServer;
 
   const template = await readFile(join(DIST, 'index.html'), 'utf8');
+  // Which chunk owns which stylesheet. The template links the entry's CSS and
+  // nothing else, so a lazy route's own styles are only discoverable here.
+  const manifest: BuildManifest = JSON.parse(await readFile(join(DIST, '.vite', 'manifest.json'), 'utf8'));
 
   // Written BEFORE index.html is overwritten, since it is that same file
   // untouched. This is what the host serves for every non-prerendered path.
   await writeFile(join(DIST, 'app.html'), template);
 
-  for (const path of PRERENDER_PATHS) {
-    const html = await render(path);
-    const output = outputFor(DIST, path);
+  const pages = PRERENDER_PAGES.map((page: PrerenderedPage) => ({
+    page,
+    stylesheets: page.entry === undefined ? [] : stylesheetsFor(manifest, page.entry),
+  }));
+
+  for (const {page, stylesheets} of pages) {
+    const html = await render(page.path);
+    const output = outputFor(DIST, page.path);
 
     await mkdir(dirname(output), {recursive: true});
-    await writeFile(output, injectMarkup(template, path, html));
+    await writeFile(output, injectMarkup(template, page, html, stylesheets));
 
-    console.log(`[prerender] ${path} -> ${output.slice(DIST.length + 1)}`);
+    console.log(`[prerender] ${page.path} -> ${output.slice(DIST.length + 1)}`);
   }
 
   // Checked against the FILESYSTEM, not against what the code above meant to
@@ -46,13 +56,13 @@ const main = async (): Promise<void> => {
   // to catch.
   const appHtmlExists = existsSync(join(DIST, 'app.html'));
   const writtenOutputs = await Promise.all(
-    PRERENDER_PATHS.map(async (path) => {
-      const output = outputFor(DIST, path);
+    pages.map(async ({page, stylesheets}) => {
+      const output = outputFor(DIST, page.path);
       const exists = existsSync(output);
-      return {path, exists, html: exists ? await readFile(output, 'utf8') : ''};
+      return {page, stylesheets, exists, html: exists ? await readFile(output, 'utf8') : ''};
     }),
   );
-  const writtenIndex = writtenOutputs.find(({path}) => path === '/')?.html ?? '';
+  const writtenIndex = writtenOutputs.find(({page}) => page.path === '/')?.html ?? '';
   assertBuildOutput(appHtmlExists, writtenIndex, writtenOutputs);
 };
 
