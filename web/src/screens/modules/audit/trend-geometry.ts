@@ -1,4 +1,4 @@
-import type {PageHistoryPoint} from '@tabstop/contract';
+import type {AuditStatus, PageHistoryPoint} from '@tabstop/contract';
 
 export type TrendBounds = {lo: number; hi: number};
 
@@ -145,13 +145,24 @@ export const trendSummary = (points: readonly PageHistoryPoint[]): string => {
   return `Score trend: ${first} to ${last} over ${total}, ${direction}.${tail}`;
 };
 
-export const pointDescription = (point: PageHistoryPoint, locale?: string, timeZone?: string): string => {
-  const date = new Intl.DateTimeFormat(locale, {
+/** How a point's status is written where it stands on its own, rather than inside a sentence. */
+export const AUDIT_STATUS_LABELS: Readonly<Record<AuditStatus, string>> = {
+  queued: 'Queued',
+  running: 'Running',
+  done: 'Completed',
+  failed: 'Failed',
+};
+
+export const pointDate = (point: PageHistoryPoint, locale?: string, timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     ...(timeZone === undefined ? {} : {timeZone}),
   }).format(Date.parse(point.createdAt));
+
+export const pointDescription = (point: PageHistoryPoint, locale?: string, timeZone?: string): string => {
+  const date = pointDate(point, locale, timeZone);
 
   if (point.score === null) {
     return `${date}: audit ${point.status}`;

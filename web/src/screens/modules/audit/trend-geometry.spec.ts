@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {PageHistoryPoint} from '@tabstop/contract';
 import {
   MIN_TREND_RANGE,
+  pointDate,
   pointDescription,
   trendBounds,
   trendPositions,
@@ -231,6 +232,13 @@ describe('trendSummary', () => {
 
   it('says so when nothing in the window finished', () => {
     expect(trendSummary([failed(day(0)), failed(day(1))])).toBe('Score trend: no completed audits. 2 audits failed.');
+  });
+});
+
+describe('pointDate', () => {
+  it('names the day a run happened, in the reader locale', () => {
+    expect(pointDate(scored('2026-08-15T10:00:00.000Z', 74), 'en-GB', 'UTC')).toBe('15 August 2026');
+    expect(pointDate(scored('2026-08-15T10:00:00.000Z', 74), 'en-US', 'UTC')).toBe('August 15, 2026');
   });
 });
 

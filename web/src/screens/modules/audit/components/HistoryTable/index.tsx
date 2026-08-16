@@ -1,5 +1,6 @@
 import {TBody, THead, Table, Td, Th, Tr, VisuallyHidden} from '@chameleon-labs/lattice-react';
-import type {AuditStatus, PageHistoryPoint} from '@tabstop/contract';
+import type {PageHistoryPoint} from '@tabstop/contract';
+import {AUDIT_STATUS_LABELS} from '../../trend-geometry';
 import {ScoreDelta} from '../ScoreDelta';
 import './history-table.css';
 
@@ -7,13 +8,6 @@ export type HistoryTableProps = {
   points: readonly PageHistoryPoint[];
   domain: string;
   days: number;
-};
-
-const STATUS_LABELS: Readonly<Record<AuditStatus, string>> = {
-  queued: 'Queued',
-  running: 'Running',
-  done: 'Completed',
-  failed: 'Failed',
 };
 
 type HistoryRow = {point: PageHistoryPoint; previousScore: number | null};
@@ -75,7 +69,7 @@ export const HistoryTable = ({points, domain, days}: HistoryTableProps): React.J
               <Td>
                 {point.score === null ? <Absent /> : <ScoreDelta score={point.score} previousScore={previousScore} />}
               </Td>
-              <Td>{STATUS_LABELS[point.status]}</Td>
+              <Td>{AUDIT_STATUS_LABELS[point.status]}</Td>
               <Td className="history-table__engine">{point.axeVersion ?? <Absent />}</Td>
             </Tr>
           ))}
