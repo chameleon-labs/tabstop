@@ -232,6 +232,15 @@ export const TrendChart = ({points, onFocusPoint}: TrendChartProps): React.JSX.E
           </li>
         )}
       </ul>
+
+      {/* Naming the marker is not enough: the first engine upgrade otherwise
+          reads as a regression in the page. */}
+      {boundaries.length > 0 && (
+        <p className="trend-chart__caveat">
+          Scores either side of an axe-core version change are not directly comparable — the engine changed, not
+          necessarily the page.
+        </p>
+      )}
     </div>
   );
 };

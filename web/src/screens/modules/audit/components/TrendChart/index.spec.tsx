@@ -78,6 +78,21 @@ describe('TrendChart structure', () => {
     expect(container.querySelectorAll('.trend-chart__version')).toHaveLength(0);
   });
 
+  it('says why the version rule matters, not just that it is there', () => {
+    // Naming the marker leaves the reader to read an engine-induced shift as a
+    // regression in their page, which is the support question the rule exists
+    // to prevent.
+    render(<TrendChart points={SERIES} />);
+
+    expect(screen.getByText(/not directly comparable/i)).toBeVisible();
+  });
+
+  it('warns about nothing when the engine never changed', () => {
+    render(<TrendChart points={[scored(1, 90), scored(2, 88)]} />);
+
+    expect(screen.queryByText(/not directly comparable/i)).not.toBeInTheDocument();
+  });
+
   it('marks where the series ends, and marks nothing else', () => {
     const {container} = render(<TrendChart points={SERIES} />);
     const ends = container.querySelectorAll('[data-endpoint="true"]');

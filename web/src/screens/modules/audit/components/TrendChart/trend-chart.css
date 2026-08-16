@@ -131,6 +131,16 @@
   gap: var(--lat-space-2);
 }
 
+.trend-chart__caveat {
+  max-inline-size: var(--lat-container-prose);
+  margin: 0;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+  text-wrap: pretty;
+}
+
 .trend-chart__swatch {
   flex: none;
   inline-size: 0.625rem;
