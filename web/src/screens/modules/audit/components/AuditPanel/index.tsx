@@ -14,15 +14,21 @@ export type AuditPanelProps = {
 
 const GONE = 'That result is no longer available.';
 
-const messageFor = (error: Error): string => (isApiError(error) && error.status === 404 ? GONE : error.message);
+/** The one permanent poll failure. Everything else is worth another attempt. */
+const isGone = (error: Error): boolean => isApiError(error) && error.status === 404;
+
+const messageFor = (error: Error): string => (isGone(error) ? GONE : error.message);
 
 export const AuditPanel = ({auditId, onClose}: AuditPanelProps): React.JSX.Element => {
   const headingId = useId();
-  const {data, error, isPending} = useAudit(auditId);
-  const inFlight = data?.status === 'queued' || data?.status === 'running';
+  const {data, error, isPending, refetch} = useAudit(auditId);
+  // Only while something is actually coming. `useAudit` stops its interval on
+  // error but keeps the last queued body, so an errored panel still has an
+  // unfinished audit in hand and nothing left that will ever finish it.
+  const waiting = (data?.status === 'queued' || data?.status === 'running') && error === null;
 
   return (
-    <section className="audit-panel" aria-labelledby={headingId} aria-busy={isPending || inFlight}>
+    <section className="audit-panel" aria-labelledby={headingId} aria-busy={isPending || waiting}>
       <div className="audit-panel__header">
         <h2 className="audit-panel__heading" id={headingId}>
           {data === undefined ? 'Audit result' : `Audit on ${exactTime(data.createdAt)}`}
@@ -34,7 +40,22 @@ export const AuditPanel = ({auditId, onClose}: AuditPanelProps): React.JSX.Eleme
 
       {isPending && <p className="audit-panel__loading">{`Loading the result for audit ${auditId}…`}</p>}
 
-      {error !== null && <p className="audit-panel__gone">{messageFor(error)}</p>}
+      {error !== null && (
+        <div className="audit-panel__failure">
+          <p className="audit-panel__gone">{messageFor(error)}</p>
+          {!isGone(error) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void refetch();
+              }}
+            >
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* A failed run has no score and no violations to show, only the sentence saying why. */}
       {data?.status === 'failed' && (
@@ -46,7 +67,7 @@ export const AuditPanel = ({auditId, onClose}: AuditPanelProps): React.JSX.Eleme
       {/* An unfinished run has no score, no counts and no violations either,
           so `AuditResult` would draw it as a clean audit. `useAudit` is already
           polling it; this waits for the answer rather than inventing one. */}
-      {inFlight && data !== undefined && (
+      {waiting && data !== undefined && (
         <p className="audit-panel__running">
           {`This audit is still ${data.status}. Its result will appear here when it finishes.`}
         </p>

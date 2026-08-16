@@ -24,6 +24,13 @@
   line-height: var(--lat-text-h3-line-height);
 }
 
+.audit-panel__failure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--lat-space-2);
+}
+
 .audit-panel__loading,
 .audit-panel__running,
 .audit-panel__gone {

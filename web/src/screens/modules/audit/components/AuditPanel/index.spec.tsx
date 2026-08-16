@@ -151,6 +151,51 @@ describe('AuditPanel', () => {
     },
   );
 
+  it('stops promising a result once the poll behind it has died', async () => {
+    // `useAudit` stops its interval on error but keeps the last queued body, so
+    // the panel went on saying the result would appear while nothing was left
+    // to fetch it. A screen that claims to be waiting must actually be waiting.
+    let answered = false;
+    fetchMock.mockImplementation(() => {
+      if (answered) {
+        return Promise.resolve(jsonResponse(500, {error: 'Server error'}));
+      }
+      answered = true;
+      return Promise.resolve(
+        jsonResponse(200, {...AUDIT, status: 'running', score: null, completedAt: null, violations: []}),
+      );
+    });
+    renderPanel();
+    await screen.findByText(/still running/i);
+
+    expect(await screen.findByText('Server error', undefined, {timeout: 4000})).toBeVisible();
+    expect(screen.queryByText(/will appear here/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', {name: /audit on/i})).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('offers the retry that the dead poll no longer performs', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Server error'})));
+    renderPanel();
+    const user = userEvent.setup();
+    await screen.findByText('Server error');
+    const before = fetchMock.mock.calls.length;
+
+    await user.click(screen.getByRole('button', {name: 'Retry'}));
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('offers no retry for a result that is gone for good', async () => {
+    // A 404 is the one permanent poll failure; a button that cannot succeed is
+    // worse than no button.
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(404, {error: 'Audit not found'})));
+    renderPanel();
+
+    await screen.findByText(/no longer available/i);
+
+    expect(screen.queryByRole('button', {name: 'Retry'})).not.toBeInTheDocument();
+  });
+
   it('says a missing result is gone, and stays closable', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(404, {error: 'Audit not found'})));
     const {onClose} = renderPanel();
