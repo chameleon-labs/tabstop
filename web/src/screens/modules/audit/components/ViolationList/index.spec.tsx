@@ -29,6 +29,41 @@ describe('ViolationList', () => {
     expect(screen.getByRole('region', {name: 'Violations — 2 total'})).toBeInTheDocument();
   });
 
+  it('names each markup region for the rule it belongs to, not its place in one panel', () => {
+    render(<ViolationList violations={[violation('critical', 'image-alt'), violation('serious', 'color-contrast')]} />);
+
+    const markup = screen
+      .getAllByRole('region')
+      .map((region) => region.getAttribute('aria-label'))
+      .filter((name) => name !== null && name.includes('affected element'));
+
+    expect(markup).toHaveLength(2);
+    expect(new Set(markup).size).toBe(2);
+  });
+
+  it('keeps the nodes of one rule apart from each other too', () => {
+    render(
+      <ViolationList
+        violations={[
+          violation('critical', 'image-alt', {
+            nodes: [
+              {target: ['img.hero'], html: '<img class="hero">'},
+              {target: ['img.thumb'], html: '<img class="thumb">'},
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const markup = screen
+      .getAllByRole('region')
+      .map((region) => region.getAttribute('aria-label'))
+      .filter((name) => name !== null && name.includes('affected element'));
+
+    expect(markup).toHaveLength(2);
+    expect(new Set(markup).size).toBe(2);
+  });
+
   it('lists every finding in one list, most severe first', () => {
     // Flat rather than grouped: one ordering, as the design has it.
     render(<ViolationList violations={[violation('minor', 'a'), violation('critical', 'b')]} />);
