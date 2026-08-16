@@ -155,6 +155,9 @@ const asked = (fragment: string): boolean =>
 const countFor = (label: string): string =>
   screen.getByText(label).parentElement?.querySelector('dd')?.textContent ?? '';
 
+/** Scoped, because every audit row carries a delta sentence of its own now. */
+const summaryCard = (): HTMLElement => document.querySelector<HTMLElement>('.page-detail__summary')!;
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -189,7 +192,7 @@ describe('PageDetail summary', () => {
     renderDetail();
 
     expect(await screen.findByText('Score 74 out of 100')).toBeInTheDocument();
-    expect(screen.getByText('Score down 8 points since the previous audit')).toBeInTheDocument();
+    expect(within(summaryCard()).getByText('Score down 8 points since the previous audit')).toBeInTheDocument();
     expect(countFor('Critical')).toBe('1');
     expect(countFor('Serious')).toBe('0');
     expect(countFor('Moderate')).toBe('2');
@@ -269,6 +272,31 @@ describe('PageDetail history states', () => {
     await user.click(screen.getByRole('button', {name: 'Retry'}));
 
     expect(await screen.findByRole('group', {name: /Score trend: 90 to 74/})).toBeInTheDocument();
+  });
+
+  it('explains a missing summary rather than quietly dropping it', async () => {
+    // The two queries are independent. When the list fails and the history does
+    // not, the trend renders while the summary, the Pause control and the
+    // Remove control simply are not there, with nothing said about why.
+    let attempts = 0;
+    const {router} = renderDetail('/pages/page-1', {
+      ...DEFAULT_ROUTES,
+      '/api/pages': () => {
+        attempts += 1;
+        return attempts === 1 ? jsonResponse(500, {error: 'Server error'}) : jsonResponse(200, pageList());
+      },
+    });
+    const user = userEvent.setup();
+
+    expect(await screen.findByText(/could not load this page's details/i)).toBeVisible();
+    expect(screen.queryByRole('button', {name: /pause monitoring/i})).not.toBeInTheDocument();
+    // The trend is a separate query and is unaffected by the list failing.
+    expect(await screen.findByRole('group', {name: /Score trend/})).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/pages/page-1');
+
+    await user.click(screen.getByRole('button', {name: 'Retry details'}));
+
+    expect(await screen.findByRole('button', {name: `Pause monitoring for ${URL}`})).toBeVisible();
   });
 
   it('says a page that is not yours is not here, and draws nothing', async () => {

@@ -205,6 +205,24 @@ export const PageDetail = (): React.JSX.Element => {
         </Callout>
       )}
 
+      {/* The summary and both controls come from the list query, so its failure
+          removes them from the screen. Said out loud rather than left as a gap
+          the reader has to interpret; the trend is a separate query and stays. */}
+      {pages.data === undefined && pages.error !== null && (
+        <Callout variant="danger" icon={<AlertCircle size="sm" />} title="Could not load this page's details">
+          <p>{`The score summary and the page controls are unavailable. ${pages.error.message}`}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              void pages.refetch();
+            }}
+          >
+            Retry details
+          </Button>
+        </Callout>
+      )}
+
       {page !== undefined && timestamp !== null && rowState !== null && (
         <Card className="page-detail__summary">
           <div className="page-detail__score">
