@@ -7,6 +7,39 @@ import {renderAt} from '@/test/render';
 import {jsonResponse} from '@/test/http';
 import {RouteAnnouncer} from './index';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import type {PageHistoryResponse, PageSummary} from '@tabstop/contract';
+
+const monitoredPage = (id: string): PageSummary => ({
+  id,
+  url: `https://example.com/${id}`,
+  monitoringEnabled: true,
+  createdAt: '2026-08-01T10:00:00.000Z',
+  domain: 'example.com',
+  latestAudit: null,
+  score: null,
+  previousScore: null,
+  history: [],
+});
+
+const pageHistory = (id: string): PageHistoryResponse => ({
+  pageId: id,
+  url: `https://example.com/${id}`,
+  days: 90,
+  points: [],
+});
+
+/** Two pages under one domain, which is what makes their titles identical. */
+const sameSitePages = (path: string): Promise<Response> => {
+  const history = /^\/api\/pages\/(\d+)\/history/.exec(path);
+  if (history !== null) {
+    return Promise.resolve(jsonResponse(200, pageHistory(history[1]!)));
+  }
+  if (path === '/api/pages') {
+    return Promise.resolve(jsonResponse(200, {pages: [monitoredPage('1'), monitoredPage('2')], used: 2, limit: 10}));
+  }
+
+  return Promise.resolve(jsonResponse(200, {id: '1', email: 'a@b.co', alertThreshold: 5}));
+};
 
 /**
  * The gap this closes: a full page load announces the new document, a
@@ -135,7 +168,7 @@ describe('the route announcer', () => {
   });
 
   it('announces again when two paths share a title', async () => {
-    // `/pages/1` and `/pages/2` are both "Page · tabstop". Writing the same
+    // Two pages on one site are both "example.com · tabstop". Writing the same
     // string back into state is a no-op to React, so the DOM never changes, a
     // live region with unchanged content has nothing to read, and the second
     // navigation is announced by silence - the exact failure this component
@@ -144,17 +177,7 @@ describe('the route announcer', () => {
     // Asserted on DOM MUTATIONS rather than on the final text, because the
     // final text is identical either way. Mutation is what assistive
     // technology reacts to, so mutation is what to measure.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({id: '1', email: 'a@b.co', alertThreshold: 5}), {
-            status: 200,
-            headers: {'content-type': 'application/json'},
-          }),
-        ),
-      ),
-    );
+    vi.stubGlobal('fetch', vi.fn(sameSitePages));
 
     try {
       // Starts at `/` and navigates TWICE. Landing directly on `/pages/1`
@@ -166,7 +189,7 @@ describe('the route announcer', () => {
         await router.navigate('/pages/1');
       });
       await waitFor(() => {
-        expect(liveRegion()).toHaveTextContent('Page');
+        expect(liveRegion()).toHaveTextContent('example.com');
       });
 
       const seen: string[] = [];
@@ -179,14 +202,14 @@ describe('the route announcer', () => {
         await router.navigate('/pages/2');
       });
       await waitFor(() => {
-        expect(liveRegion()).toHaveTextContent('Page');
+        expect(liveRegion()).toHaveTextContent('example.com');
       });
       observer.disconnect();
 
       // Emptied, then filled again. Without the clear there is no mutation at
       // all and `seen` is empty.
       expect(seen).toContain('');
-      expect(seen.at(-1)).toContain('Page');
+      expect(seen.at(-1)).toContain('example.com');
     } finally {
       vi.unstubAllGlobals();
     }

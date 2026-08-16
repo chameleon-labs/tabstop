@@ -1,4 +1,4 @@
-import type {AuditResultResponse, LoadPagesResponse} from '@tabstop/contract';
+import type {AuditResultResponse, LoadPagesResponse, PageHistoryResponse, PageSummary} from '@tabstop/contract';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {act, render, screen, waitFor} from '@testing-library/react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
@@ -11,7 +11,51 @@ import {destinationFrom, returnToSearch} from './screens/modules/account/return-
 import {sessionKeys} from './screens/modules/account/session';
 
 const signedIn = {id: '1', email: 'a@b.co', alertThreshold: 5};
-const emptyPages: LoadPagesResponse = {pages: [], used: 0, limit: 10};
+
+/**
+ * `/pages/:id` names itself after the page it loads, so the route table can
+ * only be asserted against a page the fixture actually contains.
+ */
+const monitoredPage: PageSummary = {
+  id: '42',
+  url: 'https://example.com/checkout',
+  monitoringEnabled: true,
+  createdAt: '2026-08-01T10:00:00.000Z',
+  domain: 'example.com',
+  latestAudit: {
+    auditId: 'abc-123',
+    status: 'done',
+    score: 74,
+    countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+    createdAt: '2026-08-14T12:00:00.000Z',
+    completedAt: '2026-08-14T12:00:30.000Z',
+    error: null,
+  },
+  score: 74,
+  previousScore: 82,
+  history: [
+    {score: 82, at: '2026-08-13T12:00:00.000Z'},
+    {score: 74, at: '2026-08-14T12:00:00.000Z'},
+  ],
+};
+
+const pageList: LoadPagesResponse = {pages: [monitoredPage], used: 1, limit: 10};
+
+const pageHistory: PageHistoryResponse = {
+  pageId: '42',
+  url: monitoredPage.url,
+  days: 90,
+  points: [
+    {
+      auditId: 'abc-123',
+      createdAt: '2026-08-14T12:00:00.000Z',
+      status: 'done',
+      score: 74,
+      countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+      axeVersion: '4.12.1',
+    },
+  ],
+};
 const completedAudit: AuditResultResponse = {
   auditId: 'abc-123',
   url: 'https://example.com/',
@@ -53,7 +97,10 @@ describe('the route table', () => {
         return Promise.resolve(jsonResponse(200, signedIn));
       }
       if (path === '/api/pages') {
-        return Promise.resolve(jsonResponse(200, emptyPages));
+        return Promise.resolve(jsonResponse(200, pageList));
+      }
+      if (path.startsWith('/api/pages/42/history')) {
+        return Promise.resolve(jsonResponse(200, pageHistory));
       }
       if (path === '/api/audits/abc-123') {
         return Promise.resolve(jsonResponse(200, completedAudit));
@@ -114,11 +161,14 @@ describe('the route table', () => {
   });
 
   it('resolves /pages/:id for a signed-in visitor, and passes the id through', async () => {
+    // The heading is the page's own domain, which only the fixture for id 42
+    // supplies - so a route that dropped the param renders something else.
     withSession();
 
     renderAt('/pages/42');
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Page 42'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
+    expect(screen.getByText(monitoredPage.url)).toBeVisible();
   });
 
   it('resolves /r/:uuid without a session, because the uuid is the credential', async () => {
@@ -264,8 +314,9 @@ describe('the route table', () => {
 
     const {router} = renderAt(`/login${returnToSearch('/pages/42?days=30#history')}`);
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Page 42'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
     expect(router.state.location.pathname).toBe('/pages/42');
+    expect(router.state.location.search).toBe('?days=30');
   });
 
   it('asks for the session once, however many consumers a guarded page has', async () => {
