@@ -68,7 +68,7 @@ const ViolationItem = ({violation, defaultExpanded}: ViolationItemProps): React.
                 <CodeBlock
                   code={node.html}
                   copyLabel="Copy HTML"
-                  regionLabel={`HTML of affected element ${index + 1}`}
+                  regionLabel={`HTML of affected element ${index + 1}, ${violation.ruleId}`}
                 />
               </li>
             ))}
