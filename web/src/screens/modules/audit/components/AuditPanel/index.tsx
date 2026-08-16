@@ -19,9 +19,10 @@ const messageFor = (error: Error): string => (isApiError(error) && error.status 
 export const AuditPanel = ({auditId, onClose}: AuditPanelProps): React.JSX.Element => {
   const headingId = useId();
   const {data, error, isPending} = useAudit(auditId);
+  const inFlight = data?.status === 'queued' || data?.status === 'running';
 
   return (
-    <section className="audit-panel" aria-labelledby={headingId} aria-busy={isPending}>
+    <section className="audit-panel" aria-labelledby={headingId} aria-busy={isPending || inFlight}>
       <div className="audit-panel__header">
         <h2 className="audit-panel__heading" id={headingId}>
           {data === undefined ? 'Audit result' : `Audit on ${exactTime(data.createdAt)}`}
@@ -42,7 +43,16 @@ export const AuditPanel = ({auditId, onClose}: AuditPanelProps): React.JSX.Eleme
         </Callout>
       )}
 
-      {data !== undefined && data.status !== 'failed' && <AuditResult audit={data} />}
+      {/* An unfinished run has no score, no counts and no violations either,
+          so `AuditResult` would draw it as a clean audit. `useAudit` is already
+          polling it; this waits for the answer rather than inventing one. */}
+      {inFlight && data !== undefined && (
+        <p className="audit-panel__running">
+          {`This audit is still ${data.status}. Its result will appear here when it finishes.`}
+        </p>
+      )}
+
+      {data?.status === 'done' && <AuditResult audit={data} />}
     </section>
   );
 };

@@ -25,6 +25,7 @@
 }
 
 .audit-panel__loading,
+.audit-panel__running,
 .audit-panel__gone {
   margin: 0;
   color: var(--lat-text-subtle);

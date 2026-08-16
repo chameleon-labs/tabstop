@@ -131,6 +131,26 @@ describe('AuditPanel', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
+  it.each(['queued', 'running'] as const)(
+    'waits for a %s audit rather than reporting it as a result',
+    async (status) => {
+      // `AuditResult` would print "Not scored", four zero counts and an empty
+      // violation list, which reads as a clean audit rather than an unfinished
+      // one.
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse(200, {...AUDIT, status, score: null, completedAt: null, settled: false, violations: []}),
+        ),
+      );
+      renderPanel();
+
+      expect(await screen.findByText(new RegExp(`still ${status}`, 'i'))).toBeVisible();
+      expect(screen.getByRole('region', {name: /audit on/i})).toHaveAttribute('aria-busy', 'true');
+      expect(screen.queryByText('Not scored')).not.toBeInTheDocument();
+      expect(screen.queryByText('Violations — 0 total')).not.toBeInTheDocument();
+    },
+  );
+
   it('says a missing result is gone, and stays closable', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(404, {error: 'Audit not found'})));
     const {onClose} = renderPanel();
