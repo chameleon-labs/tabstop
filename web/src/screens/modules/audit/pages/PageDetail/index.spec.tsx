@@ -197,6 +197,38 @@ describe('PageDetail summary', () => {
     expect(screen.getByText(/Audited .* ago/)).toBeVisible();
   });
 
+  it('says a retained score is retained, and pairs no counts with it', async () => {
+    // `page.score` is the most recent COMPLETED score, not the latest audit's.
+    // Labelling it "Score" beside the failed run's counts and timestamp
+    // presents fields from two different runs as one result.
+    const failedLatest = summary({
+      latestAudit: {
+        auditId: uuid('9'),
+        status: 'failed',
+        score: null,
+        countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+        createdAt: '2026-08-16T10:00:00.000Z',
+        completedAt: null,
+        error: 'Navigation timed out',
+      },
+    });
+    renderDetail('/pages/page-1', {
+      ...DEFAULT_ROUTES,
+      '/api/pages': () => jsonResponse(200, pageList([failedLatest])),
+    });
+
+    expect(await screen.findByText('Last successful score 74 out of 100')).toBeInTheDocument();
+    expect(screen.queryByText('Score 74 out of 100')).not.toBeInTheDocument();
+    expect(screen.queryByText('Critical')).not.toBeInTheDocument();
+  });
+
+  it('keeps the counts when they belong to the score beside them', async () => {
+    renderDetail();
+
+    expect(await screen.findByText('Score 74 out of 100')).toBeInTheDocument();
+    expect(countFor('Critical')).toBe('1');
+  });
+
   it('opens the latest result from the summary', async () => {
     const {router} = renderDetail();
     const user = userEvent.setup();

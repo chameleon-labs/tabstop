@@ -103,6 +103,13 @@
   font-size: var(--lat-font-size-base);
 }
 
+.page-detail__score-label {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+  letter-spacing: var(--lat-text-meta-letter-spacing);
+}
+
 .page-detail__unscored {
   margin: 0;
   color: var(--lat-text-subtle);

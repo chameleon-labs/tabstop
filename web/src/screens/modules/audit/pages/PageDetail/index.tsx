@@ -20,6 +20,7 @@ import {DeletePageDialog} from '../../components/DeletePageDialog';
 import {HistoryTable} from '../../components/HistoryTable';
 import {ScoreDelta} from '../../components/ScoreDelta';
 import {TrendChart} from '../../components/TrendChart';
+import {dashboardRowState} from '../../dashboard-row';
 import {IMPACT_LABELS} from '../../grouping';
 import {useDeleteMonitoredPage, useMonitoredPages, useSetPageMonitoring} from '../../monitored-pages';
 import {HISTORY_WINDOWS, historyWindowFrom, usePageHistory} from '../../page-history';
@@ -65,6 +66,10 @@ export const PageDetail = (): React.JSX.Element => {
   useDocumentTitle(heading);
   const latestAuditId = page?.latestAudit?.auditId ?? null;
   const timestamp = page === undefined ? null : pageTimestamp(page);
+  // The dashboard's own reading of the same row, so one screen cannot describe
+  // a retained score differently from the other.
+  const rowState = page === undefined ? null : dashboardRowState(page);
+  const latestCounts = page?.latestAudit?.status === 'done' ? page.latestAudit.countsByImpact : null;
   const monitoringVerb = page?.monitoringEnabled === false ? 'Resume' : 'Pause';
   const now = Date.now();
 
@@ -200,31 +205,39 @@ export const PageDetail = (): React.JSX.Element => {
         </Callout>
       )}
 
-      {page !== undefined && timestamp !== null && (
+      {page !== undefined && timestamp !== null && rowState !== null && (
         <Card className="page-detail__summary">
           <div className="page-detail__score">
-            {page.score === null ? (
-              <p className="page-detail__unscored">Not scored yet</p>
-            ) : (
+            {rowState.showScore && page.score !== null ? (
               <>
                 <p className="page-detail__score-value">
-                  <VisuallyHidden>{`Score ${page.score} out of 100`}</VisuallyHidden>
+                  <VisuallyHidden>{`${rowState.scoreLabel ?? 'Score'} ${page.score} out of 100`}</VisuallyHidden>
                   <span aria-hidden="true">{page.score}</span>
                   <span className="page-detail__score-max" aria-hidden="true">
                     /100
                   </span>
                 </p>
-                <ScoreDelta score={page.score} previousScore={page.previousScore} />
+                {rowState.showDelta && <ScoreDelta score={page.score} previousScore={page.previousScore} />}
+                {rowState.scoreLabel !== null && (
+                  <span className="page-detail__score-label" aria-hidden="true">
+                    {rowState.scoreLabel}
+                  </span>
+                )}
               </>
+            ) : (
+              <p className="page-detail__unscored">Not scored yet</p>
             )}
           </div>
 
-          {page.latestAudit !== null && (
+          {/* Only when the run that produced the score is also the latest one.
+              `page.score` is the most recent COMPLETED score, so after a failed
+              or in-flight re-audit these counts belong to a different run. */}
+          {latestCounts !== null && (
             <dl className="page-detail__counts">
               {COUNT_ORDER.map((impact) => (
                 <div key={impact} className="page-detail__count" data-impact={impact}>
                   <dt>{IMPACT_LABELS[impact]}</dt>
-                  <dd>{page.latestAudit?.countsByImpact[impact]}</dd>
+                  <dd>{latestCounts[impact]}</dd>
                 </div>
               ))}
             </dl>
