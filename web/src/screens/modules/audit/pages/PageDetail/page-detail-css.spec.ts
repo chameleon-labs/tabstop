@@ -82,6 +82,14 @@ describe('the page detail visual contract', () => {
     expect(sheet(name)).toMatch(/@media \(width [<>]/);
   });
 
+  it('keeps the audited time against the right edge, counts or no counts', () => {
+    // End-alignment alone leaves it beside the score on a page whose first
+    // audit has produced no counts, because the middle column collapses.
+    const wide = sheet('detail').slice(0, sheet('detail').indexOf('@media (width < 40rem)'));
+
+    expect(wide).toMatch(/\.page-detail__latest\s*{[^}]*grid-column: 3;/);
+  });
+
   it('stacks the summary card rather than squeezing three columns onto a phone', () => {
     const narrow = sheet('detail').slice(sheet('detail').indexOf('@media (width < 40rem)'));
 

@@ -59,10 +59,10 @@ export const PageDetail = (): React.JSX.Element => {
 
   const url = page?.url ?? history.data?.url;
   const domain = url === undefined ? null : hostOf(url);
-  useDocumentTitle(domain ?? 'Page');
-
   const points = history.data?.points ?? [];
   const missing = isApiError(history.error) && history.error.status === 404;
+  const heading = domain ?? (missing ? 'Page not found' : 'Page');
+  useDocumentTitle(heading);
   const latestAuditId = page?.latestAudit?.auditId ?? null;
   const timestamp = page === undefined ? null : pageTimestamp(page);
   const monitoringVerb = page?.monitoringEnabled === false ? 'Resume' : 'Pause';
@@ -157,12 +157,12 @@ export const PageDetail = (): React.JSX.Element => {
       <nav className="page-detail__breadcrumb" aria-label="Breadcrumb">
         <Link to="/dashboard">Your pages</Link>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">{domain ?? 'Page'}</span>
+        <span aria-current="page">{heading}</span>
       </nav>
 
       <header className="page-detail__header">
         <div className="page-detail__identity">
-          <h1 className="page-detail__title">{domain ?? 'Page'}</h1>
+          <h1 className="page-detail__title">{heading}</h1>
           {url !== undefined && <p className="page-detail__url">{url}</p>}
           {page?.monitoringEnabled === false && <Badge variant="default">Paused</Badge>}
         </div>
@@ -255,9 +255,11 @@ export const PageDetail = (): React.JSX.Element => {
       )}
 
       {missing ? (
-        <Callout variant="warning" icon={<AlertCircle size="sm" />} title="No history for this page">
+        <Callout variant="warning" icon={<AlertCircle size="sm" />}>
           <p>This is not one of your monitored pages. It may have been removed, or it belongs to another account.</p>
-          <Link to="/dashboard">Back to your pages</Link>
+          <Button variant="secondary" size="sm" render={<Link to="/dashboard" />}>
+            Back to your pages
+          </Button>
         </Callout>
       ) : (
         <>
@@ -305,12 +307,15 @@ export const PageDetail = (): React.JSX.Element => {
               ))}
           </section>
 
-          <section className="page-detail__audits" aria-labelledby={auditsHeadingId}>
-            <h2 className="page-detail__section-heading" id={auditsHeadingId}>
-              Audits
-            </h2>
-            <AuditList points={points} selectedAuditId={selectedAuditId} onSelect={openAudit} />
-          </section>
+          {/* Hidden while there is nothing to list: the trend above already says the window is empty, and saying it twice reads as a fault. */}
+          {points.length > 0 && (
+            <section className="page-detail__audits" aria-labelledby={auditsHeadingId}>
+              <h2 className="page-detail__section-heading" id={auditsHeadingId}>
+                Audits
+              </h2>
+              <AuditList points={points} selectedAuditId={selectedAuditId} onSelect={openAudit} />
+            </section>
+          )}
 
           {selectedAuditId !== null && <AuditPanel auditId={selectedAuditId} onClose={closeAudit} />}
         </>

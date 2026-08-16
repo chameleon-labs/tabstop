@@ -151,10 +151,13 @@
   color: var(--lat-severity-minor);
 }
 
+/* Pinned to the last column rather than merely end-aligned, so it still sits
+   against the right edge on a page whose first audit has not produced counts. */
 .page-detail__latest {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  grid-column: 3;
   justify-self: end;
   gap: var(--lat-space-2);
 }
@@ -216,6 +219,7 @@
 
   .page-detail__latest {
     align-items: flex-start;
+    grid-column: 1;
     justify-self: start;
   }
 

@@ -248,6 +248,42 @@ describe('PageDetail history states', () => {
     expect(await screen.findByText(/not one of your monitored pages/i)).toBeVisible();
     expect(screen.queryByRole('group', {name: /Score trend/})).not.toBeInTheDocument();
   });
+
+  it('names the state in the heading rather than falling back to "Page"', async () => {
+    // Breadcrumb, heading and tab all read "Page" otherwise, which describes
+    // nothing and looks like a screen that failed to finish loading.
+    renderDetail('/pages/page-1', {
+      '/api/pages': () => jsonResponse(200, pageList([])),
+      '/api/pages/page-1/history?days=90': () => jsonResponse(404, {error: 'Page not found'}),
+    });
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Page not found'})).toBeVisible();
+    await waitFor(() => {
+      expect(document.title).toBe('Page not found · tabstop');
+    });
+  });
+
+  it('offers the way back as a control, not a bare browser link', async () => {
+    renderDetail('/pages/page-1', {
+      '/api/pages': () => jsonResponse(200, pageList([])),
+      '/api/pages/page-1/history?days=90': () => jsonResponse(404, {error: 'Page not found'}),
+    });
+
+    expect(await screen.findByRole('link', {name: 'Back to your pages'})).toHaveAttribute('href', '/dashboard');
+  });
+
+  it('says the window is empty once, not once per section', async () => {
+    // The trend and the audit list carry the same sentence, and two of them on
+    // one screen reads as a fault rather than as an empty window.
+    renderDetail('/pages/page-1', {
+      ...DEFAULT_ROUTES,
+      '/api/pages/page-1/history?days=90': () => jsonResponse(200, historyBody([])),
+    });
+
+    expect(await screen.findByText(/no audits in this window/i)).toBeVisible();
+    expect(screen.getAllByText(/no audits in this window/i)).toHaveLength(1);
+    expect(screen.queryByRole('heading', {name: 'Audits'})).not.toBeInTheDocument();
+  });
 });
 
 describe('PageDetail window', () => {
