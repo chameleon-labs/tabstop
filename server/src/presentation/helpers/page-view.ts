@@ -1,6 +1,10 @@
-import type {LatestPageAudit, PageSummary as PageSummaryResponse, PageView} from '@tabstop/contract';
-import type {AuditModel, AuditStatus} from '../../domain/models/audit.js';
-import type {CountsByImpact} from '../../domain/models/impact.js';
+import type {
+  LatestPageAudit,
+  PageHistoryResponse,
+  PageSummary as PageSummaryResponse,
+  PageView,
+} from '@tabstop/contract';
+import type {AuditModel} from '../../domain/models/audit.js';
 import type {PageSummary as DomainPageSummary, PageModel} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
 
@@ -38,34 +42,7 @@ export const toPageSummaryView = (summary: DomainPageSummary): PageSummaryRespon
   history: summary.history.map((point) => ({score: point.score, at: point.at.toISOString()})),
 });
 
-/**
- * One point on the trend chart (#21).
- *
- * `axeVersion` rides along per point so the chart can mark where the engine
- * changed. A score shift across an axe upgrade is not a regression in the
- * page, and without this the chart raises a false alarm the first time axe is
- * bumped - which is the sort of thing that teaches a team to ignore it.
- */
-export type PageHistoryPointView = {
-  /** The public uuid, so a point can link to its own result (#23). */
-  auditId: string;
-  createdAt: string;
-  status: AuditStatus;
-  /** Null whenever the run did not finish. Never coerced to zero. */
-  score: number | null;
-  countsByImpact: CountsByImpact;
-  axeVersion: string | null;
-};
-
-export type PageHistoryView = {
-  pageId: string;
-  url: string;
-  /** What the server actually used, which is not always what was asked for. */
-  days: number;
-  points: PageHistoryPointView[];
-};
-
-export const toPageHistoryView = (history: PageHistory, days: number): PageHistoryView => ({
+export const toPageHistoryView = (history: PageHistory, days: number): PageHistoryResponse => ({
   pageId: history.page.id,
   url: history.page.url,
   days,

@@ -1,8 +1,9 @@
 import {describe, expect, it} from 'vitest';
-import type {LoadPagesResponse, PageSummary as PageSummaryResponse} from '@tabstop/contract';
+import type {LoadPagesResponse, PageHistoryResponse, PageSummary as PageSummaryResponse} from '@tabstop/contract';
 import type {AuditModel} from '../../domain/models/audit.js';
 import type {PageModel, PageSummary} from '../../domain/models/page.js';
-import {toPageSummaryView, toPageView} from './page-view.js';
+import type {PageHistory} from '../../domain/usecases/load-page-history.js';
+import {toPageHistoryView, toPageSummaryView, toPageView} from './page-view.js';
 
 const page: PageModel = {
   id: 'page-1',
@@ -114,5 +115,81 @@ describe('the page view mappers', () => {
     const view = toPageSummaryView(summary({latestAudit: null}));
 
     expect(view.latestAudit).toBeNull();
+  });
+});
+
+const failedAudit: AuditModel = {
+  ...audit,
+  id: 'audit-internal-2',
+  publicUuid: '22222222-2222-2222-2222-222222222222',
+  status: 'failed',
+  score: null,
+  countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+  axeVersion: null,
+  error: 'Navigation timeout',
+  createdAt: new Date('2026-08-16T10:01:00Z'),
+  completedAt: null,
+  settled: true,
+};
+
+const history = (audits: AuditModel[] = [audit, failedAudit]): PageHistory => ({page, audits});
+
+describe('the page history mapper', () => {
+  it('maps the wire shape the trend chart reads, with dates as ISO strings', () => {
+    const view: PageHistoryResponse = toPageHistoryView(history(), 90);
+
+    expect(view).toEqual({
+      pageId: 'page-1',
+      url: 'https://example.test/pricing',
+      days: 90,
+      points: [
+        {
+          auditId: '11111111-1111-1111-1111-111111111111',
+          createdAt: '2026-08-15T10:01:00.000Z',
+          status: 'done',
+          score: 74,
+          countsByImpact: {minor: 1, moderate: 2, serious: 0, critical: 1},
+          axeVersion: '4.12.1',
+        },
+        {
+          auditId: '22222222-2222-2222-2222-222222222222',
+          createdAt: '2026-08-16T10:01:00.000Z',
+          status: 'failed',
+          score: null,
+          countsByImpact: {minor: 0, moderate: 0, serious: 0, critical: 0},
+          axeVersion: null,
+        },
+      ],
+    });
+  });
+
+  it('echoes the window the server actually used, not the one that was asked for', () => {
+    expect(toPageHistoryView(history(), 365).days).toBe(365);
+  });
+
+  it('leaves the points oldest first, so a chart renders in array order', () => {
+    const view = toPageHistoryView(history([failedAudit, audit]), 90);
+
+    expect(view.points.map((point) => point.createdAt)).toEqual([
+      '2026-08-16T10:01:00.000Z',
+      '2026-08-15T10:01:00.000Z',
+    ]);
+  });
+
+  it('keeps a failed run as a point with no score rather than dropping it', () => {
+    // Dropping it makes an outage look like continuity; a zero makes it look
+    // like a catastrophic regression.
+    const view = toPageHistoryView(history([failedAudit]), 90);
+
+    expect(view.points).toHaveLength(1);
+    expect(view.points[0]).toMatchObject({status: 'failed', score: null});
+  });
+
+  it('never puts an internal identifier on the wire', () => {
+    const serialised = JSON.stringify(toPageHistoryView(history(), 90));
+
+    expect(serialised).not.toContain('site-secret-1');
+    expect(serialised).not.toContain('audit-internal-1');
+    expect(serialised).not.toContain('audit-internal-2');
   });
 });
