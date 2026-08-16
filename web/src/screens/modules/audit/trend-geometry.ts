@@ -153,6 +153,29 @@ export const AUDIT_STATUS_LABELS: Readonly<Record<AuditStatus, string>> = {
   failed: 'Failed',
 };
 
+export type HistoryRow = {point: PageHistoryPoint; previousScore: number | null};
+
+/**
+ * Newest first, each row carrying the last score COMPLETED before it.
+ *
+ * Not the previous row's score: a failure between two audits would otherwise
+ * blank a comparison the reader can still make. Computed across the whole
+ * window, so a capped list still compares its oldest row honestly.
+ */
+export const historyRows = (points: readonly PageHistoryPoint[]): HistoryRow[] => {
+  const rows: HistoryRow[] = [];
+  let previousScore: number | null = null;
+
+  for (const point of points) {
+    rows.push({point, previousScore});
+    if (point.score !== null) {
+      previousScore = point.score;
+    }
+  }
+
+  return rows.toReversed();
+};
+
 export const pointDate = (point: PageHistoryPoint, locale?: string, timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',

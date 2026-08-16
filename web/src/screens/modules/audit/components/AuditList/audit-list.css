@@ -14,7 +14,7 @@
 
 .audit-list__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6rem auto;
+  grid-template-columns: minmax(0, 1fr) 4rem 6rem 7rem auto;
   align-items: center;
   gap: var(--lat-space-3);
   padding-block: var(--lat-space-2);
@@ -32,15 +32,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-.audit-list__outcome {
-  color: var(--lat-text-subtle);
+.audit-list__score {
   font-family: var(--lat-text-numeric-font-family);
   font-size: var(--lat-text-numeric-font-size);
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
 
-.audit-list__row[data-status='failed'] .audit-list__outcome {
+.audit-list__status {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+}
+
+.audit-list__row[data-status='failed'] .audit-list__status {
   color: var(--lat-danger-solid);
 }
 
@@ -53,9 +58,15 @@
 }
 
 @media (width < 30rem) {
+  /* Five columns do not fit a phone: the date leads, the score and its change
+     sit beside it, and the status and the control take the row below. */
   .audit-list__row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     row-gap: var(--lat-space-2);
+  }
+
+  .audit-list__status {
+    grid-column: 1;
   }
 
   /* The control wraps to its own row; left-aligned rather than stretched, so a

@@ -1,6 +1,8 @@
 import {Button} from '@chameleon-labs/lattice-react';
 import type {PageHistoryPoint} from '@tabstop/contract';
-import {AUDIT_STATUS_LABELS, pointDate} from '../../trend-geometry';
+import {AUDIT_STATUS_LABELS, historyRows, pointDate} from '../../trend-geometry';
+import {AbsentValue} from '../AbsentValue';
+import {ScoreDelta} from '../ScoreDelta';
 import './audit-list.css';
 
 /** A 365-day window is not a 365-row list. */
@@ -21,17 +23,27 @@ export const AuditList = ({points, selectedAuditId, onSelect}: AuditListProps): 
     return <p className="audit-list__empty">No audits in this window yet.</p>;
   }
 
-  const shown = points.slice(-AUDIT_LIST_LIMIT).toReversed();
+  // Rows are built across the whole window and capped afterwards, so the
+  // oldest one shown still compares against the run that really preceded it.
+  const shown = historyRows(points).slice(0, AUDIT_LIST_LIMIT);
 
   return (
     <div className="audit-list">
       <ul className="audit-list__rows">
-        {shown.map((point) => (
+        {shown.map(({point, previousScore}) => (
           <li key={point.auditId} className="audit-list__row" data-status={point.status}>
             <time className="audit-list__date" dateTime={point.createdAt}>
               {rowDate(point.createdAt)}
             </time>
-            <span className="audit-list__outcome">{point.score ?? AUDIT_STATUS_LABELS[point.status]}</span>
+            <span className="audit-list__score">{point.score ?? <AbsentValue />}</span>
+            <span className="audit-list__change">
+              {point.score === null ? (
+                <AbsentValue />
+              ) : (
+                <ScoreDelta score={point.score} previousScore={previousScore} />
+              )}
+            </span>
+            <span className="audit-list__status">{AUDIT_STATUS_LABELS[point.status]}</span>
             <Button
               variant="ghost"
               size="sm"

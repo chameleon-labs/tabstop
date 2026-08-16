@@ -79,6 +79,26 @@ describe('AuditList', () => {
     const row = rows()[1]!;
     expect(within(row).getByText('Failed')).toBeVisible();
     expect(within(row).queryByText('0')).not.toBeInTheDocument();
+    expect(within(row).getAllByText('Not recorded')).toHaveLength(2);
+  });
+
+  it('carries the four fields the row is meant to have', () => {
+    // Date, score, change and status, each in its own cell. Merging score and
+    // status into one leaves a completed audit showing a bare number.
+    render(<AuditList points={SERIES} selectedAuditId={null} onSelect={vi.fn()} />);
+    const row = rows()[0]!;
+
+    expect(row.querySelector('time')).toHaveAttribute('datetime', NEWEST);
+    expect(within(row).getByText('74')).toBeVisible();
+    expect(within(row).getByText('Score down 16 points since the previous audit')).toBeInTheDocument();
+    expect(within(row).getByText('Completed')).toBeVisible();
+  });
+
+  it('compares a score with the last run that finished, not the last run', () => {
+    // The 90 two rows up is the comparison; the failure between them is not.
+    render(<AuditList points={SERIES} selectedAuditId={null} onSelect={vi.fn()} />);
+
+    expect(within(rows()[0]!).getByText('Score down 16 points since the previous audit')).toBeInTheDocument();
   });
 
   it('caps the list and says so, rather than printing a year of rows', () => {

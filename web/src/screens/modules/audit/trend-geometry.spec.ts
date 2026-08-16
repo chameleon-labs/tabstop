@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {PageHistoryPoint} from '@tabstop/contract';
 import {
   MIN_TREND_RANGE,
+  historyRows,
   pointDate,
   pointDescription,
   trendBounds,
@@ -232,6 +233,29 @@ describe('trendSummary', () => {
 
   it('says so when nothing in the window finished', () => {
     expect(trendSummary([failed(day(0)), failed(day(1))])).toBe('Score trend: no completed audits. 2 audits failed.');
+  });
+});
+
+describe('historyRows', () => {
+  const day = (index: number): string => `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`;
+
+  it('reads newest first, because a list is read from the top', () => {
+    const rows = historyRows([scored(day(0), 90), scored(day(1), 82)]);
+
+    expect(rows.map((row) => row.point.score)).toEqual([82, 90]);
+  });
+
+  it('compares against the last run that finished, not the last run', () => {
+    // A failure between two audits must not blank the comparison; the reader
+    // still wants to know the score fell eight points.
+    const rows = historyRows([scored(day(0), 90), failed(day(1)), scored(day(2), 82)]);
+
+    expect(rows[0]?.previousScore).toBe(90);
+    expect(rows[1]?.previousScore).toBe(90);
+  });
+
+  it('leaves the first score in the window with nothing to compare against', () => {
+    expect(historyRows([scored(day(0), 90)])[0]?.previousScore).toBeNull();
   });
 });
 
