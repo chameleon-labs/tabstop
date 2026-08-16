@@ -1,30 +1,33 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {act, renderHook, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {PageHistoryResponse} from '@tabstop/contract';
+import type {PageHistoryPoint, PageHistoryResponse} from '@tabstop/contract';
 import {jsonResponse} from '@/test/http';
 import {
   DEFAULT_HISTORY_WINDOW,
+  IN_FLIGHT_HISTORY_POLL_MS,
   historyWindowFrom,
   pageHistoryKeys,
   usePageHistory,
   type HistoryWindow,
 } from './page-history';
 
+const point = (overrides: Partial<PageHistoryPoint> = {}): PageHistoryPoint => ({
+  auditId: 'audit-1',
+  createdAt: '2026-08-15T10:00:00.000Z',
+  status: 'done',
+  score: 74,
+  countsByImpact: {minor: 1, moderate: 2, serious: 0, critical: 1},
+  axeVersion: '4.12.1',
+  ...(overrides.status === 'queued' || overrides.status === 'running' ? {score: null, axeVersion: null} : {}),
+  ...overrides,
+});
+
 const history = (overrides: Partial<PageHistoryResponse> = {}): PageHistoryResponse => ({
   pageId: 'page-1',
   url: 'https://example.test/pricing',
   days: 90,
-  points: [
-    {
-      auditId: 'audit-1',
-      createdAt: '2026-08-15T10:00:00.000Z',
-      status: 'done',
-      score: 74,
-      countsByImpact: {minor: 1, moderate: 2, serious: 0, critical: 1},
-      axeVersion: '4.12.1',
-    },
-  ],
+  points: [point()],
   ...overrides,
 });
 
@@ -104,9 +107,9 @@ describe('usePageHistory', () => {
     expect(result.current.fetchStatus).toBe('idle');
   });
 
-  it('never polls, because a finished audit does not change', async () => {
-    // The dashboard polls because an audit can be in flight. History is
-    // immutable and the endpoint is already cached for a minute.
+  it('leaves a settled window alone, however long the page stays open', async () => {
+    // Every point terminal means nothing in it can change, and the endpoint is
+    // already cached for a minute.
     const {wrapper} = harness();
     renderHook(() => usePageHistory('page-1', 90), {wrapper});
 
@@ -119,6 +122,101 @@ describe('usePageHistory', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['queued', 'running'] as const)('follows a %s point until it settles', async (status) => {
+    // The window is not immutable: the server returns every status, so a point
+    // acquires its score later. Without this the reader watches a gap marked
+    // "running" for as long as the tab stays open.
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, history({points: [point({status})]}))));
+    const {wrapper} = harness();
+    renderHook(() => usePageHistory('page-1', 90), {wrapper});
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS);
+    });
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('stops the moment that point reaches a terminal status', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, history({points: [point({status: 'running'})]}))),
+    );
+    const {wrapper} = harness();
+    renderHook(() => usePageHistory('page-1', 90), {wrapper});
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, history())));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS * 2);
+    });
+    const afterSettling = fetchMock.mock.calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS * 5);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(afterSettling);
+  });
+
+  it('asks past the browser cache once it knows a point is unfinished', async () => {
+    // The endpoint answers `private, max-age=60`, which is true of a finished
+    // audit and wrong about an unfinished one: every poll inside that minute
+    // would be served the same in-flight body from the browser's own cache.
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, history({points: [point({status: 'running'})]}))),
+    );
+    const {wrapper} = harness();
+    renderHook(() => usePageHistory('page-1', 90), {wrapper});
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock.mock.calls[0]?.[1]).not.toMatchObject({cache: 'no-store'});
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS);
+    });
+
+    expect(fetchMock.mock.calls.at(-1)?.[1]).toMatchObject({cache: 'no-store'});
+  });
+
+  it('stops polling when a window it already has starts failing', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse(200, history({points: [point({status: 'running'})]}))),
+    );
+    const {client, wrapper} = harness();
+    const {result} = renderHook(() => usePageHistory('page-1', 90), {wrapper});
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined();
+    });
+
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Server error'})));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS);
+    });
+
+    // Read the cache, not `isError`: the observer keeps reporting success while
+    // it still has a window to draw.
+    await waitFor(() => {
+      expect(client.getQueryCache().find({queryKey: pageHistoryKeys.detail('page-1', 90)})?.state.status).toBe('error');
+    });
+    const afterFailure = fetchMock.mock.calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS * 5);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(afterFailure);
   });
 });
 
