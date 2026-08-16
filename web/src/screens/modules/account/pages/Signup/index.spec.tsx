@@ -7,9 +7,27 @@ import {makeRoutes} from '@/routes';
 import {jsonResponse} from '@/test/http';
 import {returnToSearch} from '../../return-to';
 import {Signup} from './index';
-import type {LoadPagesResponse} from '@tabstop/contract';
+import type {LoadPagesResponse, PageHistoryResponse, PageSummary} from '@tabstop/contract';
 
-const emptyPages: LoadPagesResponse = {pages: [], used: 0, limit: 10};
+/** The recorded destination is `/pages/42`, which names itself after this. */
+const monitoredPage: PageSummary = {
+  id: '42',
+  url: 'https://example.com/checkout',
+  monitoringEnabled: true,
+  createdAt: '2026-08-01T10:00:00.000Z',
+  domain: 'example.com',
+  latestAudit: null,
+  score: null,
+  previousScore: null,
+  history: [],
+};
+
+const pages: LoadPagesResponse = {pages: [monitoredPage], used: 1, limit: 10};
+
+const pageHistory: PageHistoryResponse = {pageId: '42', url: monitoredPage.url, days: 30, points: []};
+
+const afterSignIn = (path: string): Promise<Response> =>
+  Promise.resolve(path.startsWith('/api/pages/42/history') ? jsonResponse(200, pageHistory) : jsonResponse(200, pages));
 
 const account = {id: '1', email: 'person@example.com', alertThreshold: 5};
 const credentials = {email: 'person@example.com', password: 'a-secure-password'};
@@ -55,7 +73,7 @@ describe('Signup', () => {
       .mockResolvedValueOnce(jsonResponse(201, account))
       .mockResolvedValueOnce(jsonResponse(200, account))
       // The real dashboard reads its list the moment it mounts.
-      .mockImplementation(() => Promise.resolve(jsonResponse(200, emptyPages)));
+      .mockImplementation(afterSignIn);
   };
 
   it('presents account creation with browser password-manager hints and the page title', async () => {
@@ -238,7 +256,7 @@ describe('Signup', () => {
 
     await user.click(screen.getByRole('button', {name: 'Create account'}));
 
-    expect(await screen.findByRole('heading', {level: 1, name: 'Page 42'})).toBeVisible();
+    expect(await screen.findByRole('heading', {level: 1, name: 'example.com'})).toBeVisible();
     expect(router.state.location.pathname).toBe('/pages/42');
     expect(router.state.location.search).toBe('?days=30');
     expect(router.state.location.hash).toBe('#history');

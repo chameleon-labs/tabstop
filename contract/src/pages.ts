@@ -86,6 +86,35 @@ export type LoadPagesResponse = {
 };
 
 /**
+ * One point on the page's trend chart.
+ *
+ * `axeVersion` rides along per point so the chart can mark where the engine
+ * changed. A score shift across an axe upgrade is not a regression in the page,
+ * and without this the chart raises a false alarm the first time axe is bumped -
+ * the sort of thing that teaches a team to ignore it.
+ */
+export type PageHistoryPoint = {
+  /** The public uuid, so a point can address its own result. */
+  auditId: string;
+  createdAt: string;
+  status: AuditStatus;
+  /** Null whenever the run did not finish. Never coerced to zero. */
+  score: number | null;
+  countsByImpact: CountsByImpact;
+  /** Null when the run did not get far enough to record one. */
+  axeVersion: string | null;
+};
+
+export type PageHistoryResponse = {
+  pageId: string;
+  url: string;
+  /** What the server actually used, which is not always what was asked for. */
+  days: number;
+  /** Oldest first, so a chart renders in array order. */
+  points: PageHistoryPoint[];
+};
+
+/**
  * `firstAuditId` is null when the page was created but its first job could not
  * be enqueued - monitoring is on and the next scheduled run will still happen,
  * which is what separates this from a failure.

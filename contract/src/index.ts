@@ -28,6 +28,8 @@ export type {
   PageAlreadyTrackedBody,
   PageConflictBody,
   PageConflictCode,
+  PageHistoryPoint,
+  PageHistoryResponse,
   PageLimitReachedBody,
   PageScorePoint,
   PageSummary,
