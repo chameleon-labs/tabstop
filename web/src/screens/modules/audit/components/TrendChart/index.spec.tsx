@@ -214,6 +214,35 @@ describe('TrendChart pointer', () => {
     expect(onFocusPoint).not.toHaveBeenCalled();
   });
 
+  it('anchors the tooltip by its near edge, so it cannot leave the chart', async () => {
+    // Centred on the point, the tooltip for the first or last audit in a window
+    // hangs off the box - which is where it is needed most.
+    const user = userEvent.setup();
+    const {container} = render(<TrendChart points={SERIES} />);
+    const tooltip = (): HTMLElement | null => container.querySelector<HTMLElement>('.trend-chart__tooltip');
+
+    await user.hover(markers(container)[0]!);
+    expect(tooltip()?.style.left).not.toBe('');
+    expect(tooltip()?.style.right).toBe('');
+
+    await user.unhover(markers(container)[0]!);
+    await user.hover(markers(container)[4]!);
+    expect(tooltip()?.style.right).not.toBe('');
+    expect(tooltip()?.style.left).toBe('');
+  });
+
+  it('drops below a point near the top rather than over the heading above it', async () => {
+    const user = userEvent.setup();
+    const {container} = render(<TrendChart points={SERIES} />);
+
+    await user.hover(markers(container)[0]!);
+    expect(container.querySelector('.trend-chart__tooltip')).toHaveAttribute('data-place', 'below');
+
+    await user.unhover(markers(container)[0]!);
+    await user.hover(markers(container)[2]!);
+    expect(container.querySelector('.trend-chart__tooltip')).toHaveAttribute('data-place', 'above');
+  });
+
   it('shows the same tooltip for the point the keyboard reached', async () => {
     const user = userEvent.setup();
     const {container} = render(<TrendChart points={SERIES} />);

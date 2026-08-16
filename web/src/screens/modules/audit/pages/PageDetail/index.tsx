@@ -38,6 +38,7 @@ export const PageDetail = (): React.JSX.Element => {
 
   const days = historyWindowFrom(params.get('days'));
   const selectedAuditId = params.get('audit');
+  const asTable = params.get('view') === 'table';
 
   // Identity, the controls and the summary come from the dashboard's own query,
   // which is warm on arrival from it. The history response carries no domain and
@@ -48,7 +49,6 @@ export const PageDetail = (): React.JSX.Element => {
   const monitoring = useSetPageMonitoring();
   const deletePage = useDeleteMonitoredPage();
 
-  const [asTable, setAsTable] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [removal, setRemoval] = useState<RemovalTarget | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
@@ -75,6 +75,21 @@ export const PageDetail = (): React.JSX.Element => {
       (current) => {
         const updated = new URLSearchParams(current);
         updated.set('days', next);
+        return updated;
+      },
+      {replace: true},
+    );
+  };
+
+  const setView = (): void => {
+    setParams(
+      (current) => {
+        const updated = new URLSearchParams(current);
+        if (asTable) {
+          updated.delete('view');
+        } else {
+          updated.set('view', 'table');
+        }
         return updated;
       },
       {replace: true},
@@ -259,14 +274,7 @@ export const PageDetail = (): React.JSX.Element => {
                     </SegmentedControlItem>
                   ))}
                 </SegmentedControl>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  aria-pressed={asTable}
-                  onClick={() => {
-                    setAsTable((current) => !current);
-                  }}
-                >
+                <Button variant="secondary" size="sm" aria-pressed={asTable} onClick={setView}>
                   View as table
                 </Button>
               </div>

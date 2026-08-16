@@ -1,8 +1,13 @@
 .trend-chart {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--lat-space-3);
+}
+
+/* The tooltip's containing block. It wraps the plot alone, because the tooltip
+   is placed in percentages of the viewBox and the legend is not in it. */
+.trend-chart__canvas {
+  position: relative;
 }
 
 .trend-chart__empty {
@@ -86,7 +91,8 @@
 .trend-chart__tooltip {
   position: absolute;
   z-index: 1;
-  max-inline-size: 18rem;
+  inline-size: max-content;
+  max-inline-size: min(18rem, 100%);
   margin: 0;
   padding: var(--lat-space-2) var(--lat-space-3);
   border: 1px solid var(--lat-border);
@@ -98,8 +104,13 @@
   font-size: var(--lat-text-small-font-size);
   line-height: var(--lat-text-small-line-height);
   text-wrap: balance;
-  translate: -50% calc(-100% - var(--lat-space-2));
+  translate: 0 calc(-100% - var(--lat-space-2));
   pointer-events: none;
+}
+
+/* Below the point when the point is high, so the tooltip never leaves the box. */
+.trend-chart__tooltip[data-place='below'] {
+  translate: 0 var(--lat-space-2);
 }
 
 .trend-chart__legend {
@@ -160,7 +171,11 @@
     stroke: CanvasText;
   }
 
-  .trend-chart__point {
+  /* Every state, spelled out: forced colours do not adjust `fill`, and the
+     state rules above out-specify a bare `.trend-chart__point` here. */
+  .trend-chart__point,
+  .trend-chart__point[data-status='failed'],
+  .trend-chart__point[data-endpoint='true'] {
     fill: CanvasText;
   }
 

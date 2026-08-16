@@ -49,10 +49,22 @@ describe('the page detail visual contract', () => {
   });
 
   it('keeps the chart readable when colour is taken away', () => {
-    const css = sheet('chart');
+    // `fill` is not force-adjusted by the browser, and a bare
+    // `.trend-chart__point` here loses to the state rules above it - so a
+    // failed marker kept its brand red against whatever palette was chosen.
+    const forced = sheet('chart').slice(sheet('chart').indexOf('@media (forced-colors: active)'));
 
-    expect(css).toContain('@media (forced-colors: active)');
-    expect(css.slice(css.indexOf('@media (forced-colors: active)'))).toContain('CanvasText');
+    expect(sheet('chart')).toContain('@media (forced-colors: active)');
+    for (const selector of [
+      '.trend-chart__line',
+      '.trend-chart__version',
+      '.trend-chart__point',
+      ".trend-chart__point[data-status='failed']",
+      ".trend-chart__point[data-endpoint='true']",
+    ]) {
+      expect(forced).toContain(selector);
+    }
+    expect(forced).toContain('CanvasText');
   });
 
   it('animates the tooltip only where motion is welcome', () => {

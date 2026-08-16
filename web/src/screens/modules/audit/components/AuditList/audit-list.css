@@ -55,10 +55,13 @@
 @media (width < 30rem) {
   .audit-list__row {
     grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: var(--lat-space-1);
+    row-gap: var(--lat-space-2);
   }
 
-  .audit-list__outcome {
-    text-align: start;
+  /* The control wraps to its own row; left-aligned rather than stretched, so a
+     stacked list does not read as a column of full-width buttons. */
+  .audit-list__row > :last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }

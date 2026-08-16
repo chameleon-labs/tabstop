@@ -325,6 +325,24 @@ describe('PageDetail table toggle', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('group', {name: /Score trend/})).toBeInTheDocument();
   });
+
+  it('keeps the chosen view in the url, so a reload and a shared link both keep it', async () => {
+    const {router} = renderDetail();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', {name: 'View as table'}));
+
+    expect(router.state.location.search).toBe('?view=table');
+    // A view, like the window: Back leaves the page rather than undoing it.
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+
+  it('starts on the table when the url asks for it', async () => {
+    renderDetail('/pages/page-1?view=table');
+
+    expect(await screen.findByRole('table', {name: /Score history for acme.example/})).toBeVisible();
+    expect(screen.getByRole('button', {name: 'View as table'})).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 describe('PageDetail audit panel', () => {
