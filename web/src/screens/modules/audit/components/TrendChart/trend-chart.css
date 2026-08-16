@@ -1,0 +1,175 @@
+.trend-chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lat-space-3);
+}
+
+.trend-chart__empty {
+  margin: 0;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+}
+
+.trend-chart__plot {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  overflow: visible;
+  color: var(--lat-accent-solid);
+}
+
+.trend-chart__grid line {
+  stroke: var(--lat-border);
+  stroke-width: 1;
+}
+
+.trend-chart__axis-label,
+.trend-chart__axis-date {
+  fill: var(--lat-text-subtle);
+  font-family: var(--lat-font-sans);
+  font-size: var(--lat-font-size-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-chart__axis-label {
+  text-anchor: end;
+}
+
+.trend-chart__axis-date--end {
+  text-anchor: end;
+}
+
+.trend-chart__area {
+  fill: var(--lat-accent-tint);
+  stroke: none;
+}
+
+.trend-chart__line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-chart__version {
+  stroke: var(--lat-border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+/* A wide transparent stroke enlarges the pointer target without a second element. */
+.trend-chart__point {
+  fill: var(--lat-accent-solid);
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+}
+
+.trend-chart__point[data-status='failed'] {
+  fill: var(--lat-danger-solid);
+}
+
+.trend-chart__point[data-endpoint='true'] {
+  fill: var(--lat-accent-vivid);
+}
+
+.trend-chart__point:focus-visible {
+  outline: 2px solid var(--lat-focus-ring);
+  outline-offset: 2px;
+  stroke: var(--lat-focus-ring);
+  stroke-width: 3;
+}
+
+.trend-chart__tooltip {
+  position: absolute;
+  z-index: 1;
+  max-inline-size: 18rem;
+  margin: 0;
+  padding: var(--lat-space-2) var(--lat-space-3);
+  border: 1px solid var(--lat-border);
+  border-radius: var(--lat-radius-sm);
+  background: var(--lat-bg-raised);
+  box-shadow: var(--lat-shadow-sm);
+  color: var(--lat-text);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  line-height: var(--lat-text-small-line-height);
+  text-wrap: balance;
+  translate: -50% calc(-100% - var(--lat-space-2));
+  pointer-events: none;
+}
+
+.trend-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lat-space-4);
+  margin: 0;
+  padding: 0;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-small-font-family);
+  font-size: var(--lat-text-small-font-size);
+  list-style: none;
+}
+
+.trend-chart__key {
+  display: flex;
+  align-items: center;
+  gap: var(--lat-space-2);
+}
+
+.trend-chart__swatch {
+  flex: none;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+}
+
+.trend-chart__swatch--score {
+  border-radius: var(--lat-radius-full);
+  background: var(--lat-accent-solid);
+}
+
+.trend-chart__swatch--failed {
+  background: var(--lat-danger-solid);
+  rotate: 45deg;
+}
+
+.trend-chart__swatch--version {
+  inline-size: 0;
+  border-inline-start: 2px dashed var(--lat-border-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .trend-chart__tooltip {
+    animation: trend-chart-reveal var(--lat-duration-swift) var(--lat-easing-out);
+  }
+}
+
+@keyframes trend-chart-reveal {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .trend-chart__line,
+  .trend-chart__version,
+  .trend-chart__grid line {
+    stroke: CanvasText;
+  }
+
+  .trend-chart__point {
+    fill: CanvasText;
+  }
+
+  .trend-chart__area {
+    fill: none;
+  }
+
+  .trend-chart__point:focus-visible {
+    outline-color: Highlight;
+    stroke: Highlight;
+  }
+}
