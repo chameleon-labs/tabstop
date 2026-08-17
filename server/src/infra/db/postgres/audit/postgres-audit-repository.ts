@@ -119,14 +119,26 @@ export class PostgresAuditRepository
    * swallow a public_uuid collision, which should never be silent.
    */
   async addScheduled(params: AddScheduledAuditParams): Promise<AuditModel | null> {
+    // Insert-select rather than insert-values, so the monitoring check is part
+    // of the same statement. The worklist is read once at the top of a run that
+    // may take half an hour, and pausing in between would otherwise schedule an
+    // audit for a page that is no longer monitored - the row landing after the
+    // pause had already looked for rows to cancel.
     const row = await this.db
       .insertInto('audits')
-      .values({
-        page_id: params.pageId,
-        url: params.url,
-        status: 'queued',
-        scheduled_for: params.scheduledFor,
-      })
+      .columns(['page_id', 'url', 'status', 'scheduled_for'])
+      .expression((eb) =>
+        eb
+          .selectFrom('pages')
+          .select((selection) => [
+            'pages.id as page_id',
+            selection.val(params.url).as('url'),
+            selection.val('queued').as('status'),
+            selection.val(params.scheduledFor).as('scheduled_for'),
+          ])
+          .where('pages.id', '=', params.pageId)
+          .where('pages.monitoring_enabled', '=', true),
+      )
       .onConflict((oc) => oc.columns(['page_id', 'scheduled_for']).where('scheduled_for', 'is not', null).doNothing())
       .returningAll()
       .executeTakeFirst();
@@ -355,23 +367,11 @@ export class PostgresAuditRepository
     return updated !== undefined;
   }
 
-  async deleteScheduledForPage(pageId: string): Promise<number> {
-    // `scheduled_for` alongside the status predicate: a page's first audit is
-    // queued too, and it runs at once rather than behind a jitter delay.
-    const result = await this.db
-      .deleteFrom('audits')
-      .where('page_id', '=', pageId)
-      .where('status', '=', 'queued')
-      .where('scheduled_for', 'is not', null)
-      .executeTakeFirst();
-
-    return Number(result.numDeletedRows ?? 0n);
-  }
-
   async deleteIfQueued(auditId: string): Promise<void> {
-    // The only delete on this repository, and scoped so it can never remove a
-    // real audit: by the time anything is running or finished, somebody is
-    // relying on it existing.
+    // Scoped so it can never remove a real audit: by the time anything is
+    // running or finished, somebody is relying on it existing. Pausing a page
+    // deletes scheduled audits under the same predicate, from the page
+    // repository, so that it can share the transaction that pauses.
     await this.db.deleteFrom('audits').where('id', '=', auditId).where('status', '=', 'queued').execute();
   }
 }

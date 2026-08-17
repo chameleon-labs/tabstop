@@ -33,7 +33,6 @@ export const makeLoadPages = (): LoadPages => new DbLoadPages(new PostgresPageRe
 export const makeLoadPageHistory = (): LoadPageHistory =>
   new DbLoadPageHistory(new PostgresPageRepository(getDatabase()));
 
-export const makeUpdatePage = (): UpdatePage =>
-  new DbUpdatePage(new PostgresPageRepository(getDatabase()), new PostgresAuditRepository(getDatabase()));
+export const makeUpdatePage = (): UpdatePage => new DbUpdatePage(new PostgresPageRepository(getDatabase()));
 
 export const makeDeletePage = (): DeletePage => new DbDeletePage(new PostgresPageRepository(getDatabase()));

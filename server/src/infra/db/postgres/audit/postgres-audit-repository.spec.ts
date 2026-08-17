@@ -642,57 +642,36 @@ describe('PostgresAuditRepository', () => {
     });
   });
 
-  describe('deleteScheduledForPage', () => {
-    const schedule = async (auditId: string, day = '2026-08-17'): Promise<void> => {
-      await db.updateTable('audits').set({scheduled_for: day}).where('id', '=', auditId).execute();
-    };
-
-    it('removes the scheduled audits the page is still waiting on, and says how many', async () => {
+  describe('addScheduled and a page paused mid-run', () => {
+    it('schedules nothing for a page that is no longer monitored', async () => {
+      // The worklist is read once at the top of a run that can last half an
+      // hour. Pausing in between used to leave the insert unaware.
       const pageId = await makePage();
-      const first = await sut.add({url: `https://${randomUUID()}.test/x`, pageId});
-      const second = await sut.add({url: `https://${randomUUID()}.test/y`, pageId});
-      await schedule(first.id);
-      await schedule(second.id, '2026-08-18');
+      await db.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageId).execute();
 
-      expect(await sut.deleteScheduledForPage(pageId)).toBe(2);
+      const audit = await sut.addScheduled({
+        pageId,
+        url: `https://${randomUUID()}.test/x`,
+        scheduledFor: '2026-08-17',
+      });
+
+      expect(audit).toBeNull();
+      expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
     });
 
-    it("leaves a page's first audit alone, which runs at once rather than on a schedule", async () => {
-      // Cancelling it would cost a page added seconds ago its first score, and
-      // there is no jitter window to save anybody from.
+    it('still schedules one for a page that is monitored', async () => {
       const pageId = await makePage();
-      const firstAudit = await sut.add({url: `https://${randomUUID()}.test/x`, pageId});
 
-      expect(await sut.deleteScheduledForPage(pageId)).toBe(0);
-      expect(await sut.loadById(firstAudit.id)).not.toBeNull();
-    });
+      const audit = await sut.addScheduled({
+        pageId,
+        url: `https://${randomUUID()}.test/x`,
+        scheduledFor: '2026-08-17',
+      });
 
-    it('leaves an audit that is already under way or finished', async () => {
-      // The same predicate that protects `deleteIfQueued`: pausing must not be
-      // able to erase a result somebody is already relying on.
-      const pageId = await makePage();
-      const running = await sut.add({url: `https://${randomUUID()}.test/x`, pageId});
-      await schedule(running.id);
-      const claimedAt = await sut.claimForRun(running.id);
-      if (claimedAt === null) {
-        throw new Error('fixture failed to claim');
-      }
-
-      expect(await sut.deleteScheduledForPage(pageId)).toBe(0);
-      expect(await sut.loadById(running.id)).not.toBeNull();
-    });
-
-    it('never reaches another page audits', async () => {
-      const paused = await makePage();
-      const untouched = await makePage();
-      const mine = await sut.add({url: `https://${randomUUID()}.test/x`, pageId: paused});
-      const other = await sut.add({url: `https://${randomUUID()}.test/y`, pageId: untouched});
-      await schedule(mine.id);
-      await schedule(other.id);
-
-      await sut.deleteScheduledForPage(paused);
-
-      expect(await sut.loadById(other.id)).not.toBeNull();
+      expect(audit).not.toBeNull();
+      // Presence, not the instant: a `date` column comes back at local
+      // midnight, and nothing reads this value as a time.
+      expect(audit?.scheduledFor).not.toBeNull();
     });
   });
 

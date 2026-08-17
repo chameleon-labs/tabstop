@@ -273,19 +273,38 @@ export class PostgresPageRepository
       return null;
     }
 
-    const updated = await this.db
-      .updateTable('pages')
-      .set({monitoring_enabled: monitoringEnabled})
-      .where('id', '=', pageId)
-      // The ownership check is part of the statement, not a separate load the
-      // caller could skip. A page belonging to somebody else matches nothing,
-      // so it is indistinguishable from one that does not exist - which is
-      // what stops the response confirming that the row is real.
-      .where('site_id', 'in', (eb) => eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
-      .returningAll()
-      .executeTakeFirst();
+    return await this.db.transaction().execute(async (trx) => {
+      const updated = await trx
+        .updateTable('pages')
+        .set({monitoring_enabled: monitoringEnabled})
+        .where('id', '=', pageId)
+        // The ownership check is part of the statement, not a separate load the
+        // caller could skip. A page belonging to somebody else matches nothing,
+        // so it is indistinguishable from one that does not exist - which is
+        // what stops the response confirming that the row is real.
+        .where('site_id', 'in', (eb) => eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', userId))
+        .returningAll()
+        .executeTakeFirst();
 
-    return updated === undefined ? null : toPageModel(updated);
+      if (updated === undefined) {
+        return null;
+      }
+
+      // In the same transaction as the pause, so the two cannot come apart. A
+      // pause that committed while this delete failed would leave the page
+      // paused and its scheduled audit still queued to run - which is the
+      // state this whole change exists to prevent.
+      if (!monitoringEnabled) {
+        await trx
+          .deleteFrom('audits')
+          .where('page_id', '=', pageId)
+          .where('status', '=', 'queued')
+          .where('scheduled_for', 'is not', null)
+          .execute();
+      }
+
+      return toPageModel(updated);
+    });
   }
 
   async deleteForUser(pageId: string, userId: string): Promise<boolean> {

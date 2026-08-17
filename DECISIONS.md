@@ -8,8 +8,10 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ## 2026-08-17 — pausing a page cancels work already queued for it
 
-Pausing deletes the page's `queued` audits. Anything running or finished is
-left alone.
+Pausing deletes the audits the nightly run has scheduled for the page and not
+yet started, in the same transaction that pauses it. Anything running or
+finished is left alone, and so is the page's first audit — which is queued too,
+but runs at once rather than behind a jitter delay.
 
 Why: the control says pause, and the alternative reading — that pausing stops
 future runs but lets one already scheduled proceed — is invisible. The nightly
@@ -39,16 +41,25 @@ deletion has always produced the same record.
 Scoped three ways. By page, because pausing knows which page it paused and not
 what the run scheduled for it. By `status = 'queued'`, which keeps it from ever
 erasing a result somebody relies on. And by `scheduled_for`, which excludes a
-page's FIRST audit — that one is queued too, but it runs at once rather than
-behind a jitter delay, so there is no window in which cancelling it helps, and
-removing it would cost a newly added page its first score until the next night.
+page's FIRST audit — removing that would cost a newly added page its first
+score until the next night, and there is no jitter window to save anybody from.
 The existing route suite caught that: pausing a freshly seeded page deleted the
 audit it had just been given.
 
-The delete only runs once the update has matched a row, which is also the
-ownership check — deleting audits on the strength of an id this account has not
-been shown to own would be a way to interfere with somebody else's
-monitoring.
+It lives in `setMonitoringForUser` rather than in the use case, so the pause and
+the cancellation share one transaction. Two statements can come apart: a pause
+that committed while the delete failed would leave exactly the state this
+change exists to prevent. The delete runs only once the update has matched a
+row, which is also the ownership check — cancelling audits on the strength of an
+id this account has not been shown to own would be a way to interfere with
+somebody else's monitoring.
+
+The other half of the race is at the other end. The nightly worklist is read
+once at the top of a run that may take half an hour, so a page paused in between
+could still have an audit inserted for it afterwards — the pause having already
+looked for rows to cancel. `addScheduled` is an insert-select carrying
+`monitoring_enabled` as part of the same statement, so the check cannot be
+raced.
 
 ## 2026-08-16 — the next audit time is computed on the server, not shared with the client
 

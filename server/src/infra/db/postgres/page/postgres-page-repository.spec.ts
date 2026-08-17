@@ -830,6 +830,81 @@ describe('PostgresPageRepository', () => {
     // migration that creates it.
   });
 
+  describe('setMonitoringForUser cancelling scheduled work', () => {
+    const scheduleFor = async (pageId: string, url: string, day = '2026-08-17'): Promise<string> => {
+      const audit = await db
+        .insertInto('audits')
+        .values({page_id: pageId, url, status: 'queued', scheduled_for: day})
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      return audit.id;
+    };
+
+    const queuedIds = async (pageId: string): Promise<string[]> =>
+      (await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).map(({id}) => id);
+
+    it('drops the audit a paused page is still waiting on', async () => {
+      const userId = await makeUser();
+      const domain = newDomain();
+      const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
+      await db.deleteFrom('audits').where('page_id', '=', added.page.id).execute();
+      const scheduled = await scheduleFor(added.page.id, `https://${domain}/`);
+
+      await sut.setMonitoringForUser(added.page.id, userId, false);
+
+      expect(await queuedIds(added.page.id)).not.toContain(scheduled);
+    });
+
+    it("keeps the page's first audit, which runs at once rather than on a schedule", async () => {
+      // Cancelling it would cost a page added seconds ago its first score.
+      const userId = await makeUser();
+      const domain = newDomain();
+      const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
+
+      await sut.setMonitoringForUser(added.page.id, userId, false);
+
+      expect(await queuedIds(added.page.id)).toHaveLength(1);
+    });
+
+    it('cancels nothing when monitoring is being turned back on', async () => {
+      const userId = await makeUser();
+      const domain = newDomain();
+      const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
+      if (added.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
+      await db.deleteFrom('audits').where('page_id', '=', added.page.id).execute();
+      const scheduled = await scheduleFor(added.page.id, `https://${domain}/`);
+
+      await sut.setMonitoringForUser(added.page.id, userId, true);
+
+      expect(await queuedIds(added.page.id)).toContain(scheduled);
+    });
+
+    it("never reaches another account's scheduled audits", async () => {
+      // The update matches no row for a page this account does not own, so the
+      // delete must not run either - otherwise an unowned id is a way to
+      // interfere with somebody else's monitoring.
+      const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
+      const domain = newDomain();
+      const hers = await sut.add({userId: alice, domain, url: `https://${domain}/`, limit: 10});
+      if (hers.outcome !== 'added') {
+        throw new Error('expected the page to be added');
+      }
+      await db.deleteFrom('audits').where('page_id', '=', hers.page.id).execute();
+      const scheduled = await scheduleFor(hers.page.id, `https://${domain}/`);
+
+      expect(await sut.setMonitoringForUser(hers.page.id, bob, false)).toBeNull();
+      expect(await queuedIds(hers.page.id)).toContain(scheduled);
+    });
+  });
+
   describe('setMonitoringForUser', () => {
     it("pauses and resumes without touching the page's history", async () => {
       const userId = await makeUser();

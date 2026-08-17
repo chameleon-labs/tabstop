@@ -1,7 +1,6 @@
 import {vi} from 'vitest';
 import type {PageModel, PageSummary} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
-import type {DeleteScheduledAuditsForPageRepository} from '../protocols/db/audit/delete-scheduled-audits-for-page-repository.js';
 import type {AddPageRepository} from '../protocols/db/page/add-page-repository.js';
 import type {DeletePageRepository} from '../protocols/db/page/delete-page-repository.js';
 import type {DuePage, LoadDueReauditsRepository} from '../protocols/db/page/load-due-reaudits-repository.js';
@@ -44,12 +43,6 @@ export const mockLoadPageSummariesRepository = () => ({
 export const mockSetPageMonitoringRepository = () => ({
   setMonitoringForUser: vi.fn<SetPageMonitoringRepository['setMonitoringForUser']>(
     (_pageId, _userId, monitoringEnabled) => Promise.resolve({...mockPageModel(), monitoringEnabled}),
-  ),
-});
-
-export const mockDeleteScheduledAuditsForPageRepository = () => ({
-  deleteScheduledForPage: vi.fn<DeleteScheduledAuditsForPageRepository['deleteScheduledForPage']>(() =>
-    Promise.resolve(1),
   ),
 });
 
