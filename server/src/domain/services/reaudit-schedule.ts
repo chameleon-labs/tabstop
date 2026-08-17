@@ -131,12 +131,20 @@ const slotOn = (dayStart: Date, domain: string, pageId: string): Date =>
  * page was added - starts at once and has no future slot to name.
  */
 export const nextReauditAt = ({domain, pageId, monitoringEnabled, latest}: ReauditSubject, now: Date): Date | null => {
-  if (!monitoringEnabled || latest?.status === 'running') {
+  if (latest?.status === 'running') {
     return null;
   }
 
+  // Before the pause check, and that order is the point: pausing flips
+  // `monitoring_enabled` and nothing else, so a job the fan-out already queued
+  // still runs and the worker never re-checks. Reporting no next audit there
+  // would be a promise the queue is about to break.
   if (latest?.status === 'queued') {
-    return latest.scheduledFor === null ? null : slotOn(latest.scheduledFor, domain, pageId);
+    return latest.scheduledFor === null ? null : new Date(latest.createdAt.getTime() + reauditDelayMs(domain, pageId));
+  }
+
+  if (!monitoringEnabled) {
+    return null;
   }
 
   const dayStart = utcDayStart(now);

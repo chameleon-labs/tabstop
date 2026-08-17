@@ -193,18 +193,35 @@ describe('nextReauditAt', () => {
     expect(nextReauditAt(subject({latest}), new Date('2026-08-01T05:00:00.000Z'))).toBeNull();
   });
 
-  it('reports the slot a scheduled audit is still waiting on', () => {
-    // The run creates every row at 02:00 and enqueues it with a delay of up to
-    // six hours, so a queued audit is not one that is happening.
+  it('measures a queued audit from when it was actually enqueued', () => {
+    // BullMQ holds the job for `reauditDelayMs` from the moment it is added,
+    // not from 02:00, so a fan-out that reached this page late queues it late.
+    // Assuming the run started on time publishes a time that has already passed.
+    const enqueuedAt = new Date('2026-08-01T02:11:00.000Z');
     const latest = {
       status: 'queued' as const,
-      createdAt: new Date('2026-08-01T02:00:00.000Z'),
+      createdAt: enqueuedAt,
       scheduledFor: new Date('2026-08-01T00:00:00.000Z'),
     };
 
     expect(nextReauditAt(subject({latest}), new Date('2026-08-01T02:30:00.000Z'))?.toISOString()).toBe(
-      slot('2026-08-01').toISOString(),
+      new Date(enqueuedAt.getTime() + reauditDelayMs(DOMAIN, PAGE)).toISOString(),
     );
+  });
+
+  it('still reports a queued audit after the page is paused', () => {
+    // Pausing flips `monitoring_enabled` and nothing else: the queued job is
+    // not cancelled and the worker does not re-check, so that audit still runs.
+    const enqueuedAt = new Date('2026-08-01T02:00:00.000Z');
+    const latest = {
+      status: 'queued' as const,
+      createdAt: enqueuedAt,
+      scheduledFor: new Date('2026-08-01T00:00:00.000Z'),
+    };
+
+    expect(
+      nextReauditAt(subject({monitoringEnabled: false, latest}), new Date('2026-08-01T02:30:00.000Z'))?.toISOString(),
+    ).toBe(new Date(enqueuedAt.getTime() + reauditDelayMs(DOMAIN, PAGE)).toISOString());
   });
 
   it('says nothing about a queued audit the run did not schedule', () => {

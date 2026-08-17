@@ -80,7 +80,11 @@ export type PageSummary = PageView & {
   /**
    * When the nightly run will next reach this page.
    *
-   * Null when it will not: monitoring is paused, or an audit is running now.
+   * Null when it will not, which covers three different situations a consumer
+   * cannot tell apart from this field alone: monitoring is paused with nothing
+   * already queued, an audit is running now, and a page's first audit is queued
+   * to run at once rather than on a schedule. Read `latestAudit.status`
+   * alongside it to distinguish them.
    * Computed rather than stored, and computed on the server because the rule
    * lives in `domain/services/reaudit-schedule.ts` and this package carries
    * types only - a second copy in the client would be free to drift from the
