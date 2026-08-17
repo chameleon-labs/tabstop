@@ -642,6 +642,96 @@ describe('PostgresAuditRepository', () => {
     });
   });
 
+  describe('addScheduled and a page paused mid-run', () => {
+    it('schedules nothing for a page that is no longer monitored', async () => {
+      // The worklist is read once at the top of a run that can last half an
+      // hour. Pausing in between used to leave the insert unaware.
+      const pageId = await makePage();
+      await db.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageId).execute();
+
+      const audit = await sut.addScheduled({
+        pageId,
+        url: `https://${randomUUID()}.test/x`,
+        scheduledFor: '2026-08-17',
+      });
+
+      expect(audit).toBeNull();
+      expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
+    });
+
+    it('waits for a pause in flight rather than slipping in behind it', async () => {
+      // The interleaving the flag check alone does not survive: a plain select
+      // takes no row lock, so the pause can update the page, find no audit to
+      // delete because this one is still uncommitted, and commit - leaving a
+      // paused page holding a queued audit.
+      const url = process.env.DATABASE_URL;
+      if (url === undefined) {
+        throw new Error('DATABASE_URL not set by globalSetup');
+      }
+      const pageId = await makePage();
+      const second = makeDatabase(url);
+
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+
+      const pausing = db.transaction().execute(async (trx) => {
+        await trx.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageId).execute();
+        await held;
+      });
+
+      try {
+        // Long enough for the update above to have taken the row lock.
+        await new Promise((resolve) => {
+          setTimeout(resolve, 100);
+        });
+        const scheduling = new PostgresAuditRepository(second).addScheduled({
+          pageId,
+          url: `https://${randomUUID()}.test/x`,
+          scheduledFor: '2026-08-17',
+        });
+
+        const outcome = await Promise.race([
+          scheduling.then(() => 'completed' as const),
+          new Promise<'blocked'>((resolve) => {
+            setTimeout(() => {
+              resolve('blocked');
+            }, 250);
+          }),
+        ]);
+        expect(outcome).toBe('blocked');
+
+        release();
+        await pausing;
+
+        // And once it is let through, it reads the pause rather than its own
+        // stale snapshot.
+        expect(await scheduling).toBeNull();
+        expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
+      } finally {
+        release();
+        await pausing;
+        await second.destroy();
+      }
+    });
+
+    it('still schedules one for a page that is monitored', async () => {
+      const pageId = await makePage();
+
+      const audit = await sut.addScheduled({
+        pageId,
+        url: `https://${randomUUID()}.test/x`,
+        scheduledFor: '2026-08-17',
+      });
+
+      expect(audit).not.toBeNull();
+      // Presence, not the instant: a `date` column comes back at local
+      // midnight, and nothing reads this value as a time.
+      expect(audit?.scheduledFor).not.toBeNull();
+    });
+  });
+
   describe('deleteIfQueued', () => {
     it('removes an audit that is still queued', async () => {
       const audit = await sut.add({url: `https://${randomUUID()}.test/x`, pageId: null});

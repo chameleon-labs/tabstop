@@ -119,19 +119,40 @@ export class PostgresAuditRepository
    * swallow a public_uuid collision, which should never be silent.
    */
   async addScheduled(params: AddScheduledAuditParams): Promise<AuditModel | null> {
-    const row = await this.db
-      .insertInto('audits')
-      .values({
-        page_id: params.pageId,
-        url: params.url,
-        status: 'queued',
-        scheduled_for: params.scheduledFor,
-      })
-      .onConflict((oc) => oc.columns(['page_id', 'scheduled_for']).where('scheduled_for', 'is not', null).doNothing())
-      .returningAll()
-      .executeTakeFirst();
+    return await this.db.transaction().execute(async (trx) => {
+      // `forUpdate`, and the lock is the whole point. Reading the flag in the
+      // same statement as the insert is not enough: a plain select takes no row
+      // lock, so under READ COMMITTED a pause can update the page and delete
+      // nothing - this audit is still uncommitted and therefore invisible to it
+      // - and both transactions then commit, leaving a paused page holding a
+      // queued audit. Locking the row makes the two serialise: whichever
+      // arrives second sees the first one's work.
+      const page = await trx
+        .selectFrom('pages')
+        .select('id')
+        .where('id', '=', params.pageId)
+        .where('monitoring_enabled', '=', true)
+        .forUpdate()
+        .executeTakeFirst();
 
-    return row === undefined ? null : toAuditModel(row);
+      if (page === undefined) {
+        return null;
+      }
+
+      const row = await trx
+        .insertInto('audits')
+        .values({
+          page_id: params.pageId,
+          url: params.url,
+          status: 'queued',
+          scheduled_for: params.scheduledFor,
+        })
+        .onConflict((oc) => oc.columns(['page_id', 'scheduled_for']).where('scheduled_for', 'is not', null).doNothing())
+        .returningAll()
+        .executeTakeFirst();
+
+      return row === undefined ? null : toAuditModel(row);
+    });
   }
 
   async loadByPublicUuid(publicUuid: string): Promise<AuditModel | null> {
@@ -356,9 +377,10 @@ export class PostgresAuditRepository
   }
 
   async deleteIfQueued(auditId: string): Promise<void> {
-    // The only delete on this repository, and scoped so it can never remove a
-    // real audit: by the time anything is running or finished, somebody is
-    // relying on it existing.
+    // Scoped so it can never remove a real audit: by the time anything is
+    // running or finished, somebody is relying on it existing. Pausing a page
+    // deletes scheduled audits under the same predicate, from the page
+    // repository, so that it can share the transaction that pauses.
     await this.db.deleteFrom('audits').where('id', '=', auditId).where('status', '=', 'queued').execute();
   }
 }

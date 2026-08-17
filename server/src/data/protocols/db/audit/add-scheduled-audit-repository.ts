@@ -11,11 +11,14 @@ export interface AddScheduledAuditRepository {
   /**
    * Inserts the queued audit for one page's nightly run.
    *
-   * `null` when this page already has an audit scheduled for that day. That is
-   * not an error and it is not a race the caller should retry: two runs
-   * overlapped, the unique index refused the second, and the audit the first
-   * one created is the one that should exist. Separate from `add` because the
-   * conflict is meaningful here and impossible there.
+   * `null` for two reasons, neither an error and neither worth retrying. The
+   * page already has an audit scheduled for that day: two runs overlapped, the
+   * unique index refused the second, and the audit the first one created is the
+   * one that should exist. Or the page is no longer monitored: the worklist is
+   * read once at the top of a run that may take half an hour, and a pause
+   * arriving in between must not be overtaken by a schedule it already looked
+   * for. Separate from `add` because both cases are meaningful here and
+   * impossible there.
    */
   addScheduled: (params: AddScheduledAuditParams) => Promise<AuditModel | null>;
 }

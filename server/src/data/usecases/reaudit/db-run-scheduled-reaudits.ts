@@ -287,8 +287,10 @@ export class DbRunScheduledReaudits implements RunScheduledReaudits {
         url: page.url,
         scheduledFor,
       });
-      // The unique index refused it: another run already scheduled this page
-      // today, and its audit is the one that should exist.
+      // Nothing was scheduled, and both reasons are fine: either the unique
+      // index refused it because another run already scheduled this page today,
+      // or the page was paused after this run read its worklist. Counted
+      // together because neither is a failure and neither is retried.
       if (audit === null) {
         return 'skippedDuplicate';
       }

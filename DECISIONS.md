@@ -6,6 +6,69 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-17 — pausing a page cancels work already queued for it
+
+Pausing deletes the audits the nightly run has scheduled for the page and not
+yet started, in the same transaction that pauses it. Anything running or
+finished is left alone, and so is the page's first audit — which is queued too,
+but runs at once rather than behind a jitter delay.
+
+Why: the control says pause, and the alternative reading — that pausing stops
+future runs but lets one already scheduled proceed — is invisible. The nightly
+fan-out writes every row at 02:00 and enqueues it with a delay of up to six
+hours, so for most of the night a page has an audit waiting that pausing would
+not have stopped. Nothing in the worker path re-checks monitoring, so it would
+have run.
+
+How, and why not the two alternatives:
+
+Removing the queue job would mean adding a removal method to `AuditJobQueue`,
+which currently only enqueues and asks questions. Deleting the row instead
+reuses a path that already exists and is already exercised: `DbRunAudit` treats
+a missing audit as a `PermanentAuditError`, the worker turns that into BullMQ's
+`UnrecoverableError`, and the job fails once and is gone. That is exactly what
+deleting a page does today, so pausing produces no new class of outcome.
+
+Checking `monitoring_enabled` in the worker was the third option. It needs no
+queue surgery, but it moves a product rule into the job runner and leaves the
+audit row `queued` forever — which hides the page from the eligibility query
+until the reclaim pass retires it twelve hours later.
+
+The cost accepted: one failed-job record per page paused inside the jitter
+window. Failed jobs are retained for a day and nothing alerts on them, and page
+deletion has always produced the same record.
+
+Scoped three ways. By page, because pausing knows which page it paused and not
+what the run scheduled for it. By `status = 'queued'`, which keeps it from ever
+erasing a result somebody relies on. And by `scheduled_for`, which excludes a
+page's FIRST audit — removing that would cost a newly added page its first
+score until the next night, and there is no jitter window to save anybody from.
+The existing route suite caught that: pausing a freshly seeded page deleted the
+audit it had just been given.
+
+It lives in `setMonitoringForUser` rather than in the use case, so the pause and
+the cancellation share one transaction. Two statements can come apart: a pause
+that committed while the delete failed would leave exactly the state this
+change exists to prevent. The delete runs only once the update has matched a
+row, which is also the ownership check — cancelling audits on the strength of an
+id this account has not been shown to own would be a way to interfere with
+somebody else's monitoring.
+
+The other half of the race is at the other end. The nightly worklist is read
+once at the top of a run that may take half an hour, so a page paused in between
+could still have an audit inserted for it afterwards — the pause having already
+looked for rows to cancel and found none.
+
+Checking `monitoring_enabled` as part of the insert is not enough to close
+that, and the first attempt at this made exactly that mistake. A plain select
+takes no row lock, so under READ COMMITTED the scheduling transaction can read
+the page as monitored, the pause can then update it and delete nothing — the new
+audit being uncommitted and therefore invisible — and both commit, leaving a
+paused page holding a queued audit. The check has to hold the row, not merely
+read it: `addScheduled` takes `for update` on the page and inserts inside the
+same transaction, so whichever of the two arrives second sees the first one's
+work. A test drives both connections and asserts the second one blocks.
+
 ## 2026-08-16 — the next audit time is computed on the server, not shared with the client
 
 `/api/pages` carries `nextAuditAt` per page, computed by `nextReauditAt` in
