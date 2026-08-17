@@ -1,7 +1,7 @@
-import type {PageSummary} from '../models/page.js';
+import type {ScheduledPageSummary} from '../models/page.js';
 
 export type LoadPagesResult = {
-  pages: PageSummary[];
+  pages: ScheduledPageSummary[];
   /** How many pages this account may track. The dashboard renders the cap. */
   limit: number;
 };

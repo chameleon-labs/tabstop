@@ -17,6 +17,8 @@ export type AuditModel = {
   error: string | null;
   createdAt: Date;
   completedAt: Date | null;
+  /** The UTC day the nightly run claimed, or null for an audit it did not schedule. */
+  scheduledFor: Date | null;
   /** False when the page never finished loading and was audited anyway. */
   settled: boolean;
 };

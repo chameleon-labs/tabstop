@@ -20,6 +20,7 @@ const monitoredPage: PageSummary = {
   score: null,
   previousScore: null,
   history: [],
+  nextAuditAt: null,
 };
 
 const pages: LoadPagesResponse = {pages: [monitoredPage], used: 1, limit: 10};

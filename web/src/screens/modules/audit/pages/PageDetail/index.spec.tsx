@@ -67,6 +67,7 @@ const summary = (overrides: Partial<PageSummary> = {}): PageSummary => ({
     {score: 82, at: '2026-08-14T10:00:00.000Z'},
     {score: 74, at: '2026-08-15T10:00:00.000Z'},
   ],
+  nextAuditAt: '2026-08-16T05:30:00.000Z',
   ...overrides,
 });
 
@@ -230,6 +231,21 @@ describe('PageDetail summary', () => {
 
     expect(await screen.findByText('Score 74 out of 100')).toBeInTheDocument();
     expect(countFor('Critical')).toBe('1');
+  });
+
+  it('says when the run will next reach this page', async () => {
+    renderDetail();
+
+    expect(await screen.findByText(/Next audit/)).toBeVisible();
+  });
+
+  it('says a paused page has no next audit, and why', async () => {
+    renderDetail('/pages/page-1', {
+      ...DEFAULT_ROUTES,
+      '/api/pages': () => jsonResponse(200, pageList([summary({monitoringEnabled: false, nextAuditAt: null})])),
+    });
+
+    expect(await screen.findByText('No next audit while monitoring is paused')).toBeVisible();
   });
 
   it('opens the latest result from the summary', async () => {

@@ -6,6 +6,36 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-16 — the next audit time is computed on the server, not shared with the client
+
+`/api/pages` carries `nextAuditAt` per page, computed by `nextReauditAt` in
+`domain/services/reaudit-schedule.ts`. The client renders it and calculates
+nothing.
+
+Why not share the rule: `@tabstop/contract` publishes a `types` condition and no
+runtime entry, deliberately, so it cannot hold a function — a value export there
+fails at the point of use. Sharing the schedule would have meant either giving
+that package a runtime (and with it the ability to ship server code to a
+browser) or reimplementing FNV-1a, the six-hour jitter window and the run hour
+in `web/`. The second is a second source of truth for a number the nightly run
+already decides, and the copy that drifts is the one nobody runs.
+
+Why a derived field on the wire is safe here: `/api/pages` answers with `ok`,
+not `okCacheable`, so there is no proxy or browser cache for a computed
+timestamp to go stale in. Had it been cacheable the answer would likely have
+been different.
+
+What this cost: `AuditModel` gained `scheduledFor`, which the audit mapper had
+been dropping as scheduler-only. It is what separates an audit the nightly run
+scheduled — queued for up to six hours behind its jitter delay — from a page's
+first audit, written when the page is added and run at once. Without it the UI
+cannot tell "starting in four hours" from "starting now", and #114's original
+acceptance criteria had that case backwards.
+
+Also moved: the run hour now lives in the domain service and `REAUDIT_CRON` is
+built from it, so the worker that starts the run and the dashboard that predicts
+it cannot disagree about when 02:00 is.
+
 ## 2026-08-10 — routes are gated by loaders, and the return-to destination moves into the URL
 
 `RequireAuth` and `RequireAnonymous` wrapped the guarded screens and decided

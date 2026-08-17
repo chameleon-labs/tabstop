@@ -99,6 +99,12 @@
   white-space: nowrap;
 }
 
+.page-row__next {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
 .page-row__meta {
   min-inline-size: 0;
   display: flex;
@@ -144,6 +150,12 @@
   .page-row__meta,
   .page-row__actions {
     grid-column: 1 / -1;
+  }
+
+  .page-row__next {
+    color: var(--lat-text-subtle);
+    font-family: var(--lat-text-meta-font-family);
+    font-size: var(--lat-text-meta-font-size);
   }
 
   .page-row__meta {

@@ -41,6 +41,7 @@ const page = (
           {score: score + 8, at: '2026-08-14T10:00:00.000Z'},
           {score, at: '2026-08-15T10:00:00.000Z'},
         ],
+  nextAuditAt: null,
 });
 
 const list = (pages: PageSummary[], limit = 10): LoadPagesResponse => ({pages, limit, used: pages.length});

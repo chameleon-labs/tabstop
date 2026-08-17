@@ -1,3 +1,5 @@
+import {REAUDIT_RUN_HOUR_UTC} from '../../domain/services/reaudit-schedule.js';
+
 /** The scheduler's identity in Redis. Upserting on it updates in place. */
 export const REAUDIT_SCHEDULER_ID = 'daily-reaudit';
 
@@ -8,7 +10,7 @@ export const REAUDIT_SCHEDULER_ID = 'daily-reaudit';
  * UTC deliberately: "daily in the user's timezone" is a per-user schedule, out
  * of scope for v1 (#13), and the day-boundary dedupe already assumes this.
  */
-export const REAUDIT_CRON = '0 2 * * *';
+export const REAUDIT_CRON = `0 ${REAUDIT_RUN_HOUR_UTC} * * *`;
 export const REAUDIT_TIMEZONE = 'UTC';
 
 /**

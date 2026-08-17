@@ -31,6 +31,7 @@ const page = (id: string, overrides: Partial<PageSummary> = {}): PageSummary => 
   score: 74,
   previousScore: 86,
   history: [{score: 74, at: '2026-08-15T10:00:00.000Z'}],
+  nextAuditAt: null,
   ...overrides,
 });
 

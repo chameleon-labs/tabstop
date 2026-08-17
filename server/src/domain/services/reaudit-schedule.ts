@@ -1,3 +1,5 @@
+import type {AuditStatus} from '../models/audit.js';
+
 /**
  * When the nightly run should actually fetch each page.
  *
@@ -85,3 +87,72 @@ export const reauditDelayMs = (
 export const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
 
 export const utcDayStart = (at: Date): Date => new Date(`${utcDay(at)}T00:00:00.000Z`);
+
+/**
+ * The hour the nightly run starts, and what `REAUDIT_CRON` is built from.
+ *
+ * Here rather than beside the cron string because the schedule is now read in
+ * two directions: the worker starts the run at this hour, and the dashboard
+ * says when a page will next be reached. Two copies would be free to disagree,
+ * and the one that drifts is the one nobody runs.
+ */
+export const REAUDIT_RUN_HOUR_UTC = 2;
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+export type ReauditLatestAudit = {
+  status: AuditStatus;
+  createdAt: Date;
+  /** The UTC day the nightly run claimed, or null for an audit it did not schedule. */
+  scheduledFor: Date | null;
+};
+
+export type ReauditSubject = {
+  domain: string;
+  pageId: string;
+  monitoringEnabled: boolean;
+  latest: ReauditLatestAudit | null;
+};
+
+const slotOn = (dayStart: Date, domain: string, pageId: string): Date =>
+  new Date(dayStart.getTime() + REAUDIT_RUN_HOUR_UTC * HOUR_MS + reauditDelayMs(domain, pageId));
+
+/**
+ * When the run will next fetch this page, or null when it will not.
+ *
+ * Every predicate mirrors `loadDueForReaudit`, because a time the eligibility
+ * query disagrees with is worse than no time at all.
+ *
+ * A queued audit is the subtle one. The run writes every row at 02:00 and
+ * enqueues it with a delay of up to six hours, so a scheduled audit spends most
+ * of the night queued rather than happening, and its slot is still the honest
+ * answer. One the run did not schedule - a page's first audit, written when the
+ * page was added - starts at once and has no future slot to name.
+ */
+export const nextReauditAt = ({domain, pageId, monitoringEnabled, latest}: ReauditSubject, now: Date): Date | null => {
+  if (latest?.status === 'running') {
+    return null;
+  }
+
+  // Before the pause check, and that order is the point: pausing flips
+  // `monitoring_enabled` and nothing else, so a job the fan-out already queued
+  // still runs and the worker never re-checks. Reporting no next audit there
+  // would be a promise the queue is about to break.
+  if (latest?.status === 'queued') {
+    return latest.scheduledFor === null ? null : new Date(latest.createdAt.getTime() + reauditDelayMs(domain, pageId));
+  }
+
+  if (!monitoringEnabled) {
+    return null;
+  }
+
+  const dayStart = utcDayStart(now);
+  const today = slotOn(dayStart, domain, pageId);
+
+  if (today > now && (latest === null || latest.createdAt < dayStart)) {
+    return today;
+  }
+
+  return slotOn(new Date(dayStart.getTime() + DAY_MS), domain, pageId);
+};

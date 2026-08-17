@@ -7,6 +7,7 @@ type Patch = {
   latestStatus?: AuditStatus | null;
   latestScore?: number | null;
   history?: PageScorePoint[];
+  nextAuditAt?: string | null;
 };
 
 const HISTORY: PageScorePoint[] = [
@@ -25,7 +26,13 @@ const latestAudit = (status: AuditStatus, score: number | null): LatestPageAudit
 });
 
 const pageSummary = (patch: Patch = {}): PageSummary => {
-  const {monitoringEnabled = true, latestStatus = 'done', latestScore = 74, history = HISTORY} = patch;
+  const {
+    monitoringEnabled = true,
+    latestStatus = 'done',
+    latestScore = 74,
+    history = HISTORY,
+    nextAuditAt = null,
+  } = patch;
 
   return {
     id: 'page-1',
@@ -37,6 +44,7 @@ const pageSummary = (patch: Patch = {}): PageSummary => {
     score: history.at(-1)?.score ?? null,
     previousScore: history.at(-2)?.score ?? null,
     history,
+    nextAuditAt,
   };
 };
 
@@ -154,5 +162,24 @@ describe('dashboardRowState', () => {
     for (const patch of [{}, {latestStatus: 'failed' as const}, {monitoringEnabled: false}]) {
       expect(dashboardRowState(pageSummary(patch)).inFlightPrefix).toBeNull();
     }
+  });
+});
+
+describe('a scheduled audit that has not started', () => {
+  it('is not treated as work in progress', () => {
+    // The row would otherwise give two reasons for one wait - a phase line and
+    // a future slot - and keep a one-second timer running through the delay.
+    const state = dashboardRowState(
+      pageSummary({latestStatus: 'queued', latestScore: null, nextAuditAt: '2026-08-16T05:30:00.000Z'}),
+    );
+
+    expect(state.inFlightPrefix).toBeNull();
+    expect(state.kind).toBe('scored');
+  });
+
+  it('still reads as in progress once it really is queued to run', () => {
+    const state = dashboardRowState(pageSummary({latestStatus: 'queued', latestScore: null, nextAuditAt: null}));
+
+    expect(state.inFlightPrefix).toBe('Re-audit');
   });
 });

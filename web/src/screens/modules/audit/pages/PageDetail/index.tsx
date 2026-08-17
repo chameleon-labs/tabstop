@@ -24,7 +24,7 @@ import {dashboardRowState} from '../../dashboard-row';
 import {IMPACT_LABELS} from '../../grouping';
 import {useDeleteMonitoredPage, useMonitoredPages, useSetPageMonitoring} from '../../monitored-pages';
 import {HISTORY_WINDOWS, historyWindowFrom, usePageHistory} from '../../page-history';
-import {exactTime, pageTimestamp, relativeTime} from '../../page-time';
+import {exactTime, nextAuditTime, pageTimestamp, relativeTime} from '../../page-time';
 import {hostOf} from '../../url';
 import './page-detail.css';
 
@@ -269,6 +269,14 @@ export const PageDetail = (): React.JSX.Element => {
             >
               {`${timestamp.prefix} ${relativeTime(timestamp.value, now)}`}
             </time>
+            {page.nextAuditAt !== null && (
+              <time className="page-detail__next" dateTime={page.nextAuditAt}>
+                {`Next audit ${nextAuditTime(page.nextAuditAt, now)}`}
+              </time>
+            )}
+            {page.nextAuditAt === null && !page.monitoringEnabled && (
+              <span className="page-detail__next">No next audit while monitoring is paused</span>
+            )}
             {latestAuditId !== null && (
               <Button
                 variant="secondary"

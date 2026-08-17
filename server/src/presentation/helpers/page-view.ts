@@ -5,7 +5,7 @@ import type {
   PageView,
 } from '@tabstop/contract';
 import type {AuditModel} from '../../domain/models/audit.js';
-import type {PageSummary as DomainPageSummary, PageModel} from '../../domain/models/page.js';
+import type {PageModel, ScheduledPageSummary} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
 
 /**
@@ -32,7 +32,7 @@ const toLatestAuditView = (audit: AuditModel): LatestPageAudit => ({
   error: audit.error,
 });
 
-export const toPageSummaryView = (summary: DomainPageSummary): PageSummaryResponse => ({
+export const toPageSummaryView = (summary: ScheduledPageSummary): PageSummaryResponse => ({
   ...toPageView(summary.page),
   domain: summary.domain,
   latestAudit: summary.latestAudit === null ? null : toLatestAuditView(summary.latestAudit),
@@ -40,6 +40,7 @@ export const toPageSummaryView = (summary: DomainPageSummary): PageSummaryRespon
   score: summary.history.at(-1)?.score ?? null,
   previousScore: summary.history.at(-2)?.score ?? null,
   history: summary.history.map((point) => ({score: point.score, at: point.at.toISOString()})),
+  nextAuditAt: summary.nextAuditAt?.toISOString() ?? null,
 });
 
 export const toPageHistoryView = (history: PageHistory, days: number): PageHistoryResponse => ({

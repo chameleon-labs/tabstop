@@ -6,7 +6,7 @@ import type {ToastInput} from '@/screens/components/ToastRegion';
 import {dashboardRowState} from '../../dashboard-row';
 import {useAuditPhase} from '../../hooks/use-audit-phase';
 import {useSetPageMonitoring} from '../../monitored-pages';
-import {exactTime, pageTimestamp, relativeTime} from '../../page-time';
+import {exactTime, nextAuditTime, pageTimestamp, relativeTime} from '../../page-time';
 import {ScoreDelta} from '../ScoreDelta';
 import {Sparkline} from '../Sparkline';
 import './page-row.css';
@@ -121,6 +121,14 @@ export const PageRow = ({page, now, onToast, onRequestRemove}: PageRowProps): Re
           >
             {`${timestamp.prefix} ${relativeTime(timestamp.value, now)}`}
           </time>
+          {page.nextAuditAt !== null && (
+            <time className="page-row__next" dateTime={page.nextAuditAt}>
+              {`Next audit ${nextAuditTime(page.nextAuditAt, now)}`}
+            </time>
+          )}
+          {page.nextAuditAt === null && !page.monitoringEnabled && (
+            <span className="page-row__next">No next audit while paused</span>
+          )}
         </div>
 
         <div className="page-row__actions">

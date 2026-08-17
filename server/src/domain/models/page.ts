@@ -32,3 +32,15 @@ export type PageSummary = {
   /** Oldest first, so a sparkline renders in array order. Bounded. */
   history: PageScorePoint[];
 };
+
+/**
+ * A summary with the schedule attached.
+ *
+ * Separate from `PageSummary` because the repository cannot produce it: when
+ * the run will next reach a page is a domain rule over rows, not a column, so
+ * it is added a layer above the query that reads them.
+ */
+export type ScheduledPageSummary = PageSummary & {
+  /** Null when the run will not reach this page: paused, or already running. */
+  nextAuditAt: Date | null;
+};
