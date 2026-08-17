@@ -7,6 +7,7 @@ import {
   mockDeletePageRepository,
   mockLoadPageSummariesRepository,
   mockPageSummary,
+  mockDeleteScheduledAuditsForPageRepository,
   mockSetPageMonitoringRepository,
 } from '../../test/index.js';
 
@@ -63,7 +64,7 @@ describe('DbLoadPages', () => {
 describe('DbUpdatePage', () => {
   it('passes both ids to the repository, never the page id alone', async () => {
     const repository = mockSetPageMonitoringRepository();
-    const sut = new DbUpdatePage(repository);
+    const sut = new DbUpdatePage(repository, mockDeleteScheduledAuditsForPageRepository());
 
     const updated = await sut.update({
       pageId: 'page-1',
@@ -80,12 +81,59 @@ describe('DbUpdatePage', () => {
     repository.setMonitoringForUser.mockResolvedValueOnce(null);
 
     expect(
-      await new DbUpdatePage(repository).update({
+      await new DbUpdatePage(repository, mockDeleteScheduledAuditsForPageRepository()).update({
         pageId: 'page-1',
         userId: 'someone-else',
         monitoringEnabled: true,
       }),
     ).toBeNull();
+  });
+});
+
+describe('DbUpdatePage cancelling queued work', () => {
+  it('drops an audit the nightly run queued but has not started', async () => {
+    // Pausing flips a column; the job it leaves behind would still run, and the
+    // worker never re-checks monitoring. Removing the row is what stops it: the
+    // job then finds nothing and retires itself, exactly as it does for a page
+    // that was deleted.
+    const audits = mockDeleteScheduledAuditsForPageRepository();
+
+    await new DbUpdatePage(mockSetPageMonitoringRepository(), audits).update({
+      pageId: 'page-1',
+      userId: 'user-1',
+      monitoringEnabled: false,
+    });
+
+    expect(audits.deleteScheduledForPage).toHaveBeenCalledWith('page-1');
+  });
+
+  it('cancels nothing when monitoring is being turned back on', async () => {
+    const audits = mockDeleteScheduledAuditsForPageRepository();
+
+    await new DbUpdatePage(mockSetPageMonitoringRepository(), audits).update({
+      pageId: 'page-1',
+      userId: 'user-1',
+      monitoringEnabled: true,
+    });
+
+    expect(audits.deleteScheduledForPage).not.toHaveBeenCalled();
+  });
+
+  it('cancels nothing for a page the account does not own', async () => {
+    // The update matched no row, so this request has not established that the
+    // page is theirs - deleting its audits on that basis would be a way to
+    // interfere with somebody else's monitoring.
+    const repository = mockSetPageMonitoringRepository();
+    repository.setMonitoringForUser.mockResolvedValueOnce(null);
+    const audits = mockDeleteScheduledAuditsForPageRepository();
+
+    await new DbUpdatePage(repository, audits).update({
+      pageId: 'page-1',
+      userId: 'someone-else',
+      monitoringEnabled: false,
+    });
+
+    expect(audits.deleteScheduledForPage).not.toHaveBeenCalled();
   });
 });
 

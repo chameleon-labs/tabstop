@@ -355,6 +355,19 @@ export class PostgresAuditRepository
     return updated !== undefined;
   }
 
+  async deleteScheduledForPage(pageId: string): Promise<number> {
+    // `scheduled_for` alongside the status predicate: a page's first audit is
+    // queued too, and it runs at once rather than behind a jitter delay.
+    const result = await this.db
+      .deleteFrom('audits')
+      .where('page_id', '=', pageId)
+      .where('status', '=', 'queued')
+      .where('scheduled_for', 'is not', null)
+      .executeTakeFirst();
+
+    return Number(result.numDeletedRows ?? 0n);
+  }
+
   async deleteIfQueued(auditId: string): Promise<void> {
     // The only delete on this repository, and scoped so it can never remove a
     // real audit: by the time anything is running or finished, somebody is
