@@ -109,12 +109,12 @@ describe('nextAuditTime', () => {
   const AT = Date.parse('2026-08-15T12:00:00.000Z');
 
   it('names the clock time when the run reaches the page today', () => {
-    expect(nextAuditTime('2026-08-15T17:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('at 17:30');
+    expect(nextAuditTime('2026-08-15T17:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('at 17:30 UTC');
   });
 
   it('says tomorrow rather than leaving the day to be guessed', () => {
     // "at 05:30" alone is read as today, and the slot is usually not today.
-    expect(nextAuditTime('2026-08-16T05:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('tomorrow at 05:30');
+    expect(nextAuditTime('2026-08-16T05:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('tomorrow at 05:30 UTC');
   });
 
   it('names the date once it is further out than that', () => {
@@ -128,7 +128,7 @@ describe('nextAuditTime', () => {
     // something happening this evening.
     const late = Date.parse('2026-08-15T23:00:00.000Z');
 
-    expect(nextAuditTime('2026-08-16T00:30:00.000Z', late, 'en-GB', 'Asia/Tokyo')).toBe('at 09:30');
+    expect(nextAuditTime('2026-08-16T00:30:00.000Z', late, 'en-GB', 'Asia/Tokyo')).toBe('at 09:30 GMT+9');
   });
 
   it('says nothing it cannot know from an unparseable timestamp', () => {
@@ -146,7 +146,7 @@ describe('nextAuditTime across a daylight-saving change', () => {
     const justAfterMidnight = Date.parse('2026-10-24T23:30:00.000Z');
 
     expect(nextAuditTime('2026-10-26T00:30:00.000Z', justAfterMidnight, 'en-GB', 'Europe/London')).toBe(
-      'tomorrow at 00:30',
+      'tomorrow at 00:30 GMT',
     );
   });
 
@@ -156,7 +156,7 @@ describe('nextAuditTime across a daylight-saving change', () => {
     const justBeforeMidnight = Date.parse('2026-03-28T23:30:00.000Z');
 
     expect(nextAuditTime('2026-03-29T22:00:00.000Z', justBeforeMidnight, 'en-GB', 'Europe/London')).toBe(
-      'tomorrow at 23:00',
+      'tomorrow at 23:00 BST',
     );
   });
 });

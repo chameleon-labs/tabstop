@@ -99,7 +99,14 @@ export const nextAuditTime = (
   }
 
   const zone = timeZone === undefined ? {} : {timeZone};
-  const clock = new Intl.DateTimeFormat(locale, {timeStyle: 'short', ...zone}).format(parsed);
+  // Named zone, not a bare clock: "at 05:30" is unreadable to anyone who
+  // cannot tell whose 05:30 it is, and the schedule itself is set in UTC.
+  const clock = new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+    ...zone,
+  }).format(parsed);
   // Differenced as calendar dates rather than by adding 24 hours: a local day
   // is 23 or 25 hours long across a DST change, so "now + DAY" lands on today
   // or on the day after tomorrow and an audit due tomorrow loses its clock
