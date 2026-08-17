@@ -16,6 +16,7 @@ const audit = (overrides: Partial<AuditModel> = {}): AuditModel => ({
   error: null,
   createdAt: new Date('2026-07-28T10:00:00Z'),
   completedAt: new Date('2026-07-28T10:00:30Z'),
+  scheduledFor: null,
   settled: true,
   ...overrides,
 });

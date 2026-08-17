@@ -28,6 +28,7 @@ export const mockLatestAudit = (): AuditModel => ({
   error: null,
   createdAt: new Date('2026-07-29T09:00:00Z'),
   completedAt: new Date('2026-07-29T09:00:30Z'),
+  scheduledFor: null,
   settled: true,
 });
 
@@ -52,7 +53,9 @@ export const mockAddPage = () => ({
 });
 
 export const mockLoadPages = () => ({
-  load: vi.fn<LoadPages['load']>(() => Promise.resolve({pages: [mockPageSummary()], limit: 10})),
+  load: vi.fn<LoadPages['load']>(() =>
+    Promise.resolve({pages: [{...mockPageSummary(), nextAuditAt: null}], limit: 10}),
+  ),
 });
 
 export const mockUpdatePage = () => ({

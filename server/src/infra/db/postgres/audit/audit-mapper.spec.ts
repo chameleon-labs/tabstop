@@ -19,9 +19,10 @@ const makeRow = (overrides: Partial<Selectable<AuditsTable>> = {}): Selectable<A
   completed_at: new Date('2026-07-26T10:00:30Z'),
   settled: true,
   claimed_at: null,
-  // Present because the row type says so, and deliberately not mapped: it is
-  // the scheduler's dedupe key (#13), not something the domain knows about.
-  scheduled_for: null,
+  // The nightly run's dedupe key, and now mapped: it is what separates an audit
+  // the run scheduled - queued for hours behind its jitter delay - from one
+  // written to start at once.
+  scheduled_for: new Date('2026-07-26T00:00:00Z'),
   ...overrides,
 });
 
@@ -42,6 +43,7 @@ describe('toAuditModel', () => {
       error: null,
       createdAt: new Date('2026-07-26T10:00:00Z'),
       completedAt: new Date('2026-07-26T10:00:30Z'),
+      scheduledFor: new Date('2026-07-26T00:00:00Z'),
       settled: true,
     });
   });

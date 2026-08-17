@@ -28,6 +28,7 @@ export const mockAuditModel = (): AuditModel => ({
   error: null,
   createdAt: new Date('2026-07-27T10:00:00Z'),
   completedAt: null,
+  scheduledFor: null,
   settled: true,
 });
 

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import type {LoadPagesResponse, PageHistoryResponse, PageSummary as PageSummaryResponse} from '@tabstop/contract';
 import type {AuditModel} from '../../domain/models/audit.js';
-import type {PageModel, PageSummary} from '../../domain/models/page.js';
+import type {PageModel, ScheduledPageSummary} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
 import {toPageHistoryView, toPageSummaryView, toPageView} from './page-view.js';
 
@@ -26,13 +26,15 @@ const audit: AuditModel = {
   error: null,
   createdAt: new Date('2026-08-15T10:01:00Z'),
   completedAt: new Date('2026-08-15T10:01:30Z'),
+  scheduledFor: null,
   settled: true,
 };
 
-const summary = (overrides: Partial<PageSummary> = {}): PageSummary => ({
+const summary = (overrides: Partial<ScheduledPageSummary> = {}): ScheduledPageSummary => ({
   page,
   domain: 'example.test',
   latestAudit: audit,
+  nextAuditAt: new Date('2026-08-16T05:12:00.000Z'),
   history: [
     {score: 86, at: new Date('2026-08-14T10:00:00Z')},
     {score: 74, at: new Date('2026-08-15T10:00:00Z')},
@@ -57,6 +59,11 @@ describe('the page view mappers', () => {
         {score: 74, at: '2026-08-15T10:00:00.000Z'},
       ],
     });
+  });
+
+  it('serialises the next audit, and says null when there is not one', () => {
+    expect(toPageSummaryView(summary()).nextAuditAt).toBe('2026-08-16T05:12:00.000Z');
+    expect(toPageSummaryView(summary({nextAuditAt: null})).nextAuditAt).toBeNull();
   });
 
   it('never puts an internal identifier on the wire', () => {
@@ -129,6 +136,7 @@ const failedAudit: AuditModel = {
   error: 'Navigation timeout',
   createdAt: new Date('2026-08-16T10:01:00Z'),
   completedAt: null,
+  scheduledFor: null,
   settled: true,
 };
 

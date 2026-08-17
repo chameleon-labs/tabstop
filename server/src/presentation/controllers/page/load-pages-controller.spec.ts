@@ -41,6 +41,7 @@ describe('LoadPagesController', () => {
             {score: 86, at: '2026-07-27T09:00:00.000Z'},
             {score: 74, at: '2026-07-29T09:00:00.000Z'},
           ],
+          nextAuditAt: null,
         },
       ],
     });
@@ -55,6 +56,7 @@ describe('LoadPagesController', () => {
       pages: [
         {
           ...mockPageSummary(),
+          nextAuditAt: null,
           latestAudit: {
             ...mockLatestAudit(),
             status: 'failed',
@@ -86,6 +88,7 @@ describe('LoadPagesController', () => {
       pages: [
         {
           ...mockPageSummary(),
+          nextAuditAt: null,
           latestAudit: {...mockLatestAudit(), status: 'queued', score: null, completedAt: null},
           history: [],
         },
@@ -100,6 +103,7 @@ describe('LoadPagesController', () => {
       score: null,
       previousScore: null,
       history: [],
+      nextAuditAt: null,
     });
   });
 
@@ -107,7 +111,7 @@ describe('LoadPagesController', () => {
     const {sut, loadPages} = makeSut();
     loadPages.load.mockResolvedValueOnce({
       limit: 10,
-      pages: [{...mockPageSummary(), latestAudit: null, history: []}],
+      pages: [{...mockPageSummary(), nextAuditAt: null, latestAudit: null, history: []}],
     });
 
     const response = await sut.handle({userId: 'user-1'});
@@ -117,6 +121,7 @@ describe('LoadPagesController', () => {
       previousScore: null,
       latestAudit: null,
       history: [],
+      nextAuditAt: null,
     });
   });
 

@@ -77,6 +77,16 @@ export type PageSummary = PageView & {
   previousScore: number | null;
   /** Oldest first, bounded, finished audits only. */
   history: PageScorePoint[];
+  /**
+   * When the nightly run will next reach this page.
+   *
+   * Null when it will not: monitoring is paused, or an audit is running now.
+   * Computed rather than stored, and computed on the server because the rule
+   * lives in `domain/services/reaudit-schedule.ts` and this package carries
+   * types only - a second copy in the client would be free to drift from the
+   * run that actually decides.
+   */
+  nextAuditAt: string | null;
 };
 
 export type LoadPagesResponse = {

@@ -43,6 +43,7 @@ const audit = (): AuditModel => ({
   error: null,
   createdAt: new Date('2026-08-01T00:00:00Z'),
   completedAt: null,
+  scheduledFor: null,
   settled: true,
 });
 
