@@ -30,6 +30,7 @@ const page = (
   score: history.at(-1)?.score ?? null,
   previousScore: history.at(-2)?.score ?? null,
   history,
+  nextAuditAt: null,
 });
 
 const scored: PageScorePoint[] = [{score: 74, at: '2026-08-15T10:01:00.000Z'}];

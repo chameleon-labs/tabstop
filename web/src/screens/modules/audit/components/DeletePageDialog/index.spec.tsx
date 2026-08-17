@@ -15,6 +15,7 @@ const page = (id = 'page-1'): PageSummary => ({
   score: null,
   previousScore: null,
   history: [],
+  nextAuditAt: null,
 });
 
 const deferred = <T,>(): {promise: Promise<T>; resolve: (value: T) => void} => {

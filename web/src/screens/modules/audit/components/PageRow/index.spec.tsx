@@ -28,10 +28,11 @@ type Patch = {
   monitoringEnabled?: boolean;
   latestAudit?: LatestPageAudit | null;
   history?: PageScorePoint[];
+  nextAuditAt?: string | null;
 };
 
 const page = (patch: Patch = {}): PageSummary => {
-  const {monitoringEnabled = true, latestAudit = audit('done'), history = HISTORY} = patch;
+  const {monitoringEnabled = true, latestAudit = audit('done'), history = HISTORY, nextAuditAt = null} = patch;
 
   return {
     id: 'page-1',
@@ -43,6 +44,7 @@ const page = (patch: Patch = {}): PageSummary => {
     score: history.at(-1)?.score ?? null,
     previousScore: history.at(-2)?.score ?? null,
     history,
+    nextAuditAt,
   };
 };
 
@@ -334,5 +336,26 @@ describe('PageRow rendering safety', () => {
 
     expect(row().querySelector('img')).toBeNull();
     expect(screen.getByText(/<img src=x onerror=alert\(1\)>/)).toBeVisible();
+  });
+});
+
+describe('PageRow schedule', () => {
+  it('says when the run will next reach this page', () => {
+    renderRow(page({nextAuditAt: '2026-08-16T05:30:00.000Z'}));
+
+    expect(screen.getByText(/Next audit/)).toBeVisible();
+  });
+
+  it('says a paused page has none, rather than leaving the line off', () => {
+    renderRow(page({monitoringEnabled: false, nextAuditAt: null}));
+
+    expect(screen.getByText('No next audit while paused')).toBeVisible();
+  });
+
+  it('promises nothing while an audit is actually running', () => {
+    renderRow(page({latestAudit: audit('running'), nextAuditAt: null}));
+
+    expect(screen.queryByText(/Next audit/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No next audit/)).not.toBeInTheDocument();
   });
 });

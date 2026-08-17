@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {AuditStatus, LatestPageAudit, PageSummary} from '@tabstop/contract';
-import {exactTime, pageTimestamp, relativeTime} from './page-time';
+import {UNKNOWN_RELATIVE, exactTime, nextAuditTime, pageTimestamp, relativeTime} from './page-time';
 
 const NOW = Date.parse('2026-08-15T12:00:00.000Z');
 
@@ -24,6 +24,7 @@ const pageSummary = (latest: LatestPageAudit | null): PageSummary => ({
   score: null,
   previousScore: null,
   history: [],
+  nextAuditAt: null,
 });
 
 describe('relativeTime', () => {
@@ -101,5 +102,36 @@ describe('pageTimestamp', () => {
       value: '2026-08-01T09:00:00.000Z',
       prefix: 'Added',
     });
+  });
+});
+
+describe('nextAuditTime', () => {
+  const AT = Date.parse('2026-08-15T12:00:00.000Z');
+
+  it('names the clock time when the run reaches the page today', () => {
+    expect(nextAuditTime('2026-08-15T17:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('at 17:30');
+  });
+
+  it('says tomorrow rather than leaving the day to be guessed', () => {
+    // "at 05:30" alone is read as today, and the slot is usually not today.
+    expect(nextAuditTime('2026-08-16T05:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('tomorrow at 05:30');
+  });
+
+  it('names the date once it is further out than that', () => {
+    expect(nextAuditTime('2026-08-18T05:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('on 18 Aug 2026');
+  });
+
+  it('reads today in the reader own zone, not in the machine one', () => {
+    // 23:00 UTC is already tomorrow in Tokyo, so "now" and the slot fall on one
+    // calendar day there while landing on two anywhere west of it. Comparing
+    // the slot against a day computed in some other zone reports "tomorrow" for
+    // something happening this evening.
+    const late = Date.parse('2026-08-15T23:00:00.000Z');
+
+    expect(nextAuditTime('2026-08-16T00:30:00.000Z', late, 'en-GB', 'Asia/Tokyo')).toBe('at 09:30');
+  });
+
+  it('says nothing it cannot know from an unparseable timestamp', () => {
+    expect(nextAuditTime('not a date', AT, 'en-GB', 'UTC')).toBe(UNKNOWN_RELATIVE);
   });
 });

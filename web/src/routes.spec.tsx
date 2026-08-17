@@ -37,6 +37,7 @@ const monitoredPage: PageSummary = {
     {score: 82, at: '2026-08-13T12:00:00.000Z'},
     {score: 74, at: '2026-08-14T12:00:00.000Z'},
   ],
+  nextAuditAt: null,
 };
 
 const pageList: LoadPagesResponse = {pages: [monitoredPage], used: 1, limit: 10};

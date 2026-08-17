@@ -169,6 +169,12 @@
   gap: var(--lat-space-2);
 }
 
+.page-detail__next {
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
 .page-detail__time {
   color: var(--lat-text-subtle);
   font-family: var(--lat-text-meta-font-family);

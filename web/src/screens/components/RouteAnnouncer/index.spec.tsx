@@ -19,6 +19,7 @@ const monitoredPage = (id: string): PageSummary => ({
   score: null,
   previousScore: null,
   history: [],
+  nextAuditAt: null,
 });
 
 const pageHistory = (id: string): PageHistoryResponse => ({

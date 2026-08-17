@@ -70,3 +70,37 @@ export const pageTimestamp = (page: PageSummary): PageTimestamp => {
 
   return {value: latest.createdAt, prefix: 'Audit started'};
 };
+
+const dayKey = (at: number, timeZone?: string): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    ...(timeZone === undefined ? {} : {timeZone}),
+  }).format(at);
+
+export const nextAuditTime = (
+  timestamp: string,
+  now: number = Date.now(),
+  locale?: string,
+  timeZone?: string,
+): string => {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) {
+    return UNKNOWN_RELATIVE;
+  }
+
+  const zone = timeZone === undefined ? {} : {timeZone};
+  const clock = new Intl.DateTimeFormat(locale, {timeStyle: 'short', ...zone}).format(parsed);
+  const today = dayKey(now, timeZone);
+  const due = dayKey(parsed, timeZone);
+
+  if (due === today) {
+    return `at ${clock}`;
+  }
+  if (due === dayKey(now + DAY, timeZone)) {
+    return `tomorrow at ${clock}`;
+  }
+
+  return `on ${new Intl.DateTimeFormat(locale, {dateStyle: 'medium', ...zone}).format(parsed)}`;
+};

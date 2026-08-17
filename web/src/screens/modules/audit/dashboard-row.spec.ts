@@ -37,6 +37,7 @@ const pageSummary = (patch: Patch = {}): PageSummary => {
     score: history.at(-1)?.score ?? null,
     previousScore: history.at(-2)?.score ?? null,
     history,
+    nextAuditAt: null,
   };
 };
 
