@@ -659,6 +659,63 @@ describe('PostgresAuditRepository', () => {
       expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
     });
 
+    it('waits for a pause in flight rather than slipping in behind it', async () => {
+      // The interleaving the flag check alone does not survive: a plain select
+      // takes no row lock, so the pause can update the page, find no audit to
+      // delete because this one is still uncommitted, and commit - leaving a
+      // paused page holding a queued audit.
+      const url = process.env.DATABASE_URL;
+      if (url === undefined) {
+        throw new Error('DATABASE_URL not set by globalSetup');
+      }
+      const pageId = await makePage();
+      const second = makeDatabase(url);
+
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+
+      const pausing = db.transaction().execute(async (trx) => {
+        await trx.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageId).execute();
+        await held;
+      });
+
+      try {
+        // Long enough for the update above to have taken the row lock.
+        await new Promise((resolve) => {
+          setTimeout(resolve, 100);
+        });
+        const scheduling = new PostgresAuditRepository(second).addScheduled({
+          pageId,
+          url: `https://${randomUUID()}.test/x`,
+          scheduledFor: '2026-08-17',
+        });
+
+        const outcome = await Promise.race([
+          scheduling.then(() => 'completed' as const),
+          new Promise<'blocked'>((resolve) => {
+            setTimeout(() => {
+              resolve('blocked');
+            }, 250);
+          }),
+        ]);
+        expect(outcome).toBe('blocked');
+
+        release();
+        await pausing;
+
+        // And once it is let through, it reads the pause rather than its own
+        // stale snapshot.
+        expect(await scheduling).toBeNull();
+        expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
+      } finally {
+        release();
+        await pausing;
+        await second.destroy();
+      }
+    });
+
     it('still schedules one for a page that is monitored', async () => {
       const pageId = await makePage();
 

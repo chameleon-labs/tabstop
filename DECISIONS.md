@@ -57,9 +57,17 @@ somebody else's monitoring.
 The other half of the race is at the other end. The nightly worklist is read
 once at the top of a run that may take half an hour, so a page paused in between
 could still have an audit inserted for it afterwards — the pause having already
-looked for rows to cancel. `addScheduled` is an insert-select carrying
-`monitoring_enabled` as part of the same statement, so the check cannot be
-raced.
+looked for rows to cancel and found none.
+
+Checking `monitoring_enabled` as part of the insert is not enough to close
+that, and the first attempt at this made exactly that mistake. A plain select
+takes no row lock, so under READ COMMITTED the scheduling transaction can read
+the page as monitored, the pause can then update it and delete nothing — the new
+audit being uncommitted and therefore invisible — and both commit, leaving a
+paused page holding a queued audit. The check has to hold the row, not merely
+read it: `addScheduled` takes `for update` on the page and inserts inside the
+same transaction, so whichever of the two arrives second sees the first one's
+work. A test drives both connections and asserts the second one blocks.
 
 ## 2026-08-16 — the next audit time is computed on the server, not shared with the client
 
