@@ -63,7 +63,7 @@ export const PageDetail = (): React.JSX.Element => {
   const points = history.data?.points ?? [];
   const missing = isApiError(history.error) && history.error.status === 404;
   const heading = domain ?? (missing ? 'Page not found' : 'Page');
-  useDocumentTitle(heading);
+  useDocumentTitle(heading, {settled: domain !== null || (!pages.isPending && !history.isPending)});
   const latestAuditId = page?.latestAudit?.auditId ?? null;
   const timestamp = page === undefined ? null : pageTimestamp(page);
   // The dashboard's own reading of the same row, so one screen cannot describe

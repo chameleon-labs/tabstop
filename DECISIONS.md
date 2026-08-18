@@ -6,6 +6,25 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-17 — a screen names itself twice, and only the second name is announced
+
+A screen whose title comes from loaded data sets the tab immediately with a
+placeholder and passes `settled: false` to `useDocumentTitle`. The announcer is
+told only once the real name is known. Screens with a constant title are
+unaffected and say nothing extra.
+
+Why: the announcer keeps the first title it hears after a navigation and stops
+listening — a deliberate choice, because correcting an announcement makes a
+screen reader read two names for one navigation. That rule is only safe if
+nobody signals a name they are about to change. Page detail did, so on a slow
+load its announcement was "Page", which sounds like an answer and is worse than
+the silence the announcer exists to remove.
+
+Rejected: letting the announcer re-announce on a title change, which is the
+double-announcement it was built to avoid; and dropping the placeholder tab
+title, which would leave the previous screen's name in the tab. The screen is
+the only thing that knows whether its name is final, so the screen says so.
+
 ## 2026-08-17 — pausing a page cancels work already queued for it
 
 Pausing deletes the audits the nightly run has scheduled for the page and not
