@@ -1,5 +1,6 @@
 import {renderHook} from '@testing-library/react';
 import {describe, expect, it} from 'vitest';
+import {onDocumentTitleSet} from '@/a11y/announce';
 import {SITE_NAME, useDocumentTitle} from './use-document-title';
 
 describe('useDocumentTitle', () => {
@@ -34,5 +35,33 @@ describe('useDocumentTitle', () => {
     rerender({title: 'example.com/pricing'});
 
     expect(document.title).toBe(`example.com/pricing · ${SITE_NAME}`);
+  });
+
+  it('sets the tab from an unsettled title but does not announce it', () => {
+    // The half the test above missed. Naming the tab "Page" while the data
+    // loads is right; announcing it is not, because the announcer keeps the
+    // first title it hears after a navigation and never revisits it.
+    const heard: string[] = [];
+    const stop = onDocumentTitleSet(() => {
+      heard.push(document.title);
+    });
+
+    try {
+      const {rerender} = renderHook(
+        ({title, settled}: {title: string; settled: boolean}) => {
+          useDocumentTitle(title, {settled});
+        },
+        {initialProps: {title: 'Page', settled: false}},
+      );
+
+      expect(document.title).toBe(`Page · ${SITE_NAME}`);
+      expect(heard).toEqual([]);
+
+      rerender({title: 'example.com', settled: true});
+
+      expect(heard).toEqual([`example.com · ${SITE_NAME}`]);
+    } finally {
+      stop();
+    }
   });
 });

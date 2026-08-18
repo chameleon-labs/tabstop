@@ -30,16 +30,34 @@ const pageHistory = (id: string): PageHistoryResponse => ({
 });
 
 /** Two pages under one domain, which is what makes their titles identical. */
-const sameSitePages = (path: string): Promise<Response> => {
+const sameSiteResponse = (path: string): Response => {
   const history = /^\/api\/pages\/(\d+)\/history/.exec(path);
   if (history !== null) {
-    return Promise.resolve(jsonResponse(200, pageHistory(history[1]!)));
+    return jsonResponse(200, pageHistory(history[1]!));
   }
   if (path === '/api/pages') {
-    return Promise.resolve(jsonResponse(200, {pages: [monitoredPage('1'), monitoredPage('2')], used: 2, limit: 10}));
+    return jsonResponse(200, {pages: [monitoredPage('1'), monitoredPage('2')], used: 2, limit: 10});
   }
 
-  return Promise.resolve(jsonResponse(200, {id: '1', email: 'a@b.co', alertThreshold: 5}));
+  return jsonResponse(200, {id: '1', email: 'a@b.co', alertThreshold: 5});
+};
+
+const sameSitePages = (path: string): Promise<Response> => Promise.resolve(sameSiteResponse(path));
+
+/** Longer than `ANNOUNCE_DELAY_MS`, so the placeholder is what is on offer when the announcer would otherwise fire. */
+const SLOW_DATA_MS = 250;
+
+const slowSameSitePages = (path: string): Promise<Response> => {
+  const response = sameSiteResponse(path);
+  if (!path.startsWith('/api/pages')) {
+    return Promise.resolve(response);
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(response);
+    }, SLOW_DATA_MS);
+  });
 };
 
 /**
@@ -211,6 +229,40 @@ describe('the route announcer', () => {
       // all and `seen` is empty.
       expect(seen).toContain('');
       expect(seen.at(-1)).toContain('example.com');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('announces the name a screen settles on, never the placeholder it starts with', async () => {
+    // `/pages/:id` cannot name itself until its data arrives: until then its
+    // heading is "Page". The announcer takes the FIRST title after a navigation
+    // and stops listening, so a screen that is signalled while still
+    // provisional is announced as "Page" and never corrected - silence would
+    // almost be better, since "Page" sounds like an answer.
+    //
+    // Only reproducible when the data lands after the announce deadline, which
+    // is why it survived as an intermittent failure of the test below rather
+    // than as a bug: on an idle machine the queries resolve first.
+    vi.stubGlobal('fetch', vi.fn(slowSameSitePages));
+
+    try {
+      const {router} = renderAt('/');
+      const seen: string[] = [];
+      const observer = new MutationObserver(() => {
+        seen.push(liveRegion().textContent ?? '');
+      });
+      observer.observe(liveRegion(), {childList: true, characterData: true, subtree: true});
+
+      await act(async () => {
+        await router.navigate('/pages/1');
+      });
+      await waitFor(() => {
+        expect(liveRegion()).toHaveTextContent('example.com');
+      });
+      observer.disconnect();
+
+      expect(seen.filter((text) => text !== '')).toEqual(['example.com · tabstop']);
     } finally {
       vi.unstubAllGlobals();
     }
