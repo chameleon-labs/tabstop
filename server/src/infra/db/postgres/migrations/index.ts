@@ -8,6 +8,7 @@ import * as sessionsExpiresAtIndex from './006-sessions-expires-at-index.js';
 import * as scheduledReaudits from './007-scheduled-reaudits.js';
 import * as alertDelivery from './008-alert-delivery.js';
 import * as alertDeliveryState from './009-alert-delivery-state.js';
+import * as onDemandAudits from './010-on-demand-audits.js';
 
 /**
  * Migrations are registered here rather than discovered from disk.
@@ -27,6 +28,7 @@ export const migrations: Record<string, Migration> = {
   '007-scheduled-reaudits': scheduledReaudits,
   '008-alert-delivery': alertDelivery,
   '009-alert-delivery-state': alertDeliveryState,
+  '010-on-demand-audits': onDemandAudits,
 };
 
 export const staticMigrationProvider: MigrationProvider = {

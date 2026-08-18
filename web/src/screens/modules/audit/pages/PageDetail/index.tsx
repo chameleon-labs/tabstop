@@ -23,6 +23,7 @@ import {TrendChart} from '../../components/TrendChart';
 import {dashboardRowState} from '../../dashboard-row';
 import {IMPACT_LABELS} from '../../grouping';
 import {useDeleteMonitoredPage, useMonitoredPages, useSetPageMonitoring} from '../../monitored-pages';
+import {describeAuditRefusal, useRequestPageAudit} from '../../on-demand-audit';
 import {HISTORY_WINDOWS, historyWindowFrom, usePageHistory} from '../../page-history';
 import {exactTime, nextAuditTime, pageTimestamp, relativeTime} from '../../page-time';
 import {hostOf} from '../../url';
@@ -48,6 +49,7 @@ export const PageDetail = (): React.JSX.Element => {
   const page = pages.data?.pages.find((candidate) => candidate.id === id);
   const history = usePageHistory(id, days);
   const monitoring = useSetPageMonitoring();
+  const auditNow = useRequestPageAudit(page?.id);
   const deletePage = useDeleteMonitoredPage();
 
   const [announcement, setAnnouncement] = useState('');
@@ -71,6 +73,9 @@ export const PageDetail = (): React.JSX.Element => {
   const rowState = page === undefined ? null : dashboardRowState(page);
   const latestCounts = page?.latestAudit?.status === 'done' ? page.latestAudit.countsByImpact : null;
   const monitoringVerb = page?.monitoringEnabled === false ? 'Resume' : 'Pause';
+  const auditing =
+    auditNow.isPending || page?.latestAudit?.status === 'queued' || page?.latestAudit?.status === 'running';
+  const refusal = describeAuditRefusal(auditNow.error);
   const now = Date.now();
 
   const setWindow = (next: string): void => {
@@ -174,6 +179,18 @@ export const PageDetail = (): React.JSX.Element => {
         {page !== undefined && (
           <div className="page-detail__actions">
             <Button
+              variant="primary"
+              size="sm"
+              disabled={auditing}
+              aria-label={`Audit ${page.url} now`}
+              onClick={() => {
+                auditNow.reset();
+                auditNow.mutate();
+              }}
+            >
+              {auditing ? 'Auditing' : 'Audit now'}
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               disabled={monitoring.isPending}
@@ -198,6 +215,12 @@ export const PageDetail = (): React.JSX.Element => {
           </div>
         )}
       </header>
+
+      {refusal !== null && (
+        <Callout variant="warning" icon={<AlertCircle size="sm" />} title="Could not start an audit">
+          <p>{refusal.message}</p>
+        </Callout>
+      )}
 
       {controlError !== null && (
         <Callout variant="danger" icon={<AlertCircle size="sm" />} title="Could not change monitoring">

@@ -304,6 +304,7 @@ describe('layer dependencies', () => {
       // shared error envelope every endpoint answers failures with, which the
       // client reads on every status.
       'presentation/helpers/http/http-helper.ts',
+      'presentation/helpers/page-audit-conflict-view.ts',
       'presentation/helpers/page-conflict-view.ts',
       // The page endpoints' success shapes, published for the dashboard (#20)
       // so the client cannot keep a second declaration of the same wire types.
@@ -356,6 +357,7 @@ describe('layer dependencies', () => {
         'infra/db/postgres/migrations/007-scheduled-reaudits.ts',
         'infra/db/postgres/migrations/008-alert-delivery.ts',
         'infra/db/postgres/migrations/009-alert-delivery-state.ts',
+        'infra/db/postgres/migrations/010-on-demand-audits.ts',
         // Reached only through `kysely/migration`, so the exact-name match
         // never saw it.
         'infra/db/postgres/migrations/index.ts',

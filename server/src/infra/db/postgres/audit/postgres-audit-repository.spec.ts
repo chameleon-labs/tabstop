@@ -51,6 +51,232 @@ describe('PostgresAuditRepository', () => {
     await sut.complete(id, claimedAt, {...result, violations: []});
   };
 
+  /** An account with two pages, so allowance specs can tell per-account from per-page. */
+  const makeAccount = async (pages = 1): Promise<{userId: string; pageIds: string[]}> => {
+    const user = await db
+      .insertInto('users')
+      .values({email: `${randomUUID()}@test.test`, password_digest: 'x'})
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const site = await db
+      .insertInto('sites')
+      .values({user_id: user.id, domain: `${randomUUID()}.test`})
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const pageIds: string[] = [];
+    for (let index = 0; index < pages; index++) {
+      const page = await db
+        .insertInto('pages')
+        .values({site_id: site.id, url: `https://${randomUUID()}.test/${index}`})
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      pageIds.push(page.id);
+    }
+    return {userId: user.id, pageIds};
+  };
+
+  const DAY_START = new Date('2026-08-18T00:00:00.000Z');
+
+  describe('addOnDemand', () => {
+    const ask = async (userId: string, pageId: string, allowance = 1, since = DAY_START) =>
+      await sut.addOnDemand({userId, pageId, since, allowance});
+
+    it('attaches the audit to the page, so it lands in that page trend', async () => {
+      const {userId, pageIds} = await makeAccount();
+      const result = await ask(userId, pageIds[0]!);
+
+      expect(result.outcome).toBe('added');
+      if (result.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      expect(result.audit.pageId).toBe(pageIds[0]);
+      expect(result.audit.status).toBe('queued');
+      // Null, so it cannot collide with the unique index the nightly dedupe
+      // relies on - and so the run does not mistake it for its own work.
+      expect(result.audit.scheduledFor).toBeNull();
+    });
+
+    it('marks the row on demand, which is what the allowance is counted over', async () => {
+      const {userId, pageIds} = await makeAccount();
+      const result = await ask(userId, pageIds[0]!);
+      if (result.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+
+      const row = await db
+        .selectFrom('audits')
+        .select('on_demand')
+        .where('id', '=', result.audit.id)
+        .executeTakeFirstOrThrow();
+
+      expect(row.on_demand).toBe(true);
+    });
+
+    it('gives another account page the same answer as one that does not exist', async () => {
+      const mine = await makeAccount();
+      const theirs = await makeAccount();
+
+      expect(await ask(mine.userId, theirs.pageIds[0]!)).toEqual({outcome: 'not-found'});
+      expect(await ask(mine.userId, '999999999999')).toEqual({outcome: 'not-found'});
+    });
+
+    it('answers not-found rather than raising on an id that could never be a row', async () => {
+      const {userId, pageIds} = await makeAccount();
+
+      expect(await ask(userId, 'not-a-number')).toEqual({outcome: 'not-found'});
+      expect(await ask(userId, '99999999999999999999')).toEqual({outcome: 'not-found'});
+      expect(pageIds).toHaveLength(1);
+    });
+
+    it('refuses while an audit for that page is still queued', async () => {
+      const {userId, pageIds} = await makeAccount();
+      await db.insertInto('audits').values({page_id: pageIds[0]!, url: 'https://x.test/a', status: 'queued'}).execute();
+
+      expect(await ask(userId, pageIds[0]!)).toEqual({outcome: 'in-flight'});
+    });
+
+    it('refuses while one is running', async () => {
+      const {userId, pageIds} = await makeAccount();
+      await db
+        .insertInto('audits')
+        .values({page_id: pageIds[0]!, url: 'https://x.test/a', status: 'running'})
+        .execute();
+
+      expect(await ask(userId, pageIds[0]!)).toEqual({outcome: 'in-flight'});
+    });
+
+    it('spends the allowance once and then refuses', async () => {
+      const {userId, pageIds} = await makeAccount();
+      const first = await ask(userId, pageIds[0]!);
+      if (first.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      // Out of the way, so the second attempt meets the allowance rather than
+      // the in-flight check - which would pass for the wrong reason.
+      await db.updateTable('audits').set({status: 'done'}).where('id', '=', first.audit.id).execute();
+
+      expect(await ask(userId, pageIds[0]!)).toEqual({outcome: 'allowance-spent'});
+    });
+
+    it('counts the allowance across the account, not per page', async () => {
+      // The property that makes this a plan entitlement rather than a
+      // per-page cooldown: spending it on one page spends it for all of them.
+      const {userId, pageIds} = await makeAccount(2);
+      const first = await ask(userId, pageIds[0]!);
+      if (first.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      await db.updateTable('audits').set({status: 'done'}).where('id', '=', first.audit.id).execute();
+
+      expect(await ask(userId, pageIds[1]!)).toEqual({outcome: 'allowance-spent'});
+    });
+
+    it('does not count an audit from before the window', async () => {
+      const {userId, pageIds} = await makeAccount();
+      await db
+        .insertInto('audits')
+        .values({
+          page_id: pageIds[0]!,
+          url: 'https://x.test/a',
+          status: 'done',
+          on_demand: true,
+          created_at: new Date('2026-08-17T23:59:59.000Z'),
+        })
+        .execute();
+
+      expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('ignores audits the account did not ask for', async () => {
+      // The nightly run and the insert that adding a page performs both write
+      // rows for this page today. Counting them would refuse somebody an
+      // on-demand audit because their page was audited on schedule.
+      const {userId, pageIds} = await makeAccount();
+      await db
+        .insertInto('audits')
+        .values({
+          page_id: pageIds[0]!,
+          url: 'https://x.test/a',
+          status: 'done',
+          created_at: new Date('2026-08-18T02:00:00.000Z'),
+        })
+        .execute();
+
+      expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('audits a paused page, because pausing stops the schedule and not the person', async () => {
+      // Deliberate, and the opposite of `addScheduled`, which refuses one.
+      // Pausing says "stop fetching this nightly"; it does not say "refuse me
+      // when I ask for it myself", and a control that went dead on a paused
+      // page would read as a bug.
+      const {userId, pageIds} = await makeAccount();
+      await db.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageIds[0]!).execute();
+
+      expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('waits behind another request from the same account rather than counting past it', async () => {
+      // Check-then-act is what this closes. A plain select takes no row lock
+      // under READ COMMITTED, so two requests arriving together both count the
+      // same zero on-demand audits, both insert, and an account entitled to one
+      // run gets two Chromium runs. Reading the count in the same statement as
+      // the insert would not close it either - only the lock does.
+      //
+      // Driven by holding the account row from outside rather than by racing
+      // two calls, because a race that happens to serialise passes without the
+      // lock and proves nothing. This blocks or it does not.
+      const url = process.env.DATABASE_URL;
+      if (url === undefined) {
+        throw new Error('DATABASE_URL not set by globalSetup');
+      }
+      const {userId, pageIds} = await makeAccount(2);
+      const second = makeDatabase(url);
+
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+
+      const holding = db.transaction().execute(async (trx) => {
+        await trx.selectFrom('users').select('id').where('id', '=', userId).forUpdate().execute();
+        await held;
+      });
+
+      try {
+        // Long enough for the select above to have taken the row lock.
+        await new Promise((resolve) => {
+          setTimeout(resolve, 100);
+        });
+        const asking = new PostgresAuditRepository(second).addOnDemand({
+          userId,
+          pageId: pageIds[0]!,
+          since: DAY_START,
+          allowance: 1,
+        });
+
+        const outcome = await Promise.race([
+          asking.then(() => 'completed' as const),
+          new Promise<'blocked'>((resolve) => {
+            setTimeout(() => {
+              resolve('blocked');
+            }, 250);
+          }),
+        ]);
+        expect(outcome).toBe('blocked');
+
+        release();
+        await holding;
+
+        expect((await asking).outcome).toBe('added');
+      } finally {
+        release();
+        await holding.catch(() => undefined);
+        await second.destroy();
+      }
+    });
+  });
+
   describe('add', () => {
     it('creates a queued anonymous audit', async () => {
       const url = `https://${randomUUID()}.test/x`;

@@ -73,6 +73,12 @@ export interface AuditsTable {
   /** When the current attempt claimed this audit. Null before any attempt. */
   claimed_at: Nullable<Date>;
   /**
+   * Whether a person asked for this audit (#115), as opposed to the nightly
+   * run or the insert that adding a page performs. What the account's daily
+   * allowance is counted over.
+   */
+  on_demand: Generated<boolean>;
+  /**
    * Which day's scheduled run produced this audit (#13). Null for everything
    * else: a page's first audit, an anonymous one-off, a manual re-audit.
    *

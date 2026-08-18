@@ -536,4 +536,88 @@ describe('PageDetail announcements', () => {
     });
     expect(screen.getAllByRole('status')).toHaveLength(1);
   });
+
+  describe('auditing on demand', () => {
+    const auditNowButton = (): HTMLElement => screen.getByRole('button', {name: `Audit ${URL} now`});
+
+    it('asks the page own endpoint, so the result belongs to this page', async () => {
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () =>
+          jsonResponse(202, {auditId: uuid('9'), status: 'queued', pollAfterMs: 2000}),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith('/api/pages/page-1/audits', expect.objectContaining({method: 'POST'}));
+      });
+    });
+
+    it('will not ask again while an audit for this page is already running', async () => {
+      // The refusal the server would send anyway, spent before the request
+      // rather than after it - and the label says which of the two states the
+      // button is in, since a disabled control with no reason reads as broken.
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        '/api/pages': () =>
+          jsonResponse(200, pageList([summary({latestAudit: {...summary().latestAudit!, status: 'running'}})])),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await waitFor(() => {
+        expect(auditNowButton()).toBeDisabled();
+      });
+      expect(auditNowButton()).toHaveTextContent('Auditing');
+    });
+
+    it('shows the refusal sentence and when the allowance comes back', async () => {
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () =>
+          jsonResponse(409, {
+            code: 'on_demand_audit_spent',
+            error: 'You have used your audit for today',
+            resetAt: '2036-08-19T00:00:00.000Z',
+          }),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+
+      expect(await screen.findByText(/You have used your audit for today/)).toBeInTheDocument();
+      expect(screen.getByText(/The next one is available/)).toBeInTheDocument();
+    });
+
+    it('says a page is already being audited rather than failing silently', async () => {
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () =>
+          jsonResponse(409, {code: 'audit_in_flight', error: 'This page is already being audited'}),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+
+      expect(await screen.findByText('This page is already being audited')).toBeInTheDocument();
+    });
+
+    it('keeps the trend and the controls when a request is refused', async () => {
+      // A refusal is not a broken screen. The reader still has the page they
+      // came for, and a control they can use again tomorrow.
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () =>
+          jsonResponse(409, {code: 'audit_in_flight', error: 'This page is already being audited'}),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+      await screen.findByText('This page is already being audited');
+
+      expect(screen.getByRole('heading', {level: 1, name: DOMAIN})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: `Pause monitoring for ${URL}`})).toBeInTheDocument();
+    });
+  });
 });

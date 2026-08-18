@@ -18,9 +18,15 @@ import type {
   ReclaimAbandonedAuditsRepository,
   StaleAudit,
 } from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js';
+import type {
+  AddOnDemandAuditParams,
+  AddOnDemandAuditResult,
+  AddOnDemandAuditRepository,
+} from '../../../../data/protocols/db/audit/add-on-demand-audit-repository.js';
 import type {Database} from '../database.js';
 import {detectRegression} from '../../../../domain/services/regression.js';
 import {toAuditModel} from './audit-mapper.js';
+import {isStorableId} from '../helpers/storable-id.js';
 
 // Postgres rejects a malformed value compared against a `uuid` column (SQLSTATE
 // 22P02) instead of just returning zero rows. A value that cannot be a UUID
@@ -86,7 +92,8 @@ export class PostgresAuditRepository
     CompleteAuditRepository,
     MarkFailedRepository,
     DeleteQueuedAuditRepository,
-    ReclaimAbandonedAuditsRepository
+    ReclaimAbandonedAuditsRepository,
+    AddOnDemandAuditRepository
 {
   constructor(
     private readonly db: Kysely<Database>,
@@ -152,6 +159,97 @@ export class PostgresAuditRepository
         .executeTakeFirst();
 
       return row === undefined ? null : toAuditModel(row);
+    });
+  }
+
+  async addOnDemand(params: AddOnDemandAuditParams): Promise<AddOnDemandAuditResult> {
+    if (!isStorableId(params.pageId) || !isStorableId(params.userId)) {
+      return {outcome: 'not-found'};
+    }
+
+    return await this.db.transaction().execute(async (trx) => {
+      // The account row, locked, and locked FIRST. The allowance is counted
+      // across every page the account holds, so the page is the wrong thing to
+      // serialise on: two requests naming two different pages would take two
+      // different locks and both spend the same single allowance. Taking the
+      // account lock before the count is what makes "one per day" true rather
+      // than likely.
+      const account = await trx
+        .selectFrom('users')
+        .select('id')
+        .where('id', '=', params.userId)
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (account === undefined) {
+        return {outcome: 'not-found'};
+      }
+
+      // Ownership is part of the query, not a separate load: a page belonging
+      // to somebody else matches nothing and is indistinguishable from one that
+      // does not exist, which is what stops the response confirming a real row.
+      const page = await trx
+        .selectFrom('pages')
+        .select(['id', 'url'])
+        .where('id', '=', params.pageId)
+        .where('site_id', 'in', (eb) =>
+          eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', params.userId),
+        )
+        .executeTakeFirst();
+
+      if (page === undefined) {
+        return {outcome: 'not-found'};
+      }
+
+      // Queued OR running, and for this page only. A second audit of one page
+      // is the outcome that actually costs something: two Chromium runs, and a
+      // trend with two points where the reader made one request.
+      const inFlight = await trx
+        .selectFrom('audits')
+        .select('id')
+        .where('page_id', '=', params.pageId)
+        .where('status', 'in', ['queued', 'running'])
+        .executeTakeFirst();
+
+      if (inFlight !== undefined) {
+        return {outcome: 'in-flight'};
+      }
+
+      const spent = await trx
+        .selectFrom('audits')
+        .select(({fn}) => fn.countAll<string>().as('count'))
+        .where('on_demand', '=', true)
+        .where('created_at', '>=', params.since)
+        .where('page_id', 'in', (eb) =>
+          eb
+            .selectFrom('pages')
+            .select('pages.id')
+            .where('pages.site_id', 'in', (inner) =>
+              inner.selectFrom('sites').select('sites.id').where('sites.user_id', '=', params.userId),
+            ),
+        )
+        .executeTakeFirstOrThrow();
+
+      if (Number(spent.count) >= params.allowance) {
+        return {outcome: 'allowance-spent'};
+      }
+
+      // `scheduled_for` stays null, so this cannot collide with the unique
+      // index the nightly dedupe relies on - and the run's own eligibility
+      // query skips a page audited today, so tonight's audit stands down
+      // rather than duplicating this one.
+      const row = await trx
+        .insertInto('audits')
+        .values({
+          page_id: params.pageId,
+          url: page.url,
+          status: 'queued',
+          on_demand: true,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      return {outcome: 'added', audit: toAuditModel(row)};
     });
   }
 

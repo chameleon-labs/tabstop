@@ -6,6 +6,44 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-18 — an on-demand audit is one per account per day, and it alerts
+
+`POST /api/pages/:id/audits` audits a page the account owns. The allowance is
+one per account per UTC day, counted in the database over a new `on_demand`
+column, and a manual audit raises regression alerts exactly like a scheduled
+one.
+
+Why per ACCOUNT rather than per page: this is the number a paid plan raises, so
+it has to bound what the free tier costs. A per-page allowance scales that cost
+with how many pages an account holds, which is the account's choice rather than
+the plan's. It also makes the per-page cooldown #115 sketched redundant - a
+single daily audit cannot reach the same page twice.
+
+Why a column and a count rather than a rate-limiter bucket: a token bucket
+refills continuously and bounds a request RATE, which is what the per-IP limiter
+in front of every route already does. An entitlement has to survive a restart,
+be countable, and be able to say when it comes back. Nothing already on the
+audit row could answer it either - `scheduled_for` separates the nightly run
+from everything else, but a page's first audit and an on-demand one are both
+null there, so counting them together would refuse somebody an audit because
+they added a page that morning.
+
+Why it alerts: an on-demand audit already stands tonight's scheduled one down,
+because `loadDueForReaudit` skips any page audited today. Suppressing alerts on
+manual audits therefore would not merely make them quieter - a page audited by
+hand each day would never alert at all, and the regression it was run to check
+for would go unreported. The one-alert-per-page-per-day index already stops the
+two from firing twice.
+
+Rejected: 429 with `retryAfter` for the refusal. It reads as "you are going too
+fast", and the honest answer is "you have had this one, here is when the next
+arrives" - a coded 409 carrying `resetAt`, the mechanism `POST /api/pages`
+already uses for its two conflicts.
+
+Deferred: the control on each dashboard row, and bulk re-audit. Per-row progress
+and per-row refusal copy are a separate piece of work, and fan-out meets the
+queue depth cap as a design question rather than a limit.
+
 ## 2026-08-17 — pausing a page cancels work already queued for it
 
 Pausing deletes the audits the nightly run has scheduled for the page and not
