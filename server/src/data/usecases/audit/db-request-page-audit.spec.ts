@@ -1,16 +1,16 @@
 import {describe, expect, it, vi} from 'vitest';
 import {DbRequestPageAudit} from './db-request-page-audit.js';
-import {mockAddOnDemandAuditRepository, mockAuditQueue, mockDeleteQueuedAuditRepository} from '../../test/index.js';
+import {mockAddOnDemandAuditRepository, mockAuditQueue, mockReleaseOnDemandAuditRepository} from '../../test/index.js';
 import type {AuditJobQueue} from '../../protocols/queue/audit-job-queue.js';
 
 const AT = new Date('2026-08-18T14:30:00.000Z');
 
 const makeSut = (now: Date = AT, allowance = 1, maxDepth = 100) => {
   const audits = mockAddOnDemandAuditRepository();
-  const deletes = mockDeleteQueuedAuditRepository();
+  const releases = mockReleaseOnDemandAuditRepository();
   const queue = mockAuditQueue();
-  const sut = new DbRequestPageAudit(audits, deletes, queue, maxDepth, allowance, () => now);
-  return {sut, audits, deletes, queue};
+  const sut = new DbRequestPageAudit(audits, releases, queue, maxDepth, allowance, () => now);
+  return {sut, audits, releases, queue};
 };
 
 describe('DbRequestPageAudit', () => {
@@ -24,7 +24,7 @@ describe('DbRequestPageAudit', () => {
     expect(queue.enqueueOnce).toHaveBeenCalledOnce();
   });
 
-  it('counts the allowance from the start of the UTC day, not the last 24 hours', async () => {
+  it('counts the allowance in UTC calendar days, not over the last 24 hours', async () => {
     // A rolling window would let an audit taken at 23:00 block the next
     // morning, which is not what "one a day" means to a reader looking at a
     // date. It also has to agree with the nightly run, whose whole dedupe is
@@ -33,9 +33,7 @@ describe('DbRequestPageAudit', () => {
 
     await sut.request({userId: '7', pageId: '42'});
 
-    expect(audits.addOnDemand).toHaveBeenCalledWith(
-      expect.objectContaining({since: new Date('2026-08-18T00:00:00.000Z'), allowance: 1}),
-    );
+    expect(audits.addOnDemand).toHaveBeenCalledWith(expect.objectContaining({day: '2026-08-18', allowance: 1}));
   });
 
   it('says when a spent allowance refills, which is the next UTC midnight', async () => {
@@ -77,23 +75,23 @@ describe('DbRequestPageAudit', () => {
   it('gives the allowance back when the queue genuinely refused the job', async () => {
     // The row is removed, so the count that decides tomorrow's allowance does
     // not include an audit nothing will ever run.
-    const {sut, deletes, queue} = makeSut();
+    const {sut, releases, queue} = makeSut();
     queue.enqueueOnce = vi.fn<AuditJobQueue['enqueueOnce']>(() => Promise.reject(new Error('redis down')));
     queue.has = vi.fn<AuditJobQueue['has']>(() => Promise.resolve(false));
 
     expect(await sut.request({userId: '7', pageId: '42'})).toEqual({outcome: 'unavailable'});
-    expect(deletes.deleteIfQueued).toHaveBeenCalledWith('audit-for-42');
+    expect(releases.releaseOnDemand).toHaveBeenCalledWith('audit-for-42');
   });
 
   it('keeps the row when the queue may have taken the job and lost the reply', async () => {
     // Deleting it then would leave a job pointing at an audit that no longer
     // exists - the reasoning `DbRequestAudit` records, and the reason this
     // path is not simply "enqueue failed".
-    const {sut, deletes, queue} = makeSut();
+    const {sut, releases, queue} = makeSut();
     queue.enqueueOnce = vi.fn<AuditJobQueue['enqueueOnce']>(() => Promise.reject(new Error('timeout')));
     queue.has = vi.fn<AuditJobQueue['has']>(() => Promise.resolve(true));
 
     expect(await sut.request({userId: '7', pageId: '42'})).toMatchObject({outcome: 'queued'});
-    expect(deletes.deleteIfQueued).not.toHaveBeenCalled();
+    expect(releases.releaseOnDemand).not.toHaveBeenCalled();
   });
 });

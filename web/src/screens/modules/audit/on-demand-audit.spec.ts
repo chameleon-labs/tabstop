@@ -7,8 +7,18 @@ const NOW = Date.parse('2026-08-18T14:00:00.000Z');
 const conflict = (body: Record<string, unknown>, message = 'refused'): ApiError => new ApiError(409, message, body);
 
 describe('describeAuditRefusal', () => {
-  it('says nothing about a failure that is not an API error', () => {
-    expect(describeAuditRefusal(new Error('offline'), NOW)).toBeNull();
+  it('speaks for a request that never reached the server', () => {
+    // A rejected `fetch` carries no sentence to quote. Saying nothing would
+    // leave the button re-enabling itself in silence, which reads as a click
+    // that did not register.
+    expect(describeAuditRefusal(new Error('offline'), NOW)).toEqual({
+      message: 'Could not reach tabstop. Check your connection and try again',
+      retryable: true,
+    });
+  });
+
+  it('has nothing to say when there is no failure', () => {
+    expect(describeAuditRefusal(null, NOW)).toBeNull();
   });
 
   it('quotes the server sentence rather than writing a second one', () => {

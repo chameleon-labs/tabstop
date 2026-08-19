@@ -1,6 +1,7 @@
 import type {PageAuditConflictCode, RequestAuditResponse} from '@tabstop/contract';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {isApiError, request} from '@/api/client';
+import {UNREACHABLE_REQUEST} from './failure';
 import {pageHistoryKeys} from './page-history';
 import {pageKeys} from './monitored-pages';
 import {nextAuditTime} from './page-time';
@@ -50,8 +51,15 @@ export const describeAuditRefusal = (
   locale?: string,
   timeZone?: string,
 ): AuditRefusal | null => {
-  if (!isApiError(error)) {
+  if (error === null || error === undefined) {
     return null;
+  }
+
+  // A rejected `fetch` never reached the server, so there is no sentence to
+  // quote - and returning null here would leave the button re-enabling itself
+  // with nothing said, which reads as a click that did not register.
+  if (!isApiError(error)) {
+    return {message: UNREACHABLE_REQUEST, retryable: true};
   }
 
   const code = conflictCodeOf(error.body);

@@ -46,7 +46,7 @@ const GENERIC = 'Something went wrong';
  * fresh action to repeat, while losing contact DURING one leaves an audit
  * probably still running on the server.
  */
-const UNREACHABLE_REQUEST = 'Could not reach tabstop. Check your connection and try again';
+export const UNREACHABLE_REQUEST = 'Could not reach tabstop. Check your connection and try again';
 const UNREACHABLE_POLL = 'Lost contact with tabstop. The audit may still be running';
 
 /**

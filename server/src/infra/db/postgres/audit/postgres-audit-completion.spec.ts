@@ -213,7 +213,18 @@ describe('PostgresAuditRepository completion', () => {
     const pageId = await makePage(7);
     const previous = await doneAudit(pageId, {score: 90, createdAt: new Date('2026-01-01T10:00:00Z')});
     const current = await claimedAudit(pageId, new Date('2026-01-02T10:00:00Z'));
-    await db.updateTable('audits').set({on_demand: true}).where('id', '=', current.id).execute();
+    // What makes it on demand: a spend on the ledger, which is where #115
+    // records the entitlement rather than on the audit row.
+    const owner = await db
+      .selectFrom('pages')
+      .innerJoin('sites', 'sites.id', 'pages.site_id')
+      .select('sites.user_id')
+      .where('pages.id', '=', pageId)
+      .executeTakeFirstOrThrow();
+    await db
+      .insertInto('on_demand_audits')
+      .values({user_id: owner.user_id, spent_on: '2026-01-02', audit_id: current.id})
+      .execute();
 
     await complete(current, {score: 83});
 

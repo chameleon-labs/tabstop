@@ -539,6 +539,8 @@ describe('PageDetail announcements', () => {
 
   describe('auditing on demand', () => {
     const auditNowButton = (): HTMLElement => screen.getByRole('button', {name: `Audit ${URL} now`});
+    const auditingButton = (): HTMLElement => screen.getByRole('button', {name: `Auditing ${URL}`});
+    const acceptedAudit = {auditId: uuid('9'), status: 'queued', pollAfterMs: 2000};
 
     it('asks the page own endpoint, so the result belongs to this page', async () => {
       renderDetail('/pages/page-1', {
@@ -557,8 +559,9 @@ describe('PageDetail announcements', () => {
 
     it('will not ask again while an audit for this page is already running', async () => {
       // The refusal the server would send anyway, spent before the request
-      // rather than after it - and the label says which of the two states the
-      // button is in, since a disabled control with no reason reads as broken.
+      // rather than after it. The ACCESSIBLE NAME carries the state as well as
+      // the visible text: a fixed label reading "Audit now" on a disabled
+      // control tells a screen reader user the opposite of what is happening.
       renderDetail('/pages/page-1', {
         ...DEFAULT_ROUTES,
         '/api/pages': () =>
@@ -567,9 +570,41 @@ describe('PageDetail announcements', () => {
       await screen.findByRole('heading', {level: 1, name: DOMAIN});
 
       await waitFor(() => {
-        expect(auditNowButton()).toBeDisabled();
+        expect(auditingButton()).toBeDisabled();
       });
-      expect(auditNowButton()).toHaveTextContent('Auditing');
+      expect(auditingButton()).toHaveTextContent('Auditing');
+      expect(screen.queryByRole('button', {name: `Audit ${URL} now`})).not.toBeInTheDocument();
+    });
+
+    it('polls the audit it started and shows its phase in place', async () => {
+      // The accepted response carries an id and a poll interval, and #115 asks
+      // for progress on this screen rather than a button that merely greys out.
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () => jsonResponse(202, acceptedAudit),
+        [`/api/audits/${uuid('9')}`]: () =>
+          jsonResponse(200, {...auditResult(), auditId: uuid('9'), status: 'running'}),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(`/api/audits/${uuid('9')}`, expect.anything());
+      });
+    });
+
+    it('says the audit finished once the one it started is done', async () => {
+      renderDetail('/pages/page-1', {
+        ...DEFAULT_ROUTES,
+        'POST /api/pages/page-1/audits': () => jsonResponse(202, acceptedAudit),
+        [`/api/audits/${uuid('9')}`]: () => jsonResponse(200, {...auditResult(), auditId: uuid('9'), status: 'done'}),
+      });
+      await screen.findByRole('heading', {level: 1, name: DOMAIN});
+
+      await userEvent.click(auditNowButton());
+
+      expect(await screen.findByText('Audit finished')).toBeInTheDocument();
     });
 
     it('shows the refusal sentence and when the allowance comes back', async () => {

@@ -1,32 +1,38 @@
 import {sql, type Kysely} from 'kysely';
 
 export const up = async (db: Kysely<unknown>): Promise<void> => {
-  // Whether a person asked for this audit, as opposed to the nightly run or
-  // the insert that adding a page performs.
+  // The account's daily allowance, recorded AS ITS OWN FACT rather than
+  // counted over the audits it produced (#115).
   //
-  // A column rather than a derivation, because nothing already on the row can
-  // answer it. `scheduled_for` separates the nightly run from everything else,
-  // but a page's first audit and an on-demand one are both null there - and
-  // counting the two together would refuse somebody's on-demand audit because
-  // they added a page that morning.
+  // The obvious implementation - a flag on `audits`, counted through the pages
+  // an account holds - is refundable by deleting a page. Deleting a page
+  // cascades its audits, so the count drops and the same day's allowance can be
+  // spent again on another page. An entitlement has to outlive the thing it
+  // paid for, which means a row of its own that page deletion does not touch.
   //
-  // Not null with a default of false, which is exact rather than a guess:
-  // every row that predates this migration was created when there was no way
-  // to ask for one.
-  await sql`alter table audits add column on_demand boolean not null default false`.execute(db);
+  // `audit_id` says which audit the spend produced, and is nullable for exactly
+  // that reason: when the audit goes, the spend stays.
+  await db.schema
+    .createTable('on_demand_audits')
+    .addColumn('id', 'bigserial', (col) => col.primaryKey())
+    .addColumn('user_id', 'bigint', (col) => col.notNull().references('users.id').onDelete('cascade'))
+    // A stored date, like `audits.scheduled_for` and for the same reason:
+    // `timestamptz::date` is STABLE rather than IMMUTABLE, so deriving the day
+    // from `created_at` cannot be indexed, and the day the allowance belongs to
+    // is a property of the decision rather than of the insert.
+    .addColumn('spent_on', 'date', (col) => col.notNull())
+    .addColumn('audit_id', 'bigint', (col) => col.references('audits.id').onDelete('set null'))
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .execute();
 
-  // The allowance is one per ACCOUNT per UTC day, so the count is taken across
-  // the pages an account holds - up to ten - and this serves it directly.
-  //
-  // Partial, so it holds only the rows the allowance is about. On-demand
-  // audits are the rarest kind by construction, so this index stays small
-  // enough to be worth having next to a check that runs on every request.
-  await sql`
-    create index audits_on_demand_idx on audits (page_id, created_at) where on_demand
-  `.execute(db);
+  // The allowance check's only query, and it runs on every request.
+  await db.schema
+    .createIndex('on_demand_audits_user_day_idx')
+    .on('on_demand_audits')
+    .columns(['user_id', 'spent_on'])
+    .execute();
 };
 
 export const down = async (db: Kysely<unknown>): Promise<void> => {
-  await sql`drop index if exists audits_on_demand_idx`.execute(db);
-  await sql`alter table audits drop column on_demand`.execute(db);
+  await db.schema.dropTable('on_demand_audits').ifExists().execute();
 };

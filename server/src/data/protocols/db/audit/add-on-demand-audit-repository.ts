@@ -3,8 +3,8 @@ import type {AuditModel} from '../../../../domain/models/audit.js';
 export type AddOnDemandAuditParams = {
   userId: string;
   pageId: string;
-  /** On-demand audits created at or after this instant count against the allowance. */
-  since: Date;
+  /** The UTC calendar day the allowance is counted in, as `YYYY-MM-DD`. */
+  day: string;
   /** How many the account may have in the window. */
   allowance: number;
 };
@@ -27,4 +27,16 @@ export type AddOnDemandAuditResult =
 
 export interface AddOnDemandAuditRepository {
   addOnDemand: (params: AddOnDemandAuditParams) => Promise<AddOnDemandAuditResult>;
+}
+
+/**
+ * Undoes an accepted request that never reached the queue: the audit row and
+ * the allowance it spent, together.
+ *
+ * Together because they were written together. Removing only the audit leaves
+ * the account charged for a run nothing will perform, which is the one outcome
+ * a failed enqueue must not have.
+ */
+export interface ReleaseOnDemandAuditRepository {
+  releaseOnDemand: (auditId: string) => Promise<void>;
 }

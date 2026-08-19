@@ -737,7 +737,6 @@ describe('PostgresPageRepository', () => {
           url: `https://${randomUUID()}.test/`,
           status: 'done',
           score: 90,
-          on_demand: true,
         })
         .execute();
 

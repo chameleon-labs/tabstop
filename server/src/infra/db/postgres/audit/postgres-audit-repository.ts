@@ -22,6 +22,7 @@ import type {
   AddOnDemandAuditParams,
   AddOnDemandAuditResult,
   AddOnDemandAuditRepository,
+  ReleaseOnDemandAuditRepository,
 } from '../../../../data/protocols/db/audit/add-on-demand-audit-repository.js';
 import type {Database} from '../database.js';
 import {detectRegression} from '../../../../domain/services/regression.js';
@@ -93,7 +94,8 @@ export class PostgresAuditRepository
     MarkFailedRepository,
     DeleteQueuedAuditRepository,
     ReclaimAbandonedAuditsRepository,
-    AddOnDemandAuditRepository
+    AddOnDemandAuditRepository,
+    ReleaseOnDemandAuditRepository
 {
   constructor(
     private readonly db: Kysely<Database>,
@@ -215,19 +217,18 @@ export class PostgresAuditRepository
         return {outcome: 'in-flight'};
       }
 
+      // Counted on the ledger, never over `audits`. Deleting a page cascades
+      // its audits, so an allowance counted through the account's pages is
+      // refunded by removing the page it was spent on.
       const spent = await trx
-        .selectFrom('audits')
+        .selectFrom('on_demand_audits')
         .select(({fn}) => fn.countAll<string>().as('count'))
-        .where('on_demand', '=', true)
-        .where('created_at', '>=', params.since)
-        .where('page_id', 'in', (eb) =>
-          eb
-            .selectFrom('pages')
-            .select('pages.id')
-            .where('pages.site_id', 'in', (inner) =>
-              inner.selectFrom('sites').select('sites.id').where('sites.user_id', '=', params.userId),
-            ),
-        )
+        .where('user_id', '=', params.userId)
+        // Compared as a date literal rather than through the column's mapped
+        // type: node-postgres parses `date` into a JS Date at LOCAL midnight,
+        // so the select-side type is a Date and passing one back would make
+        // this query mean something different east of Greenwich.
+        .where(sql<SqlBool>`spent_on = ${params.day}::date`)
         .executeTakeFirstOrThrow();
 
       if (Number(spent.count) >= params.allowance) {
@@ -244,12 +245,31 @@ export class PostgresAuditRepository
           page_id: params.pageId,
           url: page.url,
           status: 'queued',
-          on_demand: true,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
 
+      // In the same transaction as the audit: a spend without its audit charges
+      // for nothing, and an audit without its spend is free.
+      await trx
+        .insertInto('on_demand_audits')
+        .values({user_id: params.userId, spent_on: params.day, audit_id: row.id})
+        .execute();
+
       return {outcome: 'added', audit: toAuditModel(row)};
+    });
+  }
+
+  async releaseOnDemand(auditId: string): Promise<void> {
+    if (!isStorableId(auditId)) {
+      return;
+    }
+
+    await this.db.transaction().execute(async (trx) => {
+      // The spend first, so a failure between the two leaves the account
+      // charged rather than the queue holding a row nothing accounts for.
+      await trx.deleteFrom('on_demand_audits').where('audit_id', '=', auditId).execute();
+      await trx.deleteFrom('audits').where('id', '=', auditId).where('status', '=', 'queued').execute();
     });
   }
 

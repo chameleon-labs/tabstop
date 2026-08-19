@@ -71,6 +71,20 @@
   gap: var(--lat-space-2);
 }
 
+.page-detail__progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lat-space-3);
+}
+
+.page-detail__phase {
+  margin: 0;
+  color: var(--lat-text-subtle);
+  font-family: var(--lat-text-meta-font-family);
+  font-size: var(--lat-text-meta-font-size);
+}
+
 .page-detail__summary {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);

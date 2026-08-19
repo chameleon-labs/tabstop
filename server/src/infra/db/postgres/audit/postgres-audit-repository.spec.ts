@@ -75,11 +75,11 @@ describe('PostgresAuditRepository', () => {
     return {userId: user.id, pageIds};
   };
 
-  const DAY_START = new Date('2026-08-18T00:00:00.000Z');
+  const SPEND_DAY = '2026-08-18';
 
   describe('addOnDemand', () => {
-    const ask = async (userId: string, pageId: string, allowance = 1, since = DAY_START) =>
-      await sut.addOnDemand({userId, pageId, since, allowance});
+    const ask = async (userId: string, pageId: string, allowance = 1, day = SPEND_DAY) =>
+      await sut.addOnDemand({userId, pageId, day, allowance});
 
     it('attaches the audit to the page, so it lands in that page trend', async () => {
       const {userId, pageIds} = await makeAccount();
@@ -96,20 +96,36 @@ describe('PostgresAuditRepository', () => {
       expect(result.audit.scheduledFor).toBeNull();
     });
 
-    it('marks the row on demand, which is what the allowance is counted over', async () => {
+    it('records the spend against the account, linked to the audit it paid for', async () => {
       const {userId, pageIds} = await makeAccount();
       const result = await ask(userId, pageIds[0]!);
       if (result.outcome !== 'added') {
         throw new Error('expected an audit');
       }
 
-      const row = await db
-        .selectFrom('audits')
-        .select('on_demand')
-        .where('id', '=', result.audit.id)
-        .executeTakeFirstOrThrow();
+      const spends = await db
+        .selectFrom('on_demand_audits')
+        .select(['audit_id', 'user_id'])
+        .where('user_id', '=', userId)
+        .execute();
 
-      expect(row.on_demand).toBe(true);
+      expect(spends).toEqual([{user_id: userId, audit_id: result.audit.id}]);
+    });
+
+    it('survives the page being deleted, so the allowance cannot be refunded', async () => {
+      // The bypass a flag on `audits` would leave open: deleting a page
+      // cascades its audits, so an allowance counted through the account's
+      // pages comes back by removing the page it was spent on. Audit one page,
+      // delete it, audit the next - free, all day.
+      const {userId, pageIds} = await makeAccount(2);
+      const first = await ask(userId, pageIds[0]!);
+      if (first.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+
+      await db.deleteFrom('pages').where('id', '=', pageIds[0]!).execute();
+
+      expect(await ask(userId, pageIds[1]!)).toEqual({outcome: 'allowance-spent'});
     });
 
     it('gives another account page the same answer as one that does not exist', async () => {
@@ -171,20 +187,19 @@ describe('PostgresAuditRepository', () => {
       expect(await ask(userId, pageIds[1]!)).toEqual({outcome: 'allowance-spent'});
     });
 
-    it('does not count an audit from before the window', async () => {
+    it('does not count a spend from another day', async () => {
       const {userId, pageIds} = await makeAccount();
-      await db
-        .insertInto('audits')
-        .values({
-          page_id: pageIds[0]!,
-          url: 'https://x.test/a',
-          status: 'done',
-          on_demand: true,
-          created_at: new Date('2026-08-17T23:59:59.000Z'),
-        })
-        .execute();
+      await db.insertInto('on_demand_audits').values({user_id: userId, spent_on: '2026-08-17'}).execute();
 
       expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('does not count another account spend', async () => {
+      const mine = await makeAccount();
+      const theirs = await makeAccount();
+      await db.insertInto('on_demand_audits').values({user_id: theirs.userId, spent_on: SPEND_DAY}).execute();
+
+      expect((await ask(mine.userId, mine.pageIds[0]!)).outcome).toBe('added');
     });
 
     it('ignores audits the account did not ask for', async () => {
@@ -203,6 +218,37 @@ describe('PostgresAuditRepository', () => {
         .execute();
 
       expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('releases the audit and the allowance together when the queue refused it', async () => {
+      const {userId, pageIds} = await makeAccount();
+      const first = await ask(userId, pageIds[0]!);
+      if (first.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+
+      await sut.releaseOnDemand(first.audit.id);
+
+      expect(await db.selectFrom('on_demand_audits').select('id').where('user_id', '=', userId).execute()).toEqual([]);
+      expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
+    });
+
+    it('leaves a released audit that has already started alone', async () => {
+      // `releaseOnDemand` undoes an accepted request that never reached the
+      // queue. A run that has begun is not that, and deleting its row mid-audit
+      // is how a worker ends up completing an audit that no longer exists.
+      const {userId, pageIds} = await makeAccount();
+      const first = await ask(userId, pageIds[0]!);
+      if (first.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      await db.updateTable('audits').set({status: 'running'}).where('id', '=', first.audit.id).execute();
+
+      await sut.releaseOnDemand(first.audit.id);
+
+      expect(
+        await db.selectFrom('audits').select('id').where('id', '=', first.audit.id).executeTakeFirst(),
+      ).toBeDefined();
     });
 
     it('audits a paused page, because pausing stops the schedule and not the person', async () => {
@@ -237,21 +283,33 @@ describe('PostgresAuditRepository', () => {
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
+      let locked!: () => void;
+      // Signalled by the lock itself rather than by a timer: a sleep long
+      // enough on this machine is not long enough on a loaded one, and the
+      // failure it produces looks like the bug rather than like a slow test.
+      const lockTaken = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
 
+      // FOR NO KEY UPDATE, not FOR UPDATE, and the distinction is what makes
+      // this test discriminate. The ledger insert carries a foreign key to
+      // `users`, so it takes FOR KEY SHARE on that row by itself - and FOR
+      // UPDATE conflicts with that, which would block the request whether or
+      // not `addOnDemand` locks anything. FOR NO KEY UPDATE conflicts with the
+      // explicit FOR UPDATE and not with the foreign key's share, so what is
+      // measured here is the lock this code takes rather than Postgres's.
       const holding = db.transaction().execute(async (trx) => {
-        await trx.selectFrom('users').select('id').where('id', '=', userId).forUpdate().execute();
+        await trx.selectFrom('users').select('id').where('id', '=', userId).forNoKeyUpdate().execute();
+        locked();
         await held;
       });
 
       try {
-        // Long enough for the select above to have taken the row lock.
-        await new Promise((resolve) => {
-          setTimeout(resolve, 100);
-        });
+        await lockTaken;
         const asking = new PostgresAuditRepository(second).addOnDemand({
           userId,
           pageId: pageIds[0]!,
-          since: DAY_START,
+          day: SPEND_DAY,
           allowance: 1,
         });
 

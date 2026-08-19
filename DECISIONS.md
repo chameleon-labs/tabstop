@@ -9,9 +9,8 @@ Format: **date · decision · why · what was rejected/deferred**.
 ## 2026-08-18 — an on-demand audit is one per account per day, and it alerts
 
 `POST /api/pages/:id/audits` audits a page the account owns. The allowance is
-one per account per UTC day, counted in the database over a new `on_demand`
-column, and a manual audit raises regression alerts exactly like a scheduled
-one.
+one per account per UTC day, recorded on a dedicated `on_demand_audits` ledger,
+and a manual audit raises regression alerts exactly like a scheduled one.
 
 Why per ACCOUNT rather than per page: this is the number a paid plan raises, so
 it has to bound what the free tier costs. A per-page allowance scales that cost
@@ -19,14 +18,17 @@ with how many pages an account holds, which is the account's choice rather than
 the plan's. It also makes the per-page cooldown #115 sketched redundant - a
 single daily audit cannot reach the same page twice.
 
-Why a column and a count rather than a rate-limiter bucket: a token bucket
+Why a ledger and a count rather than a rate-limiter bucket: a token bucket
 refills continuously and bounds a request RATE, which is what the per-IP limiter
 in front of every route already does. An entitlement has to survive a restart,
-be countable, and be able to say when it comes back. Nothing already on the
-audit row could answer it either - `scheduled_for` separates the nightly run
-from everything else, but a page's first audit and an on-demand one are both
-null there, so counting them together would refuse somebody an audit because
-they added a page that morning.
+be countable, and be able to say when it comes back.
+
+Why a ledger rather than a flag on `audits`, which was the first shape: deleting
+a page cascades its audits, so an allowance counted through the pages an account
+holds is refunded by deleting the page it was spent on - audit a page, delete
+it, audit the next, free all day. An entitlement has to outlive the thing it
+paid for, which means a row of its own that page deletion does not touch. Caught
+in review on #123.
 
 Why it alerts: an on-demand audit already stands tonight's scheduled one down,
 because `loadDueForReaudit` skips any page audited today. Suppressing alerts on
