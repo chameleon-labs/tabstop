@@ -25,6 +25,34 @@ export type PageConflictBody = PageLimitReachedBody | PageAlreadyTrackedBody;
 export type PageConflictCode = PageConflictBody['code'];
 
 /**
+ * The two 409s `POST /api/pages/:id/audits` answers with.
+ *
+ * Separate variants for the same reason the page conflicts are separate: only
+ * one of them carries data, and a screen saying when the next on-demand audit
+ * becomes available can get that instant from nowhere else.
+ */
+export type AuditInFlightBody = {
+  code: 'audit_in_flight';
+  error: string;
+};
+
+export type OnDemandAuditSpentBody = {
+  code: 'on_demand_audit_spent';
+  error: string;
+  /**
+   * When the allowance refills, absolute rather than a duration - a client that
+   * subtracts elapsed time from a relative number is wrong by however long the
+   * response spent in flight. The same reasoning as `RateLimitedBody.resetAt`.
+   */
+  resetAt: string;
+};
+
+export type PageAuditConflictBody = AuditInFlightBody | OnDemandAuditSpentBody;
+
+/** Every code this endpoint may send, for a client that wants to be exhaustive. */
+export type PageAuditConflictCode = PageAuditConflictBody['code'];
+
+/**
  * A page as the API reports it.
  *
  * Four fields, listed rather than derived from the server's model, because

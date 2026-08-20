@@ -55,6 +55,21 @@ export interface PagesTable {
   created_at: Generated<Date>;
 }
 
+/**
+ * One spent allowance (#115). Deliberately not derived from `audits`: deleting
+ * a page cascades its audits, and an entitlement that a page deletion refunds
+ * is not an entitlement.
+ */
+export interface OnDemandAuditsTable {
+  id: Generated<string>;
+  user_id: string;
+  /** WRITE-ONLY, like `audits.scheduled_for`: node-postgres parses `date` at LOCAL midnight. */
+  spent_on: ColumnType<Date, string, string>;
+  /** Null once the audit it paid for has been deleted. The spend stands. */
+  audit_id: Nullable<string>;
+  created_at: Generated<Date>;
+}
+
 export interface AuditsTable {
   id: Generated<string>;
   public_uuid: Generated<string>;
@@ -115,6 +130,7 @@ export interface Database {
   sites: SitesTable;
   pages: PagesTable;
   audits: AuditsTable;
+  on_demand_audits: OnDemandAuditsTable;
   violations: ViolationsTable;
   alert_events: AlertEventsTable;
 }

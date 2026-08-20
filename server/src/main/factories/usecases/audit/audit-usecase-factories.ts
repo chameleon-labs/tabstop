@@ -1,5 +1,6 @@
 import {DbLoadAuditResult} from '../../../../data/usecases/load-audit-result/db-load-audit-result.js';
 import {DbRequestAudit} from '../../../../data/usecases/request-audit/db-request-audit.js';
+import {DbRequestPageAudit} from '../../../../data/usecases/audit/db-request-page-audit.js';
 import type {LoadAuditResult} from '../../../../domain/usecases/load-audit-result.js';
 import {PostgresAuditRepository} from '../../../../infra/db/postgres/audit/postgres-audit-repository.js';
 import {PostgresViolationRepository} from '../../../../infra/db/postgres/violation/postgres-violation-repository.js';
@@ -24,6 +25,15 @@ export const makeRequestAudit = (auditQueue: AuditJobQueue): DbRequestAudit => {
     DEFAULT_URL_POLICY,
     env.auditQueueMaxDepth,
   );
+};
+
+export const makeRequestPageAudit = (auditQueue: AuditJobQueue): DbRequestPageAudit => {
+  const audits = new PostgresAuditRepository(getDatabase());
+  // No DNS resolver and no url policy, unlike the anonymous endpoint. The url
+  // is not user input here - it is a page the account already tracks, checked
+  // when it was added - and the worker's own gate re-resolves at fetch time,
+  // which is the only check that can still be true by then.
+  return new DbRequestPageAudit(audits, audits, auditQueue, env.auditQueueMaxDepth);
 };
 
 export const makeLoadAuditResult = (): LoadAuditResult =>

@@ -204,6 +204,35 @@ describe('PostgresAuditRepository completion', () => {
     ]);
   });
 
+  it('alerts on an on-demand audit like any other, which is the decision #115 made', async () => {
+    // The alternative was suppressing alerts for an audit the reader asked
+    // for, on the grounds that they are watching it anyway. That leaves a
+    // hole: an on-demand audit also stands tonight's scheduled one down, so a
+    // page audited by hand each day would never alert at all. The one-per-page
+    // -per-day index already stops the two from alerting twice.
+    const pageId = await makePage(7);
+    const previous = await doneAudit(pageId, {score: 90, createdAt: new Date('2026-01-01T10:00:00Z')});
+    const current = await claimedAudit(pageId, new Date('2026-01-02T10:00:00Z'));
+    // What makes it on demand: a spend on the ledger, which is where #115
+    // records the entitlement rather than on the audit row.
+    const owner = await db
+      .selectFrom('pages')
+      .innerJoin('sites', 'sites.id', 'pages.site_id')
+      .select('sites.user_id')
+      .where('pages.id', '=', pageId)
+      .executeTakeFirstOrThrow();
+    await db
+      .insertInto('on_demand_audits')
+      .values({user_id: owner.user_id, spent_on: '2026-01-02', audit_id: current.id})
+      .execute();
+
+    await complete(current, {score: 83});
+
+    expect(await alertsFor(pageId)).toMatchObject([
+      {audit_id: current.id, previous_audit_id: previous.id, kind: 'score_drop'},
+    ]);
+  });
+
   it('records a new severe rule even when the score is flat', async () => {
     const pageId = await makePage();
     const previous = await doneAudit(pageId, {

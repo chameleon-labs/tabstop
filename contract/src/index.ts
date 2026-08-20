@@ -23,9 +23,13 @@ export type {AccountResponse} from './account.js';
 
 export type {
   AddPageResponse,
+  AuditInFlightBody,
   LatestPageAudit,
   LoadPagesResponse,
+  OnDemandAuditSpentBody,
   PageAlreadyTrackedBody,
+  PageAuditConflictBody,
+  PageAuditConflictCode,
   PageConflictBody,
   PageConflictCode,
   PageHistoryPoint,

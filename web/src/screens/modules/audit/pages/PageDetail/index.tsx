@@ -23,6 +23,10 @@ import {TrendChart} from '../../components/TrendChart';
 import {dashboardRowState} from '../../dashboard-row';
 import {IMPACT_LABELS} from '../../grouping';
 import {useDeleteMonitoredPage, useMonitoredPages, useSetPageMonitoring} from '../../monitored-pages';
+import {useAudit} from '../../audits';
+import {AuditProgress} from '../../components/AuditProgress';
+import {useAuditPhase} from '../../hooks/use-audit-phase';
+import {describeAuditRefusal, useRequestPageAudit} from '../../on-demand-audit';
 import {HISTORY_WINDOWS, historyWindowFrom, usePageHistory} from '../../page-history';
 import {exactTime, nextAuditTime, pageTimestamp, relativeTime} from '../../page-time';
 import {hostOf} from '../../url';
@@ -48,6 +52,12 @@ export const PageDetail = (): React.JSX.Element => {
   const page = pages.data?.pages.find((candidate) => candidate.id === id);
   const history = usePageHistory(id, days);
   const monitoring = useSetPageMonitoring();
+  const auditNow = useRequestPageAudit(page?.id);
+  // The accepted audit, polled to a terminal state on this screen. The page's
+  // own queries follow it too, so the trend and the list settle by themselves;
+  // this is what lets the reader watch it happen rather than infer it.
+  const startedAuditId = auditNow.data?.auditId;
+  const started = useAudit(startedAuditId, auditNow.data === undefined ? {} : {pollAfterMs: auditNow.data.pollAfterMs});
   const deletePage = useDeleteMonitoredPage();
 
   const [announcement, setAnnouncement] = useState('');
@@ -71,6 +81,19 @@ export const PageDetail = (): React.JSX.Element => {
   const rowState = page === undefined ? null : dashboardRowState(page);
   const latestCounts = page?.latestAudit?.status === 'done' ? page.latestAudit.countsByImpact : null;
   const monitoringVerb = page?.monitoringEnabled === false ? 'Resume' : 'Pause';
+  const startedStatus = started.data?.status;
+  const startedRunning = startedAuditId !== undefined && startedStatus !== 'done' && startedStatus !== 'failed';
+  const auditing =
+    auditNow.isPending ||
+    startedRunning ||
+    page?.latestAudit?.status === 'queued' ||
+    page?.latestAudit?.status === 'running';
+  const phase = useAuditPhase(
+    startedStatus ?? 'queued',
+    started.data === undefined ? null : Date.parse(started.data.createdAt),
+    startedRunning && started.error === null,
+  );
+  const refusal = describeAuditRefusal(auditNow.error);
   const now = Date.now();
 
   const setWindow = (next: string): void => {
@@ -174,6 +197,18 @@ export const PageDetail = (): React.JSX.Element => {
         {page !== undefined && (
           <div className="page-detail__actions">
             <Button
+              variant="primary"
+              size="sm"
+              disabled={auditing}
+              aria-label={auditing ? `Auditing ${page.url}` : `Audit ${page.url} now`}
+              onClick={() => {
+                auditNow.reset();
+                auditNow.mutate();
+              }}
+            >
+              {auditing ? 'Auditing' : 'Audit now'}
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               disabled={monitoring.isPending}
@@ -198,6 +233,24 @@ export const PageDetail = (): React.JSX.Element => {
           </div>
         )}
       </header>
+
+      {startedAuditId !== undefined && started.error === null && (
+        <div className="page-detail__progress">
+          <AuditProgress phase={phase} complete={!startedRunning} />
+          {/* AuditProgress is decorative, so the phase is said in text as well
+              as drawn - and said politely, since a reader who has moved on
+              should not be interrupted for each of four steps. */}
+          <p role="status" aria-live="polite" className="page-detail__phase">
+            {startedRunning ? (phase ?? 'Starting the audit') : 'Audit finished'}
+          </p>
+        </div>
+      )}
+
+      {refusal !== null && (
+        <Callout variant="warning" icon={<AlertCircle size="sm" />} title="Could not start an audit">
+          <p>{refusal.message}</p>
+        </Callout>
+      )}
 
       {controlError !== null && (
         <Callout variant="danger" icon={<AlertCircle size="sm" />} title="Could not change monitoring">

@@ -725,6 +725,24 @@ describe('PostgresPageRepository', () => {
       expect(await dueIds()).not.toContain(pageId);
     });
 
+    it('stands down tonight for a page audited on demand today', async () => {
+      // The interaction #115 relies on rather than changes: an on-demand audit
+      // suppresses that night's scheduled one, so the two cannot both run and
+      // the reader does not get two points for one day.
+      const {pageId} = await monitoredPage();
+      await db
+        .insertInto('audits')
+        .values({
+          page_id: pageId,
+          url: `https://${randomUUID()}.test/`,
+          status: 'done',
+          score: 90,
+        })
+        .execute();
+
+      expect(await dueIds()).not.toContain(pageId);
+    });
+
     it('returns a page whose last audit was yesterday', async () => {
       // The counterpart to the rule above: a bound that never released would
       // audit every page exactly once, ever.

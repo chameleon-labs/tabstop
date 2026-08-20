@@ -1,6 +1,7 @@
 import type {RequestHandler, Router} from 'express';
 import {adaptMiddleware} from '../adapters/express-middleware-adapter.js';
 import {adaptRoute} from '../adapters/express-route-adapter.js';
+import {makeRequestPageAuditController} from '../factories/controllers/audit/audit-controller-factories.js';
 import {
   makeAddPageController,
   makeDeletePageController,
@@ -73,6 +74,19 @@ export const setupPageRoutes = (router: Router, rateLimiter: RateLimiter, auditQ
       rateLimiter,
       {name: 'pageHistory', bucket: RATE_LIMITS.pageHistory, key: ipKey},
       makeLoadPageHistoryController(),
+    ),
+  );
+
+  // On demand (#115). The bucket in front of this is not what bounds the cost -
+  // the account's daily allowance is, and it is counted in the database, where
+  // it survives a restart and can become a plan entitlement. This only stops an
+  // unauthenticated caller driving the session lookup behind it.
+  router.post(
+    '/pages/:id/audits',
+    ...guarded(
+      rateLimiter,
+      {name: 'pageAudit', bucket: RATE_LIMITS.pageAudit, key: ipKey},
+      makeRequestPageAuditController(auditQueue),
     ),
   );
 

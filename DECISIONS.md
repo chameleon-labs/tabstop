@@ -6,6 +6,55 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-18 — an on-demand audit is one per account per day, and it alerts
+
+`POST /api/pages/:id/audits` audits a page the account owns. The allowance is
+one per account per UTC day, recorded on a dedicated `on_demand_audits` ledger,
+and a manual audit raises regression alerts exactly like a scheduled one.
+
+Why per ACCOUNT rather than per page: this is the number a paid plan raises, so
+it has to bound what the free tier costs. A per-page allowance scales that cost
+with how many pages an account holds, which is the account's choice rather than
+the plan's. It also makes the per-page cooldown #115 sketched redundant - a
+single daily audit cannot reach the same page twice.
+
+Why a ledger and a count rather than a rate-limiter bucket: a token bucket
+refills continuously and bounds a request RATE, which is what the per-IP limiter
+in front of every route already does. An entitlement has to survive a restart,
+be countable, and be able to say when it comes back.
+
+Why a ledger rather than a flag on `audits`, which was the first shape: deleting
+a page cascades its audits, so an allowance counted through the pages an account
+holds is refunded by deleting the page it was spent on - audit a page, delete
+it, audit the next, free all day. An entitlement has to outlive the thing it
+paid for, which means a row of its own that page deletion does not touch. Caught
+in review on #123.
+
+Why it alerts: an on-demand audit already stands tonight's scheduled one down,
+because `loadDueForReaudit` skips any page audited today. Suppressing alerts on
+manual audits therefore would not merely make them quieter - a page audited by
+hand each day would never alert at all, and the regression it was run to check
+for would go unreported. The one-alert-per-page-per-day index already stops the
+two from firing twice.
+
+Both writers serialise on the PAGE row. The account lock bounds the allowance,
+which the nightly run knows nothing about and never takes, so on its own it left
+an on-demand request racing `addScheduled` - a click landing while the fan-out
+enqueues that page produced two Chromium runs and two trend points for one day.
+`addScheduled` also stands down for an on-demand audit still in flight, scoped
+to that rather than to any unfinished audit: eligibility already excludes those,
+and widening it would change what the run does about its own stalled rows, which
+the reclaim pass owns. Caught in review on #123.
+
+Rejected: 429 with `retryAfter` for the refusal. It reads as "you are going too
+fast", and the honest answer is "you have had this one, here is when the next
+arrives" - a coded 409 carrying `resetAt`, the mechanism `POST /api/pages`
+already uses for its two conflicts.
+
+Deferred: the control on each dashboard row, and bulk re-audit. Per-row progress
+and per-row refusal copy are a separate piece of work, and fan-out meets the
+queue depth cap as a design question rather than a limit.
+
 ## 2026-08-17 — pausing a page cancels work already queued for it
 
 Pausing deletes the audits the nightly run has scheduled for the page and not

@@ -1,6 +1,10 @@
 import {vi} from 'vitest';
 import type {AddAuditRepository} from '../protocols/db/audit/add-audit-repository.js';
 import type {AddScheduledAuditRepository} from '../protocols/db/audit/add-scheduled-audit-repository.js';
+import type {
+  AddOnDemandAuditRepository,
+  ReleaseOnDemandAuditRepository,
+} from '../protocols/db/audit/add-on-demand-audit-repository.js';
 import type {DeleteQueuedAuditRepository} from '../protocols/db/audit/delete-queued-audit-repository.js';
 import type {
   ReclaimAbandonedAuditsRepository,
@@ -136,6 +140,21 @@ export const mockPagedStaleAudits = (candidates: StaleAudit[]) =>
       candidates.filter((candidate) => after === null || candidate.createdAt > after.createdAt).slice(0, limit),
     ),
   );
+
+export const mockAddOnDemandAuditRepository = () => ({
+  addOnDemand: vi.fn<AddOnDemandAuditRepository['addOnDemand']>((params) =>
+    Promise.resolve({
+      outcome: 'added' as const,
+      audit: {...mockAuditModel(), id: `audit-for-${params.pageId}`, pageId: params.pageId},
+    }),
+  ),
+});
+
+export const mockReleaseOnDemandAuditRepository = () => ({
+  releaseOnDemand: vi.fn<ReleaseOnDemandAuditRepository['releaseOnDemand']>(async () => {
+    /* no-op */
+  }),
+});
 
 export const mockDeleteQueuedAuditRepository = () => ({
   deleteIfQueued: vi.fn<DeleteQueuedAuditRepository['deleteIfQueued']>(async () => {

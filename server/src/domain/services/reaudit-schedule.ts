@@ -1,4 +1,5 @@
 import type {AuditStatus} from '../models/audit.js';
+import {utcDayStart} from './utc-day.js';
 
 /**
  * When the nightly run should actually fetch each page.
@@ -84,9 +85,7 @@ export const reauditDelayMs = (
   return (fnv1a(domain) + slot * staggerMs) % windowMs;
 };
 
-export const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
-
-export const utcDayStart = (at: Date): Date => new Date(`${utcDay(at)}T00:00:00.000Z`);
+export {utcDay, utcDayStart} from './utc-day.js';
 
 /**
  * The hour the nightly run starts, and what `REAUDIT_CRON` is built from.

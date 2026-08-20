@@ -701,6 +701,81 @@ describe('page routes', () => {
       expect(row.monitoring_enabled).toBe(true);
     });
 
+    describe('POST /api/pages/:id/audits', () => {
+      /** The page's first audit finished, so nothing is in flight to refuse the request. */
+      const settledPage = async (cookie: string): Promise<string> => {
+        const {pageId} = await seedPage(cookie);
+        await db.updateTable('audits').set({status: 'done', score: 90}).where('page_id', '=', pageId).execute();
+        return pageId;
+      };
+
+      const askForAudit = async (cookie: string, pageId: string): Promise<request.Response> =>
+        await request(app).post(`/api/pages/${pageId}/audits`).set('x-forwarded-for', uniqueIp()).set('cookie', cookie);
+
+      it('queues an audit attached to the page, so it lands in that page history', async () => {
+        const cookie = await signUp();
+        const pageId = await settledPage(cookie);
+
+        const response = await askForAudit(cookie, pageId);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toMatchObject({auditId: expect.stringMatching(UUID) as unknown});
+
+        const history = await request(app)
+          .get(`/api/pages/${pageId}/history`)
+          .set('x-forwarded-for', uniqueIp())
+          .set('cookie', cookie)
+          .expect(200);
+
+        expect(history.body.points).toContainEqual(
+          expect.objectContaining({auditId: response.body.auditId, status: 'queued'}),
+        );
+      });
+
+      it('refuses a second audit the same day, and says when the next one is available', async () => {
+        const cookie = await signUp();
+        const pageId = await settledPage(cookie);
+        expect((await askForAudit(cookie, pageId)).status).toBe(202);
+        // Out of the way, so the refusal is the allowance rather than the audit
+        // still being in flight - which would pass for the wrong reason.
+        await db.updateTable('audits').set({status: 'done'}).where('page_id', '=', pageId).execute();
+
+        const response = await askForAudit(cookie, pageId);
+
+        expect(response.status).toBe(409);
+        expect(response.body).toMatchObject({code: 'on_demand_audit_spent'});
+        expect(Date.parse(response.body.resetAt)).toBeGreaterThan(Date.now());
+      });
+
+      it('refuses while that page is already being audited', async () => {
+        const cookie = await signUp();
+        const {pageId} = await seedPage(cookie);
+
+        const response = await askForAudit(cookie, pageId);
+
+        expect(response.status).toBe(409);
+        expect(response.body).toMatchObject({code: 'audit_in_flight'});
+      });
+
+      it("answers 404 for another account's page, the same as one that does not exist", async () => {
+        const mine = await signUp();
+        const theirs = await signUp();
+        const pageId = await settledPage(theirs);
+
+        expect((await askForAudit(mine, pageId)).status).toBe(404);
+        expect((await askForAudit(mine, '999999999999')).status).toBe(404);
+      });
+
+      it('requires a session', async () => {
+        const cookie = await signUp();
+        const pageId = await settledPage(cookie);
+
+        const response = await request(app).post(`/api/pages/${pageId}/audits`).set('x-forwarded-for', uniqueIp());
+
+        expect(response.status).toBe(401);
+      });
+    });
+
     it('answers the same 404 for an id that could never be a row', async () => {
       const cookie = await signUp();
 

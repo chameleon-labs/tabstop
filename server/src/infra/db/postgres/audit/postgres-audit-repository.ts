@@ -18,9 +18,16 @@ import type {
   ReclaimAbandonedAuditsRepository,
   StaleAudit,
 } from '../../../../data/protocols/db/audit/reclaim-abandoned-audits-repository.js';
+import type {
+  AddOnDemandAuditParams,
+  AddOnDemandAuditResult,
+  AddOnDemandAuditRepository,
+  ReleaseOnDemandAuditRepository,
+} from '../../../../data/protocols/db/audit/add-on-demand-audit-repository.js';
 import type {Database} from '../database.js';
 import {detectRegression} from '../../../../domain/services/regression.js';
 import {toAuditModel} from './audit-mapper.js';
+import {isStorableId} from '../helpers/storable-id.js';
 
 // Postgres rejects a malformed value compared against a `uuid` column (SQLSTATE
 // 22P02) instead of just returning zero rows. A value that cannot be a UUID
@@ -86,7 +93,9 @@ export class PostgresAuditRepository
     CompleteAuditRepository,
     MarkFailedRepository,
     DeleteQueuedAuditRepository,
-    ReclaimAbandonedAuditsRepository
+    ReclaimAbandonedAuditsRepository,
+    AddOnDemandAuditRepository,
+    ReleaseOnDemandAuditRepository
 {
   constructor(
     private readonly db: Kysely<Database>,
@@ -139,6 +148,41 @@ export class PostgresAuditRepository
         return null;
       }
 
+      // The run stands down for work the READER asked for, checked under the
+      // page lock so it serialises with the request rather than racing it.
+      //
+      // Two conditions, because one window is not the only window. Matching
+      // `loadDueForReaudit`'s rule - ANY on-demand audit belonging to this
+      // scheduled day, whatever became of it - is what covers the gap between
+      // the batch being loaded and this page being reached in the loop: an
+      // audit requested and FINISHED inside that gap is invisible to a check
+      // that only looks for work in flight, and the run would then write a
+      // second audit for a day that already has one.
+      //
+      // The in-flight half covers the other direction, which the day alone
+      // misses: a request made just before midnight can still be queued when
+      // tonight's run arrives, and its spend belongs to yesterday.
+      //
+      // Scoped to on-demand audits rather than to anything unfinished.
+      // Eligibility already excludes those, and widening it would change what
+      // the run does about its own stalled rows, which the reclaim pass owns.
+      const requested = await trx
+        .selectFrom('audits')
+        .innerJoin('on_demand_audits', 'on_demand_audits.audit_id', 'audits.id')
+        .select('audits.id')
+        .where('audits.page_id', '=', params.pageId)
+        .where((eb) =>
+          eb.or([
+            sql<SqlBool>`on_demand_audits.spent_on = ${params.scheduledFor}::date`,
+            eb('audits.status', 'in', ['queued', 'running']),
+          ]),
+        )
+        .executeTakeFirst();
+
+      if (requested !== undefined) {
+        return null;
+      }
+
       const row = await trx
         .insertInto('audits')
         .values({
@@ -152,6 +196,142 @@ export class PostgresAuditRepository
         .executeTakeFirst();
 
       return row === undefined ? null : toAuditModel(row);
+    });
+  }
+
+  async addOnDemand(params: AddOnDemandAuditParams): Promise<AddOnDemandAuditResult> {
+    if (!isStorableId(params.pageId) || !isStorableId(params.userId)) {
+      return {outcome: 'not-found'};
+    }
+
+    return await this.db.transaction().execute(async (trx) => {
+      // The account row, locked, and locked FIRST. The allowance is counted
+      // across every page the account holds, so the page is the wrong thing to
+      // serialise on: two requests naming two different pages would take two
+      // different locks and both spend the same single allowance. Taking the
+      // account lock before the count is what makes "one per day" true rather
+      // than likely.
+      const account = await trx
+        .selectFrom('users')
+        .select('id')
+        .where('id', '=', params.userId)
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (account === undefined) {
+        return {outcome: 'not-found'};
+      }
+
+      // Ownership is part of the query, not a separate load: a page belonging
+      // to somebody else matches nothing and is indistinguishable from one that
+      // does not exist, which is what stops the response confirming a real row.
+      //
+      // `forUpdate` on the PAGE as well as the account, and it is the page lock
+      // that serialises this with the nightly run. The account lock bounds the
+      // allowance, which the scheduler knows nothing about and never takes; on
+      // its own it leaves the in-flight check below racing `addScheduled`, so a
+      // click landing while the fan-out enqueues this page produces two audits,
+      // two Chromium runs and two trend points for one day. This is the row
+      // `addScheduled` already locks, so the two now queue behind each other.
+      const page = await trx
+        .selectFrom('pages')
+        .select(['id', 'url'])
+        .where('id', '=', params.pageId)
+        .where('site_id', 'in', (eb) =>
+          eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', params.userId),
+        )
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (page === undefined) {
+        return {outcome: 'not-found'};
+      }
+
+      // Queued OR running, and for this page only. A second audit of one page
+      // is the outcome that actually costs something: two Chromium runs, and a
+      // trend with two points where the reader made one request.
+      const inFlight = await trx
+        .selectFrom('audits')
+        .select('id')
+        .where('page_id', '=', params.pageId)
+        .where('status', 'in', ['queued', 'running'])
+        .executeTakeFirst();
+
+      if (inFlight !== undefined) {
+        return {outcome: 'in-flight'};
+      }
+
+      // Counted on the ledger, never over `audits`. Deleting a page cascades
+      // its audits, so an allowance counted through the account's pages is
+      // refunded by removing the page it was spent on.
+      const spent = await trx
+        .selectFrom('on_demand_audits')
+        .select(({fn}) => fn.countAll<string>().as('count'))
+        .where('user_id', '=', params.userId)
+        // Compared as a date literal rather than through the column's mapped
+        // type: node-postgres parses `date` into a JS Date at LOCAL midnight,
+        // so the select-side type is a Date and passing one back would make
+        // this query mean something different east of Greenwich.
+        .where(sql<SqlBool>`spent_on = ${params.day}::date`)
+        .executeTakeFirstOrThrow();
+
+      if (Number(spent.count) >= params.allowance) {
+        return {outcome: 'allowance-spent'};
+      }
+
+      // `scheduled_for` stays null, so this cannot collide with the unique
+      // index the nightly dedupe relies on - and the run's own eligibility
+      // query skips a page audited today, so tonight's audit stands down
+      // rather than duplicating this one.
+      const row = await trx
+        .insertInto('audits')
+        .values({
+          page_id: params.pageId,
+          url: page.url,
+          status: 'queued',
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      // In the same transaction as the audit: a spend without its audit charges
+      // for nothing, and an audit without its spend is free.
+      await trx
+        .insertInto('on_demand_audits')
+        .values({user_id: params.userId, spent_on: params.day, audit_id: row.id})
+        .execute();
+
+      return {outcome: 'added', audit: toAuditModel(row)};
+    });
+  }
+
+  async releaseOnDemand(auditId: string): Promise<void> {
+    if (!isStorableId(auditId)) {
+      return;
+    }
+
+    await this.db.transaction().execute(async (trx) => {
+      // Still queued, and locked while that is decided. A worker may have
+      // claimed this audit between the enqueue failing and this call - the
+      // enqueue's own reply is what was lost, not necessarily the job - and
+      // then the audit is running, its row must stay, and the allowance it
+      // spent has genuinely been spent. Deleting the ledger row regardless
+      // refunded the day for a run that was about to happen anyway.
+      const audit = await trx
+        .selectFrom('audits')
+        .select('id')
+        .where('id', '=', auditId)
+        .where('status', '=', 'queued')
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (audit === undefined) {
+        return;
+      }
+
+      // The spend first, so a failure between the two leaves the account
+      // charged rather than the queue holding a row nothing accounts for.
+      await trx.deleteFrom('on_demand_audits').where('audit_id', '=', auditId).execute();
+      await trx.deleteFrom('audits').where('id', '=', auditId).execute();
     });
   }
 

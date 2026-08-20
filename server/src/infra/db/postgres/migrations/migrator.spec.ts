@@ -51,6 +51,7 @@ describe('runMigrations', () => {
       '007-scheduled-reaudits',
       '008-alert-delivery',
       '009-alert-delivery-state',
+      '010-on-demand-audits',
     ]);
   });
 

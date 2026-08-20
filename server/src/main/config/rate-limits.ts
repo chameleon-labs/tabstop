@@ -64,6 +64,15 @@ export const RATE_LIMITS = {
    * budget the dashboard behind it needs.
    */
   pageHistory: {capacity: 60, refillPerHour: 600},
+  /**
+   * The on-demand audit (#115). Sized like the other page writes rather than
+   * like `pageAdd`, even though an accepted request is the same thirty seconds
+   * of Chromium, because it is not this bucket that bounds the cost: the
+   * account's daily allowance does, durably, in the database. What is left for
+   * a bucket to do is stop an unauthenticated caller driving the session
+   * lookup and the transaction behind it, which is a request-rate problem.
+   */
+  pageAudit: {capacity: 30, refillPerHour: 120},
   /** Public, token-authenticated, and one indexed update at most. */
   alertUnsubscribe: {capacity: 10, refillPerHour: 30},
   /** Static confirmation page, separate so viewing it cannot spend the POST budget. */
