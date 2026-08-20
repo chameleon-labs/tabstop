@@ -277,6 +277,66 @@ describe('PostgresAuditRepository', () => {
       expect(scheduled).toBeNull();
     });
 
+    it('refuses a scheduled audit for a page already audited on demand that day', async () => {
+      // The window the in-flight check alone leaves open. The run loads a batch
+      // and then schedules each page in turn, so an audit requested AND
+      // FINISHED between the two is gone by the time this page is reached -
+      // and the day it belongs to already has its audit.
+      const {userId, pageIds} = await makeAccount();
+      const asked = await ask(userId, pageIds[0]!);
+      if (asked.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      await db.updateTable('audits').set({status: 'done', score: 91}).where('id', '=', asked.audit.id).execute();
+
+      const scheduled = await sut.addScheduled({
+        pageId: pageIds[0]!,
+        url: 'https://x.test/a',
+        scheduledFor: SPEND_DAY,
+      });
+
+      expect(scheduled).toBeNull();
+    });
+
+    it('refuses while yesterday on-demand audit is still queued tonight', async () => {
+      // The other direction, which matching the day alone would miss: a
+      // request made just before midnight can still be queued when tonight's
+      // run arrives, and its spend belongs to yesterday.
+      const {userId, pageIds} = await makeAccount();
+      const asked = await ask(userId, pageIds[0]!, 1, '2026-08-17');
+      if (asked.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+
+      const scheduled = await sut.addScheduled({
+        pageId: pageIds[0]!,
+        url: 'https://x.test/a',
+        scheduledFor: SPEND_DAY,
+      });
+
+      expect(scheduled).toBeNull();
+    });
+
+    it('schedules a page whose on-demand audit was a different day and has finished', async () => {
+      // The counterpart that keeps the two conditions honest: neither of them
+      // should hold here, and a run that refused this would stop auditing any
+      // page anybody had ever asked about.
+      const {userId, pageIds} = await makeAccount();
+      const asked = await ask(userId, pageIds[0]!, 1, '2026-08-17');
+      if (asked.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+      await db.updateTable('audits').set({status: 'done', score: 91}).where('id', '=', asked.audit.id).execute();
+
+      const scheduled = await sut.addScheduled({
+        pageId: pageIds[0]!,
+        url: 'https://x.test/a',
+        scheduledFor: SPEND_DAY,
+      });
+
+      expect(scheduled).not.toBeNull();
+    });
+
     it('waits behind the nightly run rather than inserting alongside it', async () => {
       // `addScheduled` locks the page row, so locking it here is what puts the
       // two in a queue. FOR NO KEY UPDATE for the reason the account lock test

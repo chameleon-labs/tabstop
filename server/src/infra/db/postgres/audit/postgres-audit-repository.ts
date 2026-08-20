@@ -151,20 +151,32 @@ export class PostgresAuditRepository
       // The run stands down for work the READER asked for, checked under the
       // page lock so it serialises with the request rather than racing it.
       //
-      // Scoped to on-demand audits rather than to anything in flight, because
-      // that is the whole gap. `loadDueForReaudit` already excludes a page with
-      // an unfinished audit, and the unique index dedupes two scheduled rows -
-      // but eligibility is check-then-act across a whole run and cannot see a
-      // request that arrives after it selected, and an on-demand audit has no
-      // `scheduled_for` to collide with. Widening this to every in-flight audit
-      // would also change what the run does about its own stalled rows, which
-      // the reclaim pass owns.
+      // Two conditions, because one window is not the only window. Matching
+      // `loadDueForReaudit`'s rule - ANY on-demand audit belonging to this
+      // scheduled day, whatever became of it - is what covers the gap between
+      // the batch being loaded and this page being reached in the loop: an
+      // audit requested and FINISHED inside that gap is invisible to a check
+      // that only looks for work in flight, and the run would then write a
+      // second audit for a day that already has one.
+      //
+      // The in-flight half covers the other direction, which the day alone
+      // misses: a request made just before midnight can still be queued when
+      // tonight's run arrives, and its spend belongs to yesterday.
+      //
+      // Scoped to on-demand audits rather than to anything unfinished.
+      // Eligibility already excludes those, and widening it would change what
+      // the run does about its own stalled rows, which the reclaim pass owns.
       const requested = await trx
         .selectFrom('audits')
         .innerJoin('on_demand_audits', 'on_demand_audits.audit_id', 'audits.id')
         .select('audits.id')
         .where('audits.page_id', '=', params.pageId)
-        .where('audits.status', 'in', ['queued', 'running'])
+        .where((eb) =>
+          eb.or([
+            sql<SqlBool>`on_demand_audits.spent_on = ${params.scheduledFor}::date`,
+            eb('audits.status', 'in', ['queued', 'running']),
+          ]),
+        )
         .executeTakeFirst();
 
       if (requested !== undefined) {
