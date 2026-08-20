@@ -148,6 +148,29 @@ export class PostgresAuditRepository
         return null;
       }
 
+      // The run stands down for work the READER asked for, checked under the
+      // page lock so it serialises with the request rather than racing it.
+      //
+      // Scoped to on-demand audits rather than to anything in flight, because
+      // that is the whole gap. `loadDueForReaudit` already excludes a page with
+      // an unfinished audit, and the unique index dedupes two scheduled rows -
+      // but eligibility is check-then-act across a whole run and cannot see a
+      // request that arrives after it selected, and an on-demand audit has no
+      // `scheduled_for` to collide with. Widening this to every in-flight audit
+      // would also change what the run does about its own stalled rows, which
+      // the reclaim pass owns.
+      const requested = await trx
+        .selectFrom('audits')
+        .innerJoin('on_demand_audits', 'on_demand_audits.audit_id', 'audits.id')
+        .select('audits.id')
+        .where('audits.page_id', '=', params.pageId)
+        .where('audits.status', 'in', ['queued', 'running'])
+        .executeTakeFirst();
+
+      if (requested !== undefined) {
+        return null;
+      }
+
       const row = await trx
         .insertInto('audits')
         .values({
@@ -190,6 +213,14 @@ export class PostgresAuditRepository
       // Ownership is part of the query, not a separate load: a page belonging
       // to somebody else matches nothing and is indistinguishable from one that
       // does not exist, which is what stops the response confirming a real row.
+      //
+      // `forUpdate` on the PAGE as well as the account, and it is the page lock
+      // that serialises this with the nightly run. The account lock bounds the
+      // allowance, which the scheduler knows nothing about and never takes; on
+      // its own it leaves the in-flight check below racing `addScheduled`, so a
+      // click landing while the fan-out enqueues this page produces two audits,
+      // two Chromium runs and two trend points for one day. This is the row
+      // `addScheduled` already locks, so the two now queue behind each other.
       const page = await trx
         .selectFrom('pages')
         .select(['id', 'url'])
@@ -197,6 +228,7 @@ export class PostgresAuditRepository
         .where('site_id', 'in', (eb) =>
           eb.selectFrom('sites').select('sites.id').where('sites.user_id', '=', params.userId),
         )
+        .forUpdate()
         .executeTakeFirst();
 
       if (page === undefined) {
@@ -266,10 +298,28 @@ export class PostgresAuditRepository
     }
 
     await this.db.transaction().execute(async (trx) => {
+      // Still queued, and locked while that is decided. A worker may have
+      // claimed this audit between the enqueue failing and this call - the
+      // enqueue's own reply is what was lost, not necessarily the job - and
+      // then the audit is running, its row must stay, and the allowance it
+      // spent has genuinely been spent. Deleting the ledger row regardless
+      // refunded the day for a run that was about to happen anyway.
+      const audit = await trx
+        .selectFrom('audits')
+        .select('id')
+        .where('id', '=', auditId)
+        .where('status', '=', 'queued')
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (audit === undefined) {
+        return;
+      }
+
       // The spend first, so a failure between the two leaves the account
       // charged rather than the queue holding a row nothing accounts for.
       await trx.deleteFrom('on_demand_audits').where('audit_id', '=', auditId).execute();
-      await trx.deleteFrom('audits').where('id', '=', auditId).where('status', '=', 'queued').execute();
+      await trx.deleteFrom('audits').where('id', '=', auditId).execute();
     });
   }
 

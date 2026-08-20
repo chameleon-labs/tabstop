@@ -37,6 +37,15 @@ hand each day would never alert at all, and the regression it was run to check
 for would go unreported. The one-alert-per-page-per-day index already stops the
 two from firing twice.
 
+Both writers serialise on the PAGE row. The account lock bounds the allowance,
+which the nightly run knows nothing about and never takes, so on its own it left
+an on-demand request racing `addScheduled` - a click landing while the fan-out
+enqueues that page produced two Chromium runs and two trend points for one day.
+`addScheduled` also stands down for an on-demand audit still in flight, scoped
+to that rather than to any unfinished audit: eligibility already excludes those,
+and widening it would change what the run does about its own stalled rows, which
+the reclaim pass owns. Caught in review on #123.
+
 Rejected: 429 with `retryAfter` for the refusal. It reads as "you are going too
 fast", and the honest answer is "you have had this one, here is when the next
 arrives" - a coded 409 carrying `resetAt`, the mechanism `POST /api/pages`

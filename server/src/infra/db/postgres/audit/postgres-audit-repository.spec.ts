@@ -233,10 +233,14 @@ describe('PostgresAuditRepository', () => {
       expect((await ask(userId, pageIds[0]!)).outcome).toBe('added');
     });
 
-    it('leaves a released audit that has already started alone', async () => {
+    it('leaves a released audit that has already started alone, allowance included', async () => {
       // `releaseOnDemand` undoes an accepted request that never reached the
-      // queue. A run that has begun is not that, and deleting its row mid-audit
-      // is how a worker ends up completing an audit that no longer exists.
+      // queue. A run that has begun is not that: a worker may have claimed it
+      // between the enqueue failing and this call, because what the enqueue
+      // lost was the reply and not necessarily the job. Deleting its row
+      // mid-audit is how a worker completes an audit that no longer exists -
+      // and refunding the allowance hands back a day for a run that is
+      // happening anyway.
       const {userId, pageIds} = await makeAccount();
       const first = await ask(userId, pageIds[0]!);
       if (first.outcome !== 'added') {
@@ -249,6 +253,84 @@ describe('PostgresAuditRepository', () => {
       expect(
         await db.selectFrom('audits').select('id').where('id', '=', first.audit.id).executeTakeFirst(),
       ).toBeDefined();
+      expect(await db.selectFrom('on_demand_audits').select('id').where('user_id', '=', userId).execute()).toHaveLength(
+        1,
+      );
+    });
+
+    it('refuses a scheduled audit for a page an on-demand run already holds', async () => {
+      // The other half of the same race. The account lock cannot help here:
+      // the nightly run never takes it, so without the page lock both paths
+      // pass their own checks and the page is audited twice in one night.
+      const {userId, pageIds} = await makeAccount();
+      const asked = await ask(userId, pageIds[0]!);
+      if (asked.outcome !== 'added') {
+        throw new Error('expected an audit');
+      }
+
+      const scheduled = await sut.addScheduled({
+        pageId: pageIds[0]!,
+        url: 'https://x.test/a',
+        scheduledFor: SPEND_DAY,
+      });
+
+      expect(scheduled).toBeNull();
+    });
+
+    it('waits behind the nightly run rather than inserting alongside it', async () => {
+      // `addScheduled` locks the page row, so locking it here is what puts the
+      // two in a queue. FOR NO KEY UPDATE for the reason the account lock test
+      // records: the audits insert takes FOR KEY SHARE on this row by itself.
+      const url = process.env.DATABASE_URL;
+      if (url === undefined) {
+        throw new Error('DATABASE_URL not set by globalSetup');
+      }
+      const {userId, pageIds} = await makeAccount();
+      const second = makeDatabase(url);
+
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked!: () => void;
+      const lockTaken = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+
+      const holding = db.transaction().execute(async (trx) => {
+        await trx.selectFrom('pages').select('id').where('id', '=', pageIds[0]!).forNoKeyUpdate().execute();
+        locked();
+        await held;
+      });
+
+      try {
+        await lockTaken;
+        const asking = new PostgresAuditRepository(second).addOnDemand({
+          userId,
+          pageId: pageIds[0]!,
+          day: SPEND_DAY,
+          allowance: 1,
+        });
+
+        const outcome = await Promise.race([
+          asking.then(() => 'completed' as const),
+          new Promise<'blocked'>((resolve) => {
+            setTimeout(() => {
+              resolve('blocked');
+            }, 250);
+          }),
+        ]);
+        expect(outcome).toBe('blocked');
+
+        release();
+        await holding;
+
+        expect((await asking).outcome).toBe('added');
+      } finally {
+        release();
+        await holding.catch(() => undefined);
+        await second.destroy();
+      }
     });
 
     it('audits a paused page, because pausing stops the schedule and not the person', async () => {
