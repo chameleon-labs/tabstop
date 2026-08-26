@@ -1,5 +1,6 @@
 import {existsSync} from 'node:fs';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
 import {dirname, join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 // Type-only: erased at runtime, so this does not require `dist-ssr/` to exist
@@ -12,6 +13,9 @@ import {outputFor, PRERENDER_PAGES, type PrerenderedPage} from '../src/prerender
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIST = join(HERE, '..', 'dist');
+const SKELETON_CSS = join(HERE, '..', 'src', 'screens', 'components', 'RouteSkeleton', 'route-skeleton.css');
+const APP_CSS = join(HERE, '..', 'src', 'styles.css');
+const require = createRequire(import.meta.url);
 
 /**
  * Both public, session-free routes are made entirely from compile-time
@@ -24,16 +28,23 @@ const main = async (): Promise<void> => {
   // before it exists. A non-literal specifier keeps TS from trying to resolve
   // the file at all, so the import above supplies the types instead.
   const bundle = pathToFileURL(join(HERE, '..', 'dist-ssr', 'entry-server.js')).href;
-  const {injectMarkup, render, assertBuildOutput} = (await import(bundle)) as typeof EntryServer;
+  const {injectAppShell, injectMarkup, render, assertBuildOutput} = (await import(bundle)) as typeof EntryServer;
 
   const template = await readFile(join(DIST, 'index.html'), 'utf8');
   // Which chunk owns which stylesheet. The template links the entry's CSS and
   // nothing else, so a lazy route's own styles are only discoverable here.
   const manifest: BuildManifest = JSON.parse(await readFile(join(DIST, '.vite', 'manifest.json'), 'utf8'));
 
-  // Written BEFORE index.html is overwritten, since it is that same file
-  // untouched. This is what the host serves for every non-prerendered path.
-  await writeFile(join(DIST, 'app.html'), template);
+  // Written BEFORE index.html is overwritten, since it is that same file with
+  // a boot skeleton in it. This is what the host serves for every
+  // non-prerendered path.
+  const appHtml = injectAppShell(
+    template,
+    await readFile(SKELETON_CSS, 'utf8'),
+    await readFile(APP_CSS, 'utf8'),
+    await readFile(require.resolve('@chameleon-labs/lattice-tokens/lattice.css'), 'utf8'),
+  );
+  await writeFile(join(DIST, 'app.html'), appHtml);
 
   const pages = PRERENDER_PAGES.map((page: PrerenderedPage) => ({
     page,
@@ -54,7 +65,7 @@ const main = async (): Promise<void> => {
   // do - the failure this guards against is a write that silently did not
   // happen, which reading back every page we actually wrote is the only way
   // to catch.
-  const appHtmlExists = existsSync(join(DIST, 'app.html'));
+  const writtenAppHtml = await readFile(join(DIST, 'app.html'), 'utf8').catch(() => '');
   const writtenOutputs = await Promise.all(
     pages.map(async ({page, stylesheets}) => {
       const output = outputFor(DIST, page.path);
@@ -63,7 +74,7 @@ const main = async (): Promise<void> => {
     }),
   );
   const writtenIndex = writtenOutputs.find(({page}) => page.path === '/')?.html ?? '';
-  assertBuildOutput(appHtmlExists, writtenIndex, writtenOutputs);
+  assertBuildOutput(writtenAppHtml, writtenIndex, writtenOutputs);
 };
 
 // A prerender that fails must fail the BUILD. Emitting the empty shell and

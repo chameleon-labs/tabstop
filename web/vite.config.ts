@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { createLogger } from 'vite'
+import { bootShellPlugin } from './src/prerender/dev-shell.ts'
 // `vitest/config` rather than `vite`: as of Vitest 4 the `test` key is not
 // merged into Vite's own config type, so importing from `vite` typechecks the
 // build config and silently rejects the test config beside it.
@@ -77,8 +78,9 @@ const quietProxyErrors = (): ReturnType<typeof createLogger> => {
   return logger
 }
 
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), bootShellPlugin()],
   // `@/` is the src root. Feature folders nest four deep, and the relative
   // alternative - `../../../../api/client` - is both unreadable and silently
   // wrong after any move. `tsconfig.json` declares the same mapping so the

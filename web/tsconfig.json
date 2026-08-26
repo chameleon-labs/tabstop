@@ -11,6 +11,11 @@
     "types": ["vite/client"],
     "jsx": "react-jsx",
     "noEmit": true,
+    // Relative imports name the file they mean, extension included. Two
+    // consumers need that and neither of them runs a resolver: `scripts/` is
+    // executed by Node as TypeScript, and Vite's native config loader - the
+    // planned default - reads `vite.config.ts` and its imports as plain ESM.
+    "allowImportingTsExtensions": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

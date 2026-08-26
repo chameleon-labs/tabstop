@@ -4,8 +4,9 @@
 // it needs and takes `import.meta.url` away, serving it over http so
 // `fileURLToPath` throws before a single test is collected.
 import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {readdir} from 'node:fs/promises';
-import {join} from 'node:path';
+import {dirname, extname, join, relative} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 /** Vitest runs with the package root as cwd, which is what `vite.config.ts` resolves against too. */
@@ -119,5 +120,66 @@ describe('the component folder convention', () => {
     });
 
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Every relative import reachable from `vite.config.ts`, and whether it names a file.
+ *
+ * Vite loads the config with esbuild today and will load it natively - no
+ * bundler, no resolver - in a future major. Native ESM has no extension
+ * search, so `./paths` is unresolvable there while `./paths.ts` is fine. Vite
+ * warns about each one; this turns the warning into a failure.
+ *
+ * The walk is transitive because the warning is: `vite.config.ts` imports two
+ * files, but the rule binds everything they pull in as well.
+ */
+const configGraph = (): {visited: string[]; extensionless: string[]} => {
+  const visited: string[] = [];
+  const extensionless: string[] = [];
+  const queue = [join(ROOT, 'vite.config.ts')];
+
+  while (queue.length > 0) {
+    const file = queue.pop()!;
+    const seen = relative(ROOT, file);
+    if (visited.includes(seen)) {
+      continue;
+    }
+    visited.push(seen);
+
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
+      if (specifier === undefined || !specifier.startsWith('.')) {
+        continue;
+      }
+      if (extname(specifier) === '') {
+        extensionless.push(`${seen}: ${specifier}`);
+        continue;
+      }
+      if (/\.tsx?$/.test(specifier)) {
+        queue.push(join(dirname(file), specifier));
+      }
+    }
+  }
+
+  return {visited: visited.toSorted(), extensionless};
+};
+
+describe('the vite config module graph', () => {
+  it('reaches the files it is meant to police, so the rule below is not vacuous', () => {
+    // A regex that matched nothing, or a walk that stopped at the config,
+    // would report a clean graph forever. These four are the transitive
+    // reach: the config's own two imports, and what those import in turn.
+    const {visited} = configGraph();
+
+    expect(visited).toContain('vite.config.ts');
+    expect(visited).toContain(join('src', 'prerender', 'inject.ts'));
+    expect(visited).toContain(join('src', 'prerender', 'boot-skeleton.ts'));
+    expect(visited).toContain(join('src', 'screens', 'components', 'RouteSkeleton', 'shapes.ts'));
+  });
+
+  it('names a file in every relative import, so a native config load resolves it', () => {
+    const {extensionless} = configGraph();
+
+    expect(extensionless).toEqual([]);
   });
 });

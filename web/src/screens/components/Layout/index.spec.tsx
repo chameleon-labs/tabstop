@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {act, render, screen, waitFor} from '@testing-library/react';
+import {act, render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -7,6 +7,8 @@ import {Layout, providesSessionFree} from './index';
 import {RouteError} from '../RouteError';
 import {sessionKeys} from '@/screens/modules/account/session';
 import {jsonResponse} from '@/test/http';
+import {advanceTimers, heldChunk, type HeldChunk} from '@/test/lazy-route';
+import {ROUTE_BUSY_DELAY_MS} from '@/screens/hooks/use-route-busy';
 
 const renderLayout = (): QueryClient => {
   const router = createMemoryRouter(
@@ -402,5 +404,110 @@ describe('Layout', () => {
     renderLayout();
 
     expect(screen.getByRole('link', {name: 'tabstop'})).toHaveAttribute('href', '/');
+  });
+  describe('while a screen is still on its way', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const renderOverSlowRoute = (chunk: HeldChunk): {leave: () => Promise<void>} => {
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <Layout />,
+            children: [
+              {index: true, element: <h1>A screen</h1>},
+              {path: 'slow', lazy: chunk.lazy},
+            ],
+          },
+        ],
+        {initialEntries: ['/']},
+      );
+      const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
+
+      return {
+        leave: async (): Promise<void> => {
+          await act(async () => {
+            void router.navigate('/slow');
+            await Promise.resolve();
+          });
+        },
+      };
+    };
+
+    it('reports the wait on the region the screen will land in', async () => {
+      const {leave} = renderOverSlowRoute(heldChunk());
+
+      await leave();
+      await advanceTimers(ROUTE_BUSY_DELAY_MS);
+
+      expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+      expect(document.querySelector('.route-progress')).toBeInTheDocument();
+    });
+
+    it('says nothing about a wait too short to be worth reporting', async () => {
+      const {leave} = renderOverSlowRoute(heldChunk());
+
+      await leave();
+      await advanceTimers(ROUTE_BUSY_DELAY_MS - 1);
+
+      expect(screen.getByRole('main')).not.toHaveAttribute('aria-busy');
+      expect(document.querySelector('.route-progress')).not.toBeInTheDocument();
+    });
+
+    it('stops reporting once the screen is there', async () => {
+      const chunk = heldChunk(<h1>The slow screen</h1>);
+      const {leave} = renderOverSlowRoute(chunk);
+
+      await leave();
+      await advanceTimers(ROUTE_BUSY_DELAY_MS);
+      await chunk.arrive();
+      await advanceTimers(1);
+
+      expect(screen.getByRole('heading', {name: 'The slow screen'})).toBeVisible();
+      expect(screen.getByRole('main')).not.toHaveAttribute('aria-busy');
+      expect(document.querySelector('.route-progress')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('when there is no screen to render yet', () => {
+    it('puts the given stand-in where the screen would go', () => {
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: (
+              <Layout>
+                <p>a stand-in</p>
+              </Layout>
+            ),
+            children: [{index: true, element: <h1>A screen</h1>}],
+          },
+        ],
+        {initialEntries: ['/']},
+      );
+      const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      );
+
+      expect(within(screen.getByRole('main')).getByText('a stand-in')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'A screen'})).not.toBeInTheDocument();
+      expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+    });
   });
 });
