@@ -69,14 +69,16 @@ export const bootTokenCss = (latticeCss: string, names: readonly string[]): stri
   return blocks.join('');
 };
 
+const ruleStart = (selector: string): RegExp =>
+  new RegExp(`^[ \\t]*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[ \\t]*\\{`, 'm');
+
 export const ruleFor = (css: string, selector: string): string => {
-  const at = css.indexOf(selector);
-  const brace = at === -1 ? -1 : css.indexOf('{', at + selector.length);
-  if (at === -1 || brace === -1) {
+  const start = ruleStart(selector).exec(css);
+  if (start === null) {
     throw new Error(`the application sheet no longer declares ${selector}, so the boot skeleton cannot inline it`);
   }
 
-  return `${selector}{${blockAt(css, brace)}}`;
+  return `${selector}{${blockAt(css, start.index + start[0].length - 1)}}`;
 };
 
 export const bootShapeScript = (): string => {

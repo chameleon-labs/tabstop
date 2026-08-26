@@ -1,10 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
-import { createLogger, type Plugin } from 'vite'
-import { injectAppShell } from './src/prerender/inject.ts'
-import { servesAppShell } from './src/prerender/paths.ts'
+import { createLogger } from 'vite'
+import { bootShellPlugin } from './src/prerender/dev-shell.ts'
 // `vitest/config` rather than `vite`: as of Vitest 4 the `test` key is not
 // merged into Vite's own config type, so importing from `vite` typechecks the
 // build config and silently rejects the test config beside it.
@@ -82,53 +79,8 @@ const quietProxyErrors = (): ReturnType<typeof createLogger> => {
 }
 
 
-/**
- * The dev and preview servers serve what the host serves, or they are lying.
- *
- * `pnpm dev` hands every route an empty `<div id="root">` and then streams
- * hundreds of unbundled modules into it. Measured on Slow 3G: no paint at all
- * after forty seconds. Production has shipped a boot skeleton in `app.html`
- * since this change, so without this the environment the work is done in is
- * the only one that still goes blank.
- *
- * `vite preview` has the matching problem: it ignores `_redirects` and answers
- * `/dashboard` with `index.html`, the LANDING page's prerendered markup. A
- * local check of the built app therefore measures a file the host never serves
- * for that path.
- */
-const bootSkeleton = (): Plugin => {
-  const require = createRequire(import.meta.url)
-  const read = (path: string): string => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
-  const css = {
-    skeleton: read('./src/screens/components/RouteSkeleton/route-skeleton.css'),
-    app: read('./src/styles.css'),
-    lattice: readFileSync(require.resolve('@chameleon-labs/lattice-tokens/lattice.css'), 'utf8'),
-  }
-  return {
-    name: 'tabstop:boot-skeleton',
-    // Never at build time: `scripts/prerender.ts` owns `app.html` there, and a
-    // second injection would leave `injectMarkup` with no `<div id="root">` to
-    // replace.
-    apply: 'serve',
-    transformIndexHtml: {
-      order: 'post',
-      handler: (html, ctx) =>
-        servesAppShell(ctx.originalUrl ?? '/') ? injectAppShell(html, css.skeleton, css.app, css.lattice) : html,
-    },
-    configurePreviewServer: (server) => {
-      server.middlewares.use((req, _res, next) => {
-        const path = (req.url ?? '/').split('?')[0]!
-        if (servesAppShell(path) && !/\.[a-z0-9]+$/i.test(path)) {
-          req.url = '/app.html'
-        }
-        next()
-      })
-    },
-  }
-}
-
 export default defineConfig({
-  plugins: [react(), bootSkeleton()],
+  plugins: [react(), bootShellPlugin()],
   // `@/` is the src root. Feature folders nest four deep, and the relative
   // alternative - `../../../../api/client` - is both unreadable and silently
   // wrong after any move. `tsconfig.json` declares the same mapping so the

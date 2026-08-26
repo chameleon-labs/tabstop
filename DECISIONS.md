@@ -75,6 +75,19 @@ The plugin is `apply: 'serve'`. At build time `scripts/prerender.ts` owns
 `app.html`, and a second injection leaves `injectMarkup` with no
 `<div id="root"></div>` to replace.
 
+The boot CSS is the same box model as the sheet it precedes. `styles.css`
+carries the `*` reset, so without lifting it the first paint is content-box and
+the styled one is border-box: measured at 1280x800, the generic skeleton is
+1072px wide and then 1024px, and the form shape overflows the viewport by 96px
+and then does not. It is lifted rather than restated, like `.visually-hidden` -
+and the lift is anchored at a rule start, because `styles.css` opens with a
+comment whose lines begin with `*`.
+
+The dev server reads that CSS per request. Reading it once when the config
+loads survives every edit to it: Vite rebuilds the application CSS graph and
+never tells the plugin, so a refresh paints the old skeleton and then swaps to
+the new one - the exact divergence this plugin exists to remove.
+
 Everything the config imports names its file, extension included. Importing the
 injector from `vite.config.ts` puts `src/prerender/` in the config's own module
 graph, and that graph is loaded without a resolver - Vite warns about each

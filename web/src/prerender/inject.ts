@@ -67,7 +67,7 @@ const ASSET_TAG = /<(script type="module"|link rel="stylesheet")/;
 const HEADER_RESERVE = '3.5rem';
 
 const bootOnlyCss =
-  'body{background:var(--lat-bg);color:var(--lat-text);margin:0}' +
+  'body{background:var(--lat-bg);color:var(--lat-text)}' +
   `#root>.route-skeleton{padding-block-start:calc(${HEADER_RESERVE} + var(--lat-space-8))}`;
 
 const upgradeScript = (): string => {
@@ -93,8 +93,9 @@ export const injectAppShell = (template: string, skeletonCss: string, appCss: st
     );
   }
 
+  const reset = ruleFor(appCss, '*');
   const hidden = ruleFor(appCss, '.visually-hidden');
-  const boot = `${skeletonCss}${hidden}${bootOnlyCss}`;
+  const boot = `${reset}${skeletonCss}${hidden}${bootOnlyCss}`;
   const css = `${bootTokenCss(latticeCss, tokensReadBy(boot))}${boot}`;
 
   return template

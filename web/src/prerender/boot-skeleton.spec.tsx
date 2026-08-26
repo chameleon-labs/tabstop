@@ -111,6 +111,20 @@ describe('ruleFor', () => {
     );
   });
 
+  it('finds a rule the sheet opens a comment above, which is what the real sheet does', () => {
+    // `styles.css` starts with a block comment whose lines begin with `*`, and
+    // it mentions a `{`. A lookup that takes the first `*` and then the first
+    // `{` after it lifts the comment's brace and inlines the wrong block.
+    const sheet = [
+      '/*',
+      ' * The shell only. The `:root {` overrides sit below.',
+      ' */',
+      '* {\n  box-sizing: border-box;\n}',
+    ].join('\n');
+
+    expect(ruleFor(sheet, '*')).toBe('*{\n  box-sizing: border-box;\n}');
+  });
+
   it('throws when the rule it was told to inline is gone', () => {
     expect(() => ruleFor('a{x:1}', '.visually-hidden')).toThrow(/visually-hidden/);
   });

@@ -134,7 +134,14 @@ describe('injectAppShell', () => {
     '</head><body><div id="root"></div></body></html>',
   ].join('');
 
-  const APP_CSS = '.visually-hidden {\n  width: 1px;\n}';
+  // Shaped like the real sheet, comment and all: it opens with a block comment
+  // whose lines start with `*`, which is exactly what a naive lookup for the
+  // `*` rule walks into.
+  const APP_CSS = [
+    '/*\n * The shell, and no more than that.\n */',
+    '* {\n  box-sizing: border-box;\n  padding: 0;\n  margin: 0;\n}',
+    '.visually-hidden {\n  width: 1px;\n}',
+  ].join('\n');
 
   const shell = (): string => injectAppShell(TEMPLATE, '.route-skeleton{gap:var(--lat-space-6)}', APP_CSS, LATTICE_CSS);
 
@@ -190,6 +197,24 @@ describe('injectAppShell', () => {
 
   it('still styles the page for a visitor with no JavaScript', () => {
     expect(shell()).toContain('<noscript><link rel="stylesheet"');
+  });
+
+  it('inlines the sizing reset, so the boot paint is not a different size from the styled one', () => {
+    // Without it the first paint is content-box while the deferred sheet is
+    // border-box: measured at 1280x800, the generic skeleton is 1072px wide
+    // and then 1024px, and the form shape overflows the viewport by 96px and
+    // then does not. The reader sees the skeleton jump and a scrollbar vanish.
+    const output = shell();
+    const inline = output.slice(output.indexOf('<style>'), output.indexOf('</style>'));
+
+    expect(inline).toContain('*{');
+    expect(inline).toContain('box-sizing: border-box');
+  });
+
+  it('takes that reset from the sheet rather than restating it', () => {
+    expect(() =>
+      injectAppShell(TEMPLATE, '.route-skeleton{}', '.visually-hidden {\n  width: 1px;\n}', LATTICE_CSS),
+    ).toThrow(/no longer declares \*/);
   });
 
   it('hides the loading text it would otherwise show as a stray word', () => {
