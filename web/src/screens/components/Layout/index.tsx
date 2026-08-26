@@ -1,7 +1,9 @@
 import {Outlet, useMatches} from 'react-router';
 import {RouteAnnouncer} from '../RouteAnnouncer';
+import {RouteProgress} from '../RouteProgress';
 import {SiteHeader, type HeaderSection} from '../SiteHeader';
 import {useLogout} from '@/screens/modules/account/mutations';
+import {useRouteBusy} from '@/screens/hooks/use-route-busy';
 
 export type RouteChrome = {
   /**
@@ -59,12 +61,18 @@ export const useHeaderSections = (): readonly HeaderSection[] | undefined =>
  * The full-height column lives here, not on `.landing-page`: that wrapper no
  * longer contains the header, so a `100vh` there would stack beneath it.
  */
-export const Layout = (): React.JSX.Element => {
+export type LayoutProps = {
+  children?: React.ReactNode;
+};
+
+export const Layout = ({children}: LayoutProps = {}): React.JSX.Element => {
   const ownMain = useOwnMain();
   const sessionFree = useSessionFree();
   const sections = useHeaderSections();
   const logout = useLogout();
+  const busy = useRouteBusy();
   const hidePrivateOutlet = logout.isRevoked && !ownMain && !sessionFree;
+  const content = children ?? (hidePrivateOutlet ? null : <Outlet />);
 
   return (
     <div className="app-shell">
@@ -73,11 +81,12 @@ export const Layout = (): React.JSX.Element => {
       </a>
       <RouteAnnouncer />
       <SiteHeader sections={sections} sessionFree={sessionFree} logout={logout} />
+      <RouteProgress busy={busy} />
       {ownMain ? (
-        <Outlet />
+        content
       ) : (
-        <main id="main" tabIndex={-1} className="app-shell__main">
-          {hidePrivateOutlet ? null : <Outlet />}
+        <main id="main" tabIndex={-1} className="app-shell__main" aria-busy={busy || undefined}>
+          {content}
         </main>
       )}
     </div>

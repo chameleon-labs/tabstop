@@ -44,5 +44,5 @@ export const render = async (url: string): Promise<string> => {
 
 // Re-exported so `scripts/prerender.ts` has a single built artefact to import,
 // rather than resolving TypeScript out of `src/` at build time.
-export {injectMarkup} from './prerender/inject';
+export {injectAppShell, injectMarkup} from './prerender/inject';
 export {assertBuildOutput} from './prerender/verify';

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {outputFor, PRERENDER_PAGES, PRERENDER_PATHS} from './paths';
+import {servesAppShell, outputFor, PRERENDER_PAGES, PRERENDER_PATHS} from './paths';
 
 describe('prerender paths', () => {
   it('includes every public compile-time page and maps each to its host output', () => {
@@ -21,5 +21,23 @@ describe('prerender paths', () => {
     expect(formula?.title).toBe('Score formula · tabstop');
     expect(formula?.description).toMatch(/formula/i);
     expect(formula?.entry).toBe('src/screens/modules/docs/pages/ScoreFormula/index.tsx');
+  });
+});
+
+describe('servesAppShell', () => {
+  it.each(['/dashboard', '/pages/42', '/login', '/signup', '/r/abc', '/anything'])(
+    'answers %s from the shell',
+    (path) => {
+      expect(servesAppShell(path)).toBe(true);
+    },
+  );
+
+  it.each(['/', '/docs/score-formula', '/docs/score-formula/'])('leaves %s to its prerendered file', (path) => {
+    expect(servesAppShell(path)).toBe(false);
+  });
+
+  it('ignores a query string, which a host does not route on', () => {
+    expect(servesAppShell('/?utm=x')).toBe(false);
+    expect(servesAppShell('/dashboard?from=/x')).toBe(true);
   });
 });

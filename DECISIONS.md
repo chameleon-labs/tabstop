@@ -6,6 +6,91 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-21 — a lazy route says it is loading, with a bar or a skeleton
+
+A client-side route reports its own wait from the shell. `useRouteBusy` watches
+`useNavigation()` and turns true only after 200ms. `RouteProgress` then sweeps a
+bar across the top of the window; on a cold load `RouteSkeleton` fills the
+hydrate fallback with blocks shaped from the path.
+
+Why two treatments rather than one: an in-app navigation still has a readable
+screen on it, and replacing that with grey blocks throws away something the
+reader can use - for a wait that usually ends within a frame. A cold load has
+nothing worth keeping, and the shell alone is worse than nothing: a header over
+an empty page reads as a page that has finished and has nothing on it.
+
+Why the delay: a chunk already in the browser cache resolves in a frame, and an
+indicator shown for one frame is a flicker the reader cannot read but can
+certainly see.
+
+Why the bar sits at the top of the WINDOW rather than under the header: the
+header's `3.5rem` is a floor, not a height - a revoke failure renders a Callout
+inside the account nav and grows it. An offset measured from that number is
+wrong exactly when the app is already in trouble. The first version made that
+mistake.
+
+Why the live region mounts only for the duration of a navigation: the shell
+already owns one permanent `role="status"`, the route announcer, and a second
+would make every "announced once" assertion in the suite ambiguous. It also has
+to be in the DOM and empty before text lands in it, or the content counts as
+initial content and assistive technology stays quiet. Mounting it empty when the
+navigation starts and filling it at the delay satisfies both.
+
+The app shell carries the skeleton in its HTML, and does not block on CSS.
+`app.html` - what the host serves for every non-prerendered path - shipped an
+empty `<div id="root">`, so the React skeleton above could not appear until the
+bundle had arrived. Measured cold on Slow 3G: first paint at 9.8s, because a
+render-blocking stylesheet holds the whole document and there was nothing to
+paint anyway. The build now writes the skeleton into `#root`, inlines the rules
+it needs, and swaps that one sheet to a non-blocking preload. First paint: 2.7s.
+
+Why only `app.html`: a prerendered page has real content in it, and a
+non-blocking sheet would show that content unstyled. The shell has nothing but
+the skeleton, whose rules are inlined, so there is nothing left to flash.
+`index.html` and the docs page keep the blocking sheet.
+
+Why the inline block is generated rather than written: it would otherwise be a
+second copy of `route-skeleton.css` and of a dozen `--lat-*` values, drifting
+silently. The build reads the real sheet, reads the tokens it references
+straight out of the design system - light and dark - and emits only those. The
+markup is generated from the same table the component renders from, and a test
+renders both and compares. The one literal left is the `3.5rem` the skeleton
+holds for the header it cannot draw yet, and a test fails if the header stops
+being that tall.
+
+The dev and preview servers serve what the host serves. `pnpm dev` hands every
+route an empty `<div id="root">` and streams unbundled modules into it:
+measured cold on Slow 3G, no paint at all after forty seconds - worse than
+production ever was, and the environment the work is actually done in. A
+`serve`-only Vite plugin runs the same injector over the dev HTML, and rewrites
+preview requests to `app.html` the way `_redirects` does.
+
+Why preview needed it too: `vite preview` ignores `_redirects` and answers
+`/dashboard` with `index.html`, which is the LANDING page's prerendered markup.
+Checking the built app locally therefore measured a file the host never serves
+for that path - which is exactly how the first version of this work was
+measured, and why it reported the wrong number.
+
+The plugin is `apply: 'serve'`. At build time `scripts/prerender.ts` owns
+`app.html`, and a second injection leaves `injectMarkup` with no
+`<div id="root"></div>` to replace.
+
+Everything the config imports names its file, extension included. Importing the
+injector from `vite.config.ts` puts `src/prerender/` in the config's own module
+graph, and that graph is loaded without a resolver - Vite warns about each
+extensionless import today and will read the config as plain ESM in a future
+major, where `./paths` does not resolve and `./paths.ts` does. The warning is
+answered rather than silenced, and a test walks the graph so the next import
+added is held to the same rule.
+
+Deferred: the in-screen data waits. `Loading monitored pages…` on the dashboard
+and `Loading the score history…` on page detail keep their text lines; this
+change covers the window before a screen exists at all. The landing page renders
+its own `<main>`, so it carries no `aria-busy` while navigating away - the live
+region is what actually reaches a screen reader, and it is in the shell.
+
+---
+
 ## 2026-08-18 — an on-demand audit is one per account per day, and it alerts
 
 `POST /api/pages/:id/audits` audits a page the account owns. The allowance is

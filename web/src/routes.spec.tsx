@@ -379,6 +379,26 @@ describe('the route table', () => {
     });
     expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
   });
+
+  it('holds the shape of the screen while its chunk and its loader are still on the way', async () => {
+    withSession();
+
+    renderAt('/dashboard');
+
+    expect(document.querySelector('.route-skeleton')).toHaveAttribute('data-shape', 'dashboard');
+    expect(screen.getByRole('link', {name: 'Skip to content'})).toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Your pages'})).toBeVisible();
+    expect(document.querySelector('.route-skeleton')).not.toBeInTheDocument();
+  });
+
+  it('shapes the stand-in to the screen that was asked for', async () => {
+    renderAt('/login');
+
+    expect(document.querySelector('.route-skeleton')).toHaveAttribute('data-shape', 'form');
+
+    expect(await screen.findByRole('heading', {level: 1, name: 'Log in'})).toBeVisible();
+  });
 });
 
 describe('what may be split out of the initial chunk', () => {

@@ -27,12 +27,18 @@ export type PrerenderedOutput = {
 const outputName = (path: string): string => (path === '/' ? 'dist/index.html' : `dist${path}/index.html`);
 
 export const assertBuildOutput = (
-  appHtmlExists: boolean,
+  appHtml: string,
   indexHtml: string,
   prerenderedOutputs: readonly PrerenderedOutput[] = [],
 ): void => {
-  if (!appHtmlExists) {
+  if (appHtml === '') {
     throw new Error('dist/app.html was not written; every route but / would 404 on the host');
+  }
+
+  if (!appHtml.includes('class="route-skeleton"')) {
+    throw new Error(
+      'dist/app.html carries no skeleton; every guarded route would paint white until its bundle arrives',
+    );
   }
 
   if (!indexHtml.includes('data-prerendered')) {

@@ -1,0 +1,118 @@
+.route-skeleton {
+  max-inline-size: var(--lat-container-content);
+  margin-inline: auto;
+  padding: var(--lat-space-8) var(--lat-space-6) var(--lat-space-16);
+}
+
+.route-skeleton__blocks,
+.route-skeleton__head {
+  display: flex;
+  flex-direction: column;
+}
+
+.route-skeleton__blocks {
+  gap: var(--lat-space-6);
+}
+
+.route-skeleton__head {
+  gap: var(--lat-space-3);
+}
+
+.route-skeleton__block {
+  display: block;
+  border-radius: var(--lat-radius-full);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--lat-text) 5%, transparent) 0%,
+    color-mix(in oklch, var(--lat-text) 10%, transparent) 50%,
+    color-mix(in oklch, var(--lat-text) 5%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: route-skeleton-shimmer 1600ms var(--lat-easing-in-out) infinite;
+}
+
+.route-skeleton__block[data-block='title'] {
+  inline-size: 38%;
+  block-size: 1.75rem;
+}
+
+.route-skeleton__block[data-block='lede'] {
+  inline-size: 62%;
+  block-size: 0.875rem;
+}
+
+.route-skeleton__block[data-block='meta'] {
+  inline-size: 22%;
+  block-size: 0.75rem;
+}
+
+.route-skeleton__block[data-block='row'],
+.route-skeleton__block[data-block='panel'],
+.route-skeleton__block[data-block='chart'],
+.route-skeleton__block[data-block='field'],
+.route-skeleton__block[data-block='action'] {
+  border-radius: var(--lat-radius-sm);
+}
+
+.route-skeleton__block[data-block='row'] {
+  block-size: 5.5rem;
+}
+
+.route-skeleton__block[data-block='panel'] {
+  block-size: 11rem;
+}
+
+.route-skeleton__block[data-block='chart'] {
+  block-size: 8rem;
+}
+
+.route-skeleton[data-shape='form'] {
+  display: grid;
+  place-items: center;
+  min-block-size: calc(100dvh - (var(--lat-space-12) + var(--lat-space-2)));
+  max-inline-size: none;
+  padding: var(--lat-space-16) var(--lat-space-4);
+}
+
+.route-skeleton[data-shape='form'] .route-skeleton__blocks {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  gap: var(--lat-space-4);
+}
+
+.route-skeleton[data-shape='form'] .route-skeleton__head {
+  align-items: center;
+  margin-block-end: var(--lat-space-2);
+}
+
+.route-skeleton[data-shape='form'] .route-skeleton__block[data-block='title'] {
+  inline-size: 45%;
+}
+
+.route-skeleton[data-shape='form'] .route-skeleton__block[data-block='lede'] {
+  inline-size: 75%;
+}
+
+.route-skeleton__block[data-block='field'] {
+  block-size: 2.75rem;
+}
+
+.route-skeleton__block[data-block='action'] {
+  block-size: 2.5rem;
+}
+
+@keyframes route-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-skeleton__block {
+    animation: none;
+  }
+}

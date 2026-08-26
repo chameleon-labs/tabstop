@@ -1,6 +1,21 @@
+import {readFileSync} from 'node:fs';
 import {describe, expect, it} from 'vitest';
-import {injectMarkup} from './inject';
+import {injectAppShell, injectMarkup} from './inject';
 import type {PrerenderedPage} from './paths';
+
+const LATTICE_CSS = [
+  ':root {',
+  '  --lat-space-6: 1.5rem;',
+  '  --lat-space-8: 2rem;',
+  '  --lat-gray-text: oklch(0.15 0 0);',
+  '  --lat-gray-bg: oklch(0.95 0 0);',
+  '  --lat-bg: var(--lat-gray-bg);',
+  '  --lat-text: var(--lat-gray-text);',
+  '}',
+  "[data-lat-theme='dark'] {",
+  '  --lat-gray-text: oklch(0.91 0 0);',
+  '}',
+].join('\n');
 
 const template =
   '<!doctype html><html><head><title>tabstop</title>' +
@@ -108,5 +123,106 @@ describe('injectMarkup', () => {
     const bodyOnly = '<!doctype html><html><body><div id="root"></div></body></html>';
 
     expect(() => injectMarkup(bodyOnly, landing, '<p>hi</p>', ['/assets/a.css'])).toThrow('</head>');
+  });
+});
+
+describe('injectAppShell', () => {
+  const TEMPLATE = [
+    '<!doctype html><html><head><title>tabstop</title>',
+    '<script type="module" crossorigin src="/assets/index-abc.js"></script>',
+    '<link rel="stylesheet" crossorigin href="/assets/index-abc.css">',
+    '</head><body><div id="root"></div></body></html>',
+  ].join('');
+
+  const APP_CSS = '.visually-hidden {\n  width: 1px;\n}';
+
+  const shell = (): string => injectAppShell(TEMPLATE, '.route-skeleton{gap:var(--lat-space-6)}', APP_CSS, LATTICE_CSS);
+
+  it('paints a skeleton without waiting for anything the page has not got yet', () => {
+    const output = shell();
+
+    expect(output).toContain('class="route-skeleton"');
+    expect(output).toContain('data-shape="generic"');
+    expect(output).not.toContain('<div id="root"></div>');
+  });
+
+  it('puts the boot styles ahead of the stylesheet that would otherwise override them', () => {
+    // The inline block declares fallbacks for the same tokens the real sheet
+    // declares. Later wins, and the real sheet has to be the later one.
+    const output = shell();
+
+    expect(output.indexOf('<style>')).toBeGreaterThan(-1);
+    expect(output.indexOf('<style>')).toBeLessThan(output.indexOf('rel="stylesheet"'));
+    expect(output.indexOf('<style>')).toBeLessThan(output.indexOf('<script type="module"'));
+  });
+
+  it('inlines the rules and the tokens they read, so nothing resolves to nothing', () => {
+    const output = shell();
+    const inline = output.slice(output.indexOf('<style>'), output.indexOf('</style>'));
+
+    expect(inline).toContain('.route-skeleton{gap:var(--lat-space-6)}');
+    expect(inline).toContain('--lat-space-6: 1.5rem');
+  });
+
+  it('upgrades the shape to the one the path asked for', () => {
+    const output = shell();
+
+    expect(output).toContain('__bootShape');
+    expect(output).toContain('data-shape=\\"dashboard\\"');
+  });
+
+  it('leaves no stamp, so the client replaces it rather than hydrating onto it', () => {
+    // `hydrate.ts` treats a stamped root as prerendered markup for that path.
+    // A stamp here would make React hydrate a skeleton and keep it.
+    expect(shell()).not.toContain('data-prerendered');
+  });
+
+  it('does not hold the first paint for the stylesheet, which is the whole point', () => {
+    // An inline <style> does not help while a blocking <link> is still in the
+    // head: a render-blocking sheet blocks the document, not just the rules it
+    // carries. Measured at 5.2s on Slow 3G before this.
+    const output = shell();
+
+    expect(output).toContain('rel="preload"');
+    expect(output).toMatch(/onload="this\.rel='stylesheet'"/);
+    expect(output.slice(0, output.indexOf('<noscript>'))).not.toContain('<link rel="stylesheet"');
+  });
+
+  it('still styles the page for a visitor with no JavaScript', () => {
+    expect(shell()).toContain('<noscript><link rel="stylesheet"');
+  });
+
+  it('hides the loading text it would otherwise show as a stray word', () => {
+    const output = shell();
+    const inline = output.slice(output.indexOf('<style>'), output.indexOf('</style>'));
+
+    expect(inline).toContain('.visually-hidden{');
+  });
+
+  it('paints its own background, since the sheet that would is no longer blocking', () => {
+    const output = shell();
+    const inline = output.slice(output.indexOf('<style>'), output.indexOf('</style>'));
+
+    expect(inline).toMatch(/body\{[^}]*background/);
+  });
+
+  it('reserves the height the header actually takes', () => {
+    // The boot skeleton renders before the header exists, so it holds that
+    // space itself. If the header stops being 3.5rem, the page jumps when
+    // React mounts and only this notices.
+    const header = readFileSync('src/screens/components/SiteHeader/site-header.css', 'utf8');
+
+    expect(header).toContain('min-block-size: 3.5rem');
+    expect(shell()).toContain('3.5rem');
+  });
+
+  it('throws rather than shipping a shell with no skeleton in it', () => {
+    expect(() => injectAppShell('<html><head></head><body></body></html>', '', APP_CSS, LATTICE_CSS)).toThrow(/root/);
+  });
+
+  it('throws when there is nowhere to put the styles ahead of the sheet', () => {
+    const noAssets = '<!doctype html><html><head><title>t</title></head><body><div id="root"></div></body></html>';
+
+    expect(() => injectAppShell(noAssets, '', APP_CSS, LATTICE_CSS)).toThrow(/stylesheet|module/);
   });
 });

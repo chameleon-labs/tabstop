@@ -1,0 +1,36 @@
+.route-progress {
+  z-index: 60;
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  block-size: 2px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--lat-accent-solid) 18%, transparent);
+}
+
+.route-progress__sweep {
+  display: block;
+  block-size: 100%;
+  inline-size: 35%;
+  border-radius: var(--lat-radius-full);
+  background: var(--lat-accent-solid);
+  animation: route-progress-sweep 1100ms var(--lat-easing-in-out) infinite alternate;
+}
+
+@keyframes route-progress-sweep {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(185%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-progress__sweep {
+    inline-size: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}

@@ -35,3 +35,13 @@ export const PRERENDER_PATHS: readonly string[] = PRERENDER_PAGES.map(({path}) =
 
 export const outputFor = (dist: string, path: string): string =>
   path === '/' ? join(dist, 'index.html') : join(dist, path, 'index.html');
+
+/**
+ * Whether the host answers this path with `app.html` rather than a prerendered
+ * file. Mirrors `_redirects`, and is what lets the dev and preview servers
+ * behave the way the host does.
+ */
+export const servesAppShell = (pathname: string): boolean => {
+  const path = pathname.split('?')[0]!.replace(/\/+$/, '');
+  return !PRERENDER_PATHS.includes(path === '' ? '/' : path);
+};

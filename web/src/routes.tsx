@@ -3,6 +3,7 @@ import type {RouteObject} from 'react-router';
 import {Layout} from './screens/components/Layout';
 import {NotFound} from './screens/components/NotFound';
 import {RouteError} from './screens/components/RouteError';
+import {RouteSkeleton} from './screens/components/RouteSkeleton';
 import {requireAnonymous, requireSession} from './screens/modules/account/guards';
 import {Home} from './screens/modules/audit/pages/Home';
 import {LANDING_SECTIONS} from './screens/modules/audit/pages/Home/landing';
@@ -44,7 +45,11 @@ export const makeRoutes = (queryClient: QueryClient): RouteObject[] => [
     // populated from the router's matched-but-unloaded routes. No lazy route
     // supplies its own chrome, so the header and empty main remain available
     // until the child chunk resolves.
-    hydrateFallbackElement: <Layout />,
+    hydrateFallbackElement: (
+      <Layout>
+        <RouteSkeleton />
+      </Layout>
+    ),
     children: [
       {
         errorElement: <RouteError />,
