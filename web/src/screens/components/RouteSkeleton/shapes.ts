@@ -1,9 +1,9 @@
 export type SkeletonShape = 'dashboard' | 'detail' | 'form' | 'generic';
 
 export const SKELETON_SHAPES: readonly (readonly [RegExp, SkeletonShape])[] = [
-  [/^\/dashboard$/, 'dashboard'],
-  [/^\/pages\/[^/]+$/, 'detail'],
-  [/^\/(login|signup)$/, 'form'],
+  [/^\/dashboard$/i, 'dashboard'],
+  [/^\/pages\/[^/]+$/i, 'detail'],
+  [/^\/(login|signup)$/i, 'form'],
 ];
 
 export const FALLBACK_SHAPE: SkeletonShape = 'generic';

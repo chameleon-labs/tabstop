@@ -1,5 +1,6 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync, statSync} from 'node:fs';
 import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {Plugin} from 'vite';
 import {injectAppShell} from './inject.ts';
@@ -19,7 +20,20 @@ export const readBootCss = (): BootCss => ({
   lattice: readFileSync(createRequire(import.meta.url).resolve('@chameleon-labs/lattice-tokens/lattice.css'), 'utf8'),
 });
 
-export const isAsset = (path: string): boolean => /\.[a-z0-9]+$/i.test(path);
+export const servedFromDisk = (outDir: string, pathname: string): boolean => {
+  let file;
+  try {
+    file = resolve(outDir, `.${decodeURI(pathname)}`);
+  } catch {
+    return false;
+  }
+
+  if (file !== outDir && !file.startsWith(`${outDir}/`)) {
+    return false;
+  }
+
+  return statSync(file, {throwIfNoEntry: false})?.isFile() === true;
+};
 
 export const bootShellPlugin = (bootCss: () => BootCss = readBootCss): Plugin => ({
   name: 'tabstop:boot-skeleton',
@@ -37,9 +51,11 @@ export const bootShellPlugin = (bootCss: () => BootCss = readBootCss): Plugin =>
     },
   },
   configurePreviewServer: (server) => {
+    const outDir = resolve(server.config.root, server.config.build.outDir);
+
     server.middlewares.use((req, _res, next) => {
       const path = (req.url ?? '/').split('?')[0]!;
-      if (servesAppShell(path) && !isAsset(path)) {
+      if (servesAppShell(path) && !servedFromDisk(outDir, path)) {
         req.url = '/app.html';
       }
       next();

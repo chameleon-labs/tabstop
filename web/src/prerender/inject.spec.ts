@@ -7,6 +7,7 @@ const LATTICE_CSS = [
   ':root {',
   '  --lat-space-6: 1.5rem;',
   '  --lat-space-8: 2rem;',
+  '  --lat-space-16: 4rem;',
   '  --lat-gray-text: oklch(0.15 0 0);',
   '  --lat-gray-bg: oklch(0.95 0 0);',
   '  --lat-bg: var(--lat-gray-bg);',
@@ -197,6 +198,18 @@ describe('injectAppShell', () => {
 
   it('still styles the page for a visitor with no JavaScript', () => {
     expect(shell()).toContain('<noscript><link rel="stylesheet"');
+  });
+
+  it('reserves the header and the form’s own padding for the shape that centres itself', () => {
+    // The form shape overrides the padding and subtracts the header from its
+    // own min-block-size, so the generic reservation lands it in the wrong
+    // place: measured at 1280x800, its blocks sit at y=257 while the mounted
+    // page puts them at y=301. Same measurement, both states, after this.
+    const output = shell();
+    const inline = output.slice(output.indexOf('<style>'), output.indexOf('</style>'));
+
+    expect(inline).toContain("#root>.route-skeleton[data-shape='form']{min-block-size:100dvh");
+    expect(inline).toContain('calc(3.5rem + var(--lat-space-16))');
   });
 
   it('inlines the sizing reset, so the boot paint is not a different size from the styled one', () => {

@@ -3,7 +3,9 @@
 // `readBootCss` resolves its files from `import.meta.url`; jsdom serves that
 // over http, so `fileURLToPath` throws before a single test is collected.
 import {describe, expect, it} from 'vitest';
-import {bootShellPlugin, isAsset, readBootCss, type BootCss} from './dev-shell';
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {bootShellPlugin, readBootCss, servedFromDisk, type BootCss} from './dev-shell';
 
 const template =
   '<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/x.js"></script></body></html>';
@@ -31,7 +33,7 @@ const cssReturning =
     skeleton,
     app: '* {\n  box-sizing: border-box;\n}\n.visually-hidden {\n  width: 1px;\n}',
     lattice:
-      ":root {\n  --lat-bg: white;\n  --lat-text: black;\n  --lat-space-8: 2rem;\n}\n[data-lat-theme='dark'] {\n  --lat-bg: black;\n}",
+      ":root {\n  --lat-bg: white;\n  --lat-text: black;\n  --lat-space-8: 2rem;\n  --lat-space-16: 4rem;\n}\n[data-lat-theme='dark'] {\n  --lat-bg: black;\n}",
   });
 
 describe('the boot shell dev plugin', () => {
@@ -78,14 +80,33 @@ describe('readBootCss', () => {
   });
 });
 
-describe('isAsset', () => {
-  it('keeps a request for a file out of the app-shell rewrite', () => {
-    expect(isAsset('/assets/index-abc123.css')).toBe(true);
-    expect(isAsset('/favicon.svg')).toBe(true);
+describe('servedFromDisk', () => {
+  // The host's `_redirects` rule is a FALLBACK: `/*  /app.html  200` answers
+  // only what no built file already answers. Preview has to ask the same
+  // question of the same directory, or the two disagree.
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  it('finds a file the build actually wrote, which preview must keep serving', () => {
+    expect(servedFromDisk(here, '/paths.ts')).toBe(true);
   });
 
-  it('treats a route as a route, including one that looks like a name', () => {
-    expect(isAsset('/dashboard')).toBe(false);
-    expect(isAsset('/pages/abc')).toBe(false);
+  it('does not find a route, however much it looks like a file', () => {
+    // `/missing.html` is the case: React Router's catch-all takes it and the
+    // host answers with app.html, so preview must not fall through to the
+    // prerendered landing page instead.
+    expect(servedFromDisk(here, '/missing.html')).toBe(false);
+    expect(servedFromDisk(here, '/dashboard')).toBe(false);
+  });
+
+  it('does not treat a directory as something to serve', () => {
+    expect(servedFromDisk(dirname(here), '/prerender')).toBe(false);
+  });
+
+  it('refuses a path that climbs out of the build output', () => {
+    expect(servedFromDisk(here, '/../../package.json')).toBe(false);
+  });
+
+  it('answers a malformed path rather than throwing on it', () => {
+    expect(servedFromDisk(here, '/%')).toBe(false);
   });
 });

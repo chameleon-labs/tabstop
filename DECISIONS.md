@@ -83,6 +83,19 @@ and then does not. It is lifted rather than restated, like `.visually-hidden` -
 and the lift is anchored at a rule start, because `styles.css` opens with a
 comment whose lines begin with `*`.
 
+The form shape gets its own boot reservation. It overrides the padding and
+already subtracts the header from its own `min-block-size`, so the generic
+`header + space-8` rule leaves it centred in the wrong box: measured at
+1280x800, its blocks sit at y=257 in the boot paint and y=301 once the shell
+mounts. The boot rule gives it the whole viewport and `header + space-16`, and
+both states then measure 301.
+
+Preview asks the disk the question the host asks. `_redirects` is a fallback -
+`/*  /app.html  200` answers only what no built file answers - so a rule that
+skips any path with an extension gets `/missing.html` wrong: the catch-all
+route owns it, the host serves the shell, and preview served the prerendered
+landing page instead.
+
 The dev server reads that CSS per request. Reading it once when the config
 loads survives every edit to it: Vite rebuilds the application CSS graph and
 never tells the plugin, so a refresh paints the old skeleton and then swaps to

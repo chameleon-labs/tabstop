@@ -29,6 +29,18 @@ describe('skeletonShapeFor', () => {
   });
 });
 
+describe('skeletonShapeFor and the router', () => {
+  it('matches a path the way the router does, which is without regard to case', () => {
+    // No route sets `caseSensitive`, so React Router renders the dashboard for
+    // `/DASHBOARD`. A case-sensitive lookup here would show the generic
+    // skeleton first and then the dashboard, which is the mismatch the shapes
+    // exist to prevent.
+    expect(skeletonShapeFor('/DASHBOARD')).toBe('dashboard');
+    expect(skeletonShapeFor('/Login')).toBe('form');
+    expect(skeletonShapeFor('/Pages/abc')).toBe('detail');
+  });
+});
+
 describe('RouteSkeleton', () => {
   it('lays out the shape of the screen the visitor asked for', () => {
     renderAtPath('/dashboard');

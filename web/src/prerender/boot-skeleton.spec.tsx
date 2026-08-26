@@ -77,7 +77,17 @@ describe('bootShapeScript', () => {
   it.each([...SKELETON_SHAPES.map(([, shape]) => shape), 'generic' as SkeletonShape])(
     'agrees with skeletonShapeFor about the %s shape',
     (shape) => {
-      const paths = ['/dashboard', '/pages/42', '/login', '/signup', '/r/abc', '/', '/dashboard/'];
+      const paths = [
+        '/dashboard',
+        '/pages/42',
+        '/login',
+        '/signup',
+        '/r/abc',
+        '/',
+        '/dashboard/',
+        '/DASHBOARD',
+        '/Login',
+      ];
       const mine = paths.filter((path) => skeletonShapeFor(path) === shape);
 
       expect(mine.length).toBeGreaterThan(0);
@@ -86,6 +96,14 @@ describe('bootShapeScript', () => {
       }
     },
   );
+
+  it('carries the pattern flags into the table it emits, so the boot shape matches like the router', () => {
+    // The table is serialised with String(pattern). Dropping the flags there
+    // would leave the two halves of this agreeing with each other and both
+    // disagreeing with React Router, which matches without regard to case.
+    expect(runScriptFor('/DASHBOARD')).toBe('dashboard');
+    expect(runScriptFor('/SignUp')).toBe('form');
+  });
 });
 
 describe('bootSkeletonMarkup', () => {

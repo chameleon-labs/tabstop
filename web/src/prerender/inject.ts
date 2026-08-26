@@ -68,7 +68,8 @@ const HEADER_RESERVE = '3.5rem';
 
 const bootOnlyCss =
   'body{background:var(--lat-bg);color:var(--lat-text)}' +
-  `#root>.route-skeleton{padding-block-start:calc(${HEADER_RESERVE} + var(--lat-space-8))}`;
+  `#root>.route-skeleton{padding-block-start:calc(${HEADER_RESERVE} + var(--lat-space-8))}` +
+  `#root>.route-skeleton[data-shape='form']{min-block-size:100dvh;padding-block-start:calc(${HEADER_RESERVE} + var(--lat-space-16))}`;
 
 const upgradeScript = (): string => {
   const others = (Object.keys(SKELETON_BLOCKS) as SkeletonShape[]).filter((shape) => shape !== FALLBACK_SHAPE);
