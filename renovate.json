@@ -13,10 +13,7 @@
         "patch",
         "digest"
       ],
-      "groupName": "non-major dependencies",
-      "schedule": [
-        "before 6am on monday"
-      ]
+      "groupName": "non-major dependencies"
     },
     {
       "matchPackageNames": [
