@@ -9,11 +9,6 @@ export type DeletePageRequest = {
   userId: string;
 };
 
-/**
- * Not idempotent in the way logout is: a second delete answers 404 rather than
- * 204. Deleting a page destroys its whole audit history, so "that is already
- * gone" is information the client needs, not noise to swallow.
- */
 export class DeletePageController implements Controller<DeletePageRequest> {
   constructor(private readonly deletePage: DeletePage) {}
 
@@ -28,7 +23,6 @@ export class DeletePageController implements Controller<DeletePageRequest> {
         userId: request.userId,
       });
 
-      // Same answer for somebody else's page as for one that never existed.
       if (!deleted) {
         return notFound(new PageNotFoundError());
       }

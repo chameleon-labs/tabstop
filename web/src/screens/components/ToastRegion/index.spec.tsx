@@ -24,8 +24,6 @@ const advance = async (ms: number): Promise<void> => {
 
 describe('useToastQueue', () => {
   it('keeps one copy of a message that is already on screen', () => {
-    // Two failing rows produce the same sentence; stacking it twice says
-    // nothing the first copy did not.
     const {result} = renderHook(() => useToastQueue());
 
     act(() => {
@@ -48,8 +46,6 @@ describe('useToastQueue', () => {
   });
 
   it('allows a message again once the first has gone', () => {
-    // Deduplicating forever would silently swallow the second failure of a
-    // retried action.
     const {result} = renderHook(() => useToastQueue());
 
     act(() => {
@@ -66,9 +62,6 @@ describe('useToastQueue', () => {
   });
 
   it('keeps two messages that differ only in what their action does', () => {
-    // The server's already-tracked sentence names no page, so two of them are
-    // byte-identical; collapsing them leaves one View page button pointing at
-    // whichever page came first.
     const {result} = renderHook(() => useToastQueue());
     const first = vi.fn();
     const second = vi.fn();
@@ -136,8 +129,6 @@ describe('ToastRegion semantics', () => {
   });
 
   it('leaves announcing to one live region rather than every toast', () => {
-    // A `role="alert"` per toast announces content the live region has
-    // already sent, so each message is read twice.
     render(<ToastRegion toasts={[toast('a', 'One'), toast('b', 'Two', {variant: 'danger'})]} onDismiss={vi.fn()} />);
 
     expect(screen.queryAllByRole('alert')).toHaveLength(0);
@@ -210,8 +201,6 @@ describe('ToastRegion timing', () => {
   it.each([{variant: 'warning' as const}, {variant: 'danger' as const}])(
     'keeps a $variant message until it is dismissed',
     async ({variant}) => {
-      // These report something the user has to act on. Timing them out decides
-      // for them that it did not matter.
       const onDismiss = vi.fn();
       render(<ToastRegion toasts={[toast('a', 'Could not remove that page', {variant})]} onDismiss={onDismiss} />);
 
@@ -320,8 +309,6 @@ describe('ToastRegion timing', () => {
   });
 
   it('can announce the same sentence again after the first has cleared', async () => {
-    // The live region ignores an identical consecutive value, so the region
-    // has to return to empty between messages or a repeat is never read.
     const {rerender} = render(<ToastRegion toasts={[toast('a', 'Could not pause')]} onDismiss={vi.fn()} />);
 
     await advance(TOAST_ANNOUNCEMENT_GAP_MS * 2);

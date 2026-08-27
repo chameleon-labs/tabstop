@@ -20,8 +20,6 @@ describe('LogoutController', () => {
   });
 
   it('is idempotent without a cookie: 204, and nothing revoked', async () => {
-    // Deliberately not behind the auth middleware, so that logging out twice -
-    // or logging out with an already-dead session - is never an error.
     const {sut, revokeSession} = makeSut();
 
     const response = await sut.handle({cookies: {}});

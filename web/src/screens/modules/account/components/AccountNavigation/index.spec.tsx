@@ -42,12 +42,6 @@ const renderNavigation = (queryClient = makeQueryClient()) => {
   return {queryClient, router};
 };
 
-/**
- * Reaching "Log out" now costs a click: it lives inside the account menu the
- * avatar opens, which is the point of #102 - one control in the header rather
- * than three. Every assertion below is about what the menu leads to, so the
- * opening is factored out rather than repeated.
- */
 const openAccountMenu = async (): Promise<void> => {
   await userEvent.click(screen.getByRole('button', {name: /Account menu/}));
   await screen.findByRole('menu');
@@ -84,16 +78,12 @@ describe('AccountNavigation', () => {
     renderNavigation();
 
     expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
-    // Named for the account, so a person with two of them can tell which
-    // window they are looking at without opening the menu.
     expect(screen.getByRole('button', {name: `Account menu for ${account.email}`})).toBeVisible();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
   });
 
   it('keeps log out behind the menu rather than in the header', async () => {
-    // The header carries one control for the account, not three. A Log out
-    // sitting beside the avatar would be the shape this change removed.
     fetchMock.mockResolvedValueOnce(jsonResponse(200, account));
     renderNavigation();
     await screen.findByRole('link', {name: 'Dashboard'});
@@ -106,12 +96,7 @@ describe('AccountNavigation', () => {
   });
 
   it('keeps an empty named navigation while the session is pending', () => {
-    fetchMock.mockImplementation(
-      () =>
-        new Promise<Response>(() => {
-          // This response stays pending so stale account controls would be observable.
-        }),
-    );
+    fetchMock.mockImplementation(() => new Promise<Response>(() => {}));
     renderNavigation();
 
     const navigation = screen.getByRole('navigation', {name: 'Main'});
@@ -183,9 +168,6 @@ describe('AccountNavigation', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
-    // A button, not a menu item. Once `/api/logout` returns, `isRevoked` flips
-    // and the navigation swaps to `LogoutButton` for the confirmation window -
-    // the account menu is gone by this point, along with the account it named.
     expect(screen.getByRole('button', {name: 'Signing out…'})).toBeDisabled();
     expect(screen.queryByRole('link', {name: 'Dashboard'})).not.toBeInTheDocument();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
@@ -258,9 +240,6 @@ describe('AccountNavigation', () => {
     expect(screen.queryByRole('link', {name: 'Sign up'})).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/logout']);
 
-    // Retryable is the point of this test. At this level that means the header
-    // still offers the account at all; that the menu stays open behind the
-    // callout with a live Log out in it is `AccountMenu`'s own spec to assert.
     expect(screen.getByRole('button', {name: `Account menu for ${account.email}`})).toBeEnabled();
   });
 });

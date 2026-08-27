@@ -2,12 +2,6 @@ import {describe, expect, it} from 'vitest';
 import {ApiError} from './client';
 import {makeQueryClient} from './query-client';
 
-/**
- * The retry predicate, read back off a constructed client rather than exported
- * separately - so this tests the policy the app actually runs with. Exporting
- * the function and testing that instead would pass happily while the client was
- * built with a different one.
- */
 const retryOf = (client = makeQueryClient()): ((count: number, error: unknown) => boolean) => {
   const retry = client.getDefaultOptions().queries?.retry;
   if (typeof retry !== 'function') {
@@ -24,8 +18,6 @@ describe('the query client retry policy', () => {
   });
 
   it('does not retry a 429 - retrying a rate limit is actively harmful', () => {
-    // The bucket is empty. Each retry is another denial charged to whoever
-    // shares that address, and the response already says when to come back.
     expect(retry(0, new ApiError(429, 'Too many requests', null))).toBe(false);
   });
 
@@ -42,8 +34,6 @@ describe('the query client retry policy', () => {
   });
 
   it('retries a fetch rejection, which is not an ApiError at all', () => {
-    // Offline, DNS, connection refused: the request never got an answer, so
-    // there is nothing considered about it to respect.
     expect(retry(0, new TypeError('Failed to fetch'))).toBe(true);
   });
 
@@ -53,9 +43,6 @@ describe('the query client retry policy', () => {
   });
 
   it('never retries a mutation', () => {
-    // A mutation is not safe to repeat: `POST /api/audits` a second time is a
-    // second thirty seconds of Chromium, and a second charge against the
-    // caller's rate limit.
     expect(makeQueryClient().getDefaultOptions().mutations?.retry).toBe(false);
   });
 

@@ -18,8 +18,6 @@ describe('DbLoadPageHistory', () => {
 
     await sut.load({pageId: 'page-1', userId: 'user-1', days: 90});
 
-    // Computed here rather than left to `now() - interval` in SQL: a boundary
-    // the caller can see is one a spec can pin.
     expect(repository.loadHistoryForUser).toHaveBeenCalledWith('page-1', 'user-1', new Date('2026-05-01T12:00:00Z'));
   });
 

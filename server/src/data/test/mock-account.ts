@@ -31,11 +31,6 @@ export const mockAuthenticatedSession = (): AuthenticatedSession => ({
   expiresAt: new Date('2026-08-25T00:00:00Z'),
 });
 
-/**
- * Each mock is typed against its protocol rather than inferred from the stub
- * body. An inferred type excludes the null branch these protocols declare,
- * which would make every failure case unmockable.
- */
 export const mockHasher = () => ({
   hash: vi.fn<Hasher['hash']>(() => Promise.resolve('hashed')),
 });
@@ -79,9 +74,7 @@ export const mockAddSessionRepository = () => ({
 });
 
 export const mockDeleteSessionRepository = () => ({
-  deleteById: vi.fn<DeleteSessionRepository['deleteById']>(async () => {
-    /* no-op */
-  }),
+  deleteById: vi.fn<DeleteSessionRepository['deleteById']>(async () => {}),
 });
 
 export const mockStartSession = () => ({

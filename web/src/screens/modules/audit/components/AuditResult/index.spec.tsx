@@ -28,10 +28,6 @@ describe('AuditResult', () => {
 
   describe('the score', () => {
     it('is never shown without the counts beside it', () => {
-      // The counts are not decoration, they are the correction. A lone number
-      // invites "72 is a B-", and the score exists for noticing regressions
-      // rather than for grading a site - two pages can score identically with
-      // very different problems.
       render(<AuditResult audit={audit()} />, {wrapper: Providers});
 
       expect(screen.getByText('72')).toBeVisible();
@@ -41,8 +37,6 @@ describe('AuditResult', () => {
     });
 
     it('shows every count, including the zeroes', () => {
-      // A zero is information here, unlike an empty violation group: "no
-      // critical issues" is the thing someone most wants confirmed.
       render(
         <AuditResult
           audit={audit({
@@ -62,8 +56,6 @@ describe('AuditResult', () => {
     });
 
     it('pairs each count with its label programmatically', () => {
-      // A description list, so the association survives without the visual
-      // layout that usually carries it.
       render(<AuditResult audit={audit()} />, {wrapper: Providers});
 
       const term = screen.getByText('Critical');
@@ -74,10 +66,6 @@ describe('AuditResult', () => {
 
   describe('an unsettled page', () => {
     it('says the results are provisional', () => {
-      // `settled: false` means the page never finished loading, so everything
-      // above was measured against a page still in motion. Publishing a clean
-      // score from it silently would be the product asserting something it does
-      // not know - on a page someone shares with a colleague.
       render(<AuditResult audit={audit({settled: false})} />, {wrapper: Providers});
 
       expect(screen.getByRole('note')).toHaveTextContent(/provisional/);
@@ -113,8 +101,6 @@ describe('AuditResult', () => {
   });
 
   it('needs nothing but a response, so #23 can render it too', () => {
-    // The share page and audit detail render this same component; it needs only
-    // the app-level router and query client, not route-specific data.
     expect(() => render(<AuditResult audit={audit()} />, {wrapper: Providers})).not.toThrow();
   });
 });

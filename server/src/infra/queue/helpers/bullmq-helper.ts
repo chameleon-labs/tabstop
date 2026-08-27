@@ -1,13 +1,5 @@
 import {Queue, Worker, type Job, type JobSchedulerTemplateOptions, type Processor, type WorkerOptions} from 'bullmq';
 
-/**
- * BullMQ's Queue and Worker generics are asymmetric.
- *
- * Queue derives its name type via ExtractNameType<DataTypeOrJob, string>, a
- * conditional that never resolves for a bare generic payload - so add() would
- * reject a plain string name. Passing Job<...> makes the conditional take its
- * true branch. Worker has plain generics and needs the opposite form.
- */
 export type PayloadQueue<TPayload> = Queue<Job<TPayload, void, string>>;
 export type PayloadWorker<TPayload> = Worker<TPayload, void, string>;
 
@@ -58,22 +50,6 @@ export const rateLimitForAtLeast = async <TPayload>(
   ]);
 };
 
-/**
- * Caps how many of this queue's jobs run at once across EVERY worker process.
- *
- * `concurrency` on the Worker is a per-process number. Two replicas of the
- * worker configured with `AUDIT_CONCURRENCY=3` run six Chromium instances
- * between them, so the cost backstop the setting exists to be is only as good
- * as a replica count nothing enforces. This limit lives in Redis and every
- * worker on the queue respects it, so the ceiling holds however many
- * processes are consuming.
- *
- * Set at worker startup, which means the value is whatever the most recently
- * started worker was configured with - correct while replicas share a
- * deployment's environment, and the reason the per-process `concurrency` is
- * still passed as well: that one bounds a single process even if this call
- * never happened.
- */
 export const setGlobalConcurrency = async (name: string, connectionUrl: string, concurrency: number): Promise<void> => {
   const queue = makeQueue(name, connectionUrl);
   try {
@@ -83,22 +59,6 @@ export const setGlobalConcurrency = async (name: string, connectionUrl: string, 
   }
 };
 
-/**
- * Registers a recurring job, or updates the one already registered under this
- * id.
- *
- * The schedule lives in Redis, so it fires ONCE across every worker replica -
- * which is the whole reason a nightly fan-out uses this rather than a timer.
- * A timer fires per process, so N replicas would race on the same rows every
- * night.
- *
- * An upsert rather than an add because this runs on every worker boot: a
- * deploy that changes the cron has to take effect, not leave the old schedule
- * running and add a second one beside it.
- *
- * `jobOptions` are the fired job's - attempts and backoff for one run - not
- * the schedule's.
- */
 export const upsertDailySchedule = async <TPayload>(
   queue: PayloadQueue<TPayload>,
   schedulerId: string,

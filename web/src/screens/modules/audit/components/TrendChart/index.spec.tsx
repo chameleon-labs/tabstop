@@ -39,9 +39,6 @@ const markers = (container: HTMLElement): HTMLElement[] => [
 
 describe('TrendChart structure', () => {
   it('is a group with a text equivalent, so the points inside it stay reachable', () => {
-    // NOT `role="img"`. A `role="img"` element is a leaf: its descendants are
-    // hidden from assistive technology, which would make every focusable point
-    // unreachable.
     const {container} = render(<TrendChart points={SERIES} />);
     const plot = container.querySelector('svg');
 
@@ -79,9 +76,6 @@ describe('TrendChart structure', () => {
   });
 
   it('says why the version rule matters, not just that it is there', () => {
-    // Naming the marker leaves the reader to read an engine-induced shift as a
-    // regression in their page, which is the support question the rule exists
-    // to prevent.
     render(<TrendChart points={SERIES} />);
 
     expect(screen.getByText(/not directly comparable/i)).toBeVisible();
@@ -102,7 +96,6 @@ describe('TrendChart structure', () => {
   });
 
   it('labels both ends of the fitted axis, because the scale moves', () => {
-    // 74 to 90 fits to 70..95; a scale that moves has to say where it is.
     const {container} = render(<TrendChart points={SERIES} />);
     const axis = [...container.querySelectorAll('.trend-chart__axis-label')].map((label) => label.textContent);
 
@@ -161,8 +154,6 @@ describe('TrendChart keyboard', () => {
   });
 
   it('stops at each end rather than wrapping round', async () => {
-    // Wrapping from the newest audit to the oldest reads as a jump backwards
-    // in time that nobody asked for.
     const user = userEvent.setup();
     const {container} = render(<TrendChart points={SERIES} />);
     const points = markers(container);
@@ -230,8 +221,6 @@ describe('TrendChart pointer', () => {
   });
 
   it('anchors the tooltip by its near edge, so it cannot leave the chart', async () => {
-    // Centred on the point, the tooltip for the first or last audit in a window
-    // hangs off the box - which is where it is needed most.
     const user = userEvent.setup();
     const {container} = render(<TrendChart points={SERIES} />);
     const tooltip = (): HTMLElement | null => container.querySelector<HTMLElement>('.trend-chart__tooltip');

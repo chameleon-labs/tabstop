@@ -3,16 +3,11 @@ import {EXPECTED_DURATION, PHASES, announcementFor, completionAnnouncement, phas
 
 describe('phaseFor', () => {
   it('does not claim a queue place before the request is accepted', () => {
-    // Between submitting and the server accepting, no audit and no queue entry
-    // exists. "Waiting for a free worker" is not a rounding error there - it
-    // describes a queue the request has not reached and may never reach.
     expect(phaseFor('submitting', 0)).toBe('Requesting the audit');
     expect(phaseFor('submitting', 30_000)).toBe('Requesting the audit');
   });
 
   it('says a queued audit is queued, rather than claiming to be fetching', () => {
-    // True and different: nothing is being fetched while the job sits in a
-    // queue. The small lie is what makes a progress indicator untrustworthy.
     expect(phaseFor('queued', 0)).toBe('Waiting for a free worker');
     expect(phaseFor('queued', 30_000)).toBe('Waiting for a free worker');
   });
@@ -26,15 +21,10 @@ describe('phaseFor', () => {
   });
 
   it('stays on the last phase when an audit overruns', () => {
-    // Overrunning into "Scoring" reads like the end of a job; overrunning into
-    // "Fetching the page" reads like a stuck one.
     expect(phaseFor('running', 120_000)).toBe('Scoring');
   });
 
   it('never goes backwards', () => {
-    // A progress indicator that regresses is worse than none. Asserted across
-    // the whole range rather than at the boundaries, because the boundaries are
-    // exactly where an off-by-one would hide.
     const seen = Array.from({length: 200}, (_, i) => phaseFor('running', i * 250));
     const order = PHASES.map((phase) => phase.label);
 
@@ -58,9 +48,6 @@ describe('announcementFor', () => {
   });
 
   it('says nothing when the phase has not changed', () => {
-    // THE point of this function. An audit is polled roughly fifteen times; a
-    // polite live region re-read on each one is unusable, and it is precisely
-    // the defect this product exists to find on other people's sites.
     expect(announcementFor('Fetching the page', 'Fetching the page')).toBeNull();
   });
 
@@ -74,7 +61,6 @@ describe('announcementFor', () => {
   });
 
   it('announces three times across a whole audit, not once per poll', () => {
-    // The end-to-end shape of the rule: fifteen polls, three announcements.
     let announced: string | null = null;
     const spoken: string[] = [];
 
@@ -97,9 +83,6 @@ describe('announcementFor', () => {
 
 describe('completionAnnouncement', () => {
   it('says the wait is over, and roughly what was found', () => {
-    // The result appears without the route changing, so nothing else says
-    // anything: the progress region used to unmount at that exact moment, and
-    // the route announcer only speaks on navigation.
     expect(completionAnnouncement(72, 3)).toBe('Audit complete. Score 72. 3 issues found.');
   });
 
@@ -112,8 +95,6 @@ describe('completionAnnouncement', () => {
   });
 
   it('does not recite the findings', () => {
-    // The result is on screen to be read. Reading it into a live region talks
-    // over someone who has already started.
     expect(completionAnnouncement(72, 40).length).toBeLessThan(60);
   });
 });

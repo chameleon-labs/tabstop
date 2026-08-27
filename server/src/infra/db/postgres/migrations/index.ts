@@ -10,14 +10,6 @@ import * as alertDelivery from './008-alert-delivery.js';
 import * as alertDeliveryState from './009-alert-delivery-state.js';
 import * as onDemandAudits from './010-on-demand-audits.js';
 
-/**
- * Migrations are registered here rather than discovered from disk.
- *
- * Kysely's FileMigrationProvider resolves .js files relative to __dirname,
- * which under "type": "module" + NodeNext means three different paths — one
- * under tsx, one under dist/, one under Vitest. A typechecked object literal
- * removes the problem and cannot drift from what actually compiled.
- */
 export const migrations: Record<string, Migration> = {
   '001-initial-schema': initialSchema,
   '002-accounts': accounts,

@@ -5,7 +5,6 @@ import {CopyLink} from './index';
 
 const URL = 'https://tabstop.test/r/3f2b';
 
-/** Absent in jsdom, and absent in a real browser outside a secure context. */
 const withClipboard = (writeText: () => Promise<void>): void => {
   Object.defineProperty(navigator, 'clipboard', {value: {writeText}, configurable: true});
 };
@@ -34,8 +33,6 @@ describe('CopyLink', () => {
   });
 
   it('confirms into a region that was already mounted and empty', async () => {
-    // Content present when a region first appears is initial content, and
-    // assistive technology says nothing about it. See `AuditStatus`.
     withClipboard(() => Promise.resolve());
     render(<CopyLink url={URL} />);
 
@@ -57,8 +54,6 @@ describe('CopyLink', () => {
   });
 
   it('says so and shows the link when the clipboard refuses', async () => {
-    // Denied permission. A button that silently does nothing is worse than one
-    // that admits it failed.
     withClipboard(() => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')));
     render(<CopyLink url={URL} />);
 
@@ -69,8 +64,6 @@ describe('CopyLink', () => {
   });
 
   it('says so when there is no clipboard at all', async () => {
-    // Any page served over plain http, which includes a colleague opening this
-    // on a local network address.
     withoutClipboard();
     render(<CopyLink url={URL} />);
 

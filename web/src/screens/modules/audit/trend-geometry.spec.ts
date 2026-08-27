@@ -40,8 +40,6 @@ const BOTTOM = BOX.height - BOX.padding.bottom;
 
 describe('trendBounds', () => {
   it('fits the axis to the scores rather than the full range', () => {
-    // On a fixed 0-100 axis the regression that brought the reader here is an
-    // invisible step near the right edge.
     expect(trendBounds(scores([74, 81, 92, 88]))).toEqual({lo: 70, hi: 100});
   });
 
@@ -88,8 +86,6 @@ describe('trendPositions', () => {
   const bounds = {lo: 70, hi: 100};
 
   it('spaces the points by when they ran, not by how many there are', () => {
-    // A page paused for a fortnight has to leave a visible gap; on index
-    // spacing a daily run and a monthly one look identical.
     const positions = trendPositions(
       [
         scored('2026-07-01T00:00:00.000Z', 90),
@@ -150,8 +146,6 @@ describe('trendSegments', () => {
   const day = (index: number): string => `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`;
 
   it('breaks the line at a failure rather than bridging it', () => {
-    // A bridged line says the score moved smoothly through days nobody
-    // measured.
     const segments = trendSegments(
       positioned([scored(day(0), 90), scored(day(1), 88), failed(day(2)), scored(day(3), 74), scored(day(4), 76)]),
     );
@@ -189,7 +183,6 @@ describe('versionBoundaries', () => {
   });
 
   it('never marks the first point, which changed nothing', () => {
-    // The version a window opens on is where the reader started, not a change.
     expect(versionBoundaries([scored(day(0), 90, '4.11.0'), scored(day(1), 88, '4.11.0')])).toEqual([]);
     expect(versionBoundaries([scored(day(0), 90, '4.11.0')])).toEqual([]);
   });
@@ -246,8 +239,6 @@ describe('historyRows', () => {
   });
 
   it('compares against the last run that finished, not the last run', () => {
-    // A failure between two audits must not blank the comparison; the reader
-    // still wants to know the score fell eight points.
     const rows = historyRows([scored(day(0), 90), failed(day(1)), scored(day(2), 82)]);
 
     expect(rows[0]?.previousScore).toBe(90);

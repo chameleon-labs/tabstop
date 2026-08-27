@@ -32,9 +32,6 @@ export class PostgresAlertEventRepository
       .select('alert_events.id')
       .where('alert_events.emailed_at', 'is', null)
       .where('alert_events.failed_at', 'is', null)
-      // Unsubscribe intentionally cancels pending delivery without falsifying
-      // emailed_at. Excluding it here keeps the retained event as history
-      // without redispatching a job every minute forever.
       .where('pages.alerts_enabled', '=', true)
       .orderBy('alert_events.id')
       .limit(limit);

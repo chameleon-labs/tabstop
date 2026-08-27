@@ -7,9 +7,6 @@ export class NodeDnsResolver implements DnsResolver {
       const results = await lookup(hostname, {all: true, verbatim: true});
       return results.map((result) => result.address);
     } catch {
-      // Fail closed. The guard blocks an empty result, so a name that cannot
-      // be resolved is refused rather than escaping as an error the caller
-      // might mistake for something else.
       return [];
     }
   }

@@ -7,7 +7,6 @@ describe('SessionIdAdapter', () => {
 
     const first = sut.generate();
 
-    // 256 bits, hex-encoded so the cookie needs no percent-escaping.
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(first).not.toBe(sut.generate());
   });

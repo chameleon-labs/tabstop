@@ -19,8 +19,6 @@ describe('accounts schema', () => {
     await db.destroy();
   });
 
-  // Spec files share one database and run in parallel, so every fixture is
-  // unique and every assertion is scoped to rows this test created.
   const makeUser = async (): Promise<string> => {
     const user = await db
       .insertInto('users')
@@ -36,7 +34,6 @@ describe('accounts schema', () => {
     const row = await db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
     expect(row.alert_threshold).toBe(5);
 
-    // 0 would alert on every audit that merely failed to improve.
     await expect(
       db
         .insertInto('users')
@@ -50,9 +47,6 @@ describe('accounts schema', () => {
   });
 
   it('reports the named unique constraint on a duplicate email', async () => {
-    // The account repository matches this constraint BY NAME to turn a lost
-    // signup race into a 409. Renaming it here breaks that mapping silently,
-    // so the name is pinned by this test.
     const email = `${randomUUID()}@test.test`;
     await db.insertInto('users').values({email, password_digest: 'x'}).execute();
 
@@ -72,7 +66,6 @@ describe('accounts schema', () => {
       /sites_user_domain_unique/,
     );
 
-    // Two users may legitimately track the same site.
     await db.insertInto('sites').values({user_id: userB, domain}).execute();
     const rows = await db.selectFrom('sites').select('id').where('domain', '=', domain).execute();
     expect(rows).toHaveLength(2);
@@ -174,8 +167,6 @@ describe('accounts schema', () => {
   });
 
   it('joins page -> site -> user for the alert threshold #14 reads', async () => {
-    // sites.user_id is NOT NULL now, so this join is total: every page has
-    // exactly one owning user and there is no null case to handle.
     const userId = await makeUser();
     await db.updateTable('users').set({alert_threshold: 12}).where('id', '=', userId).execute();
     const site = await db

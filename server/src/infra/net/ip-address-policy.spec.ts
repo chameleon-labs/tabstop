@@ -20,35 +20,29 @@ describe('isBlockedAddress', () => {
     }
   });
 
-  it('blocks the reserved ranges beyond the obvious private ones', () => {
-    // Each of these was verified ALLOWED before being added, and each is
-    // reachable: an unspecified address hits a local listener, and 6to4 and
-    // NAT64 both embed an IPv4 address so a v6 literal can address 127.0.0.1
-    // without ever looking like it.
-    for (const address of [
-      '::', // unspecified
-      '100.64.0.1', // carrier-grade NAT
-      '192.0.0.1', // IETF protocol assignments
-      '198.18.0.1', // benchmarking
-      '224.0.0.1', // multicast
-      '240.0.0.1',
-      '255.255.255.255',
-      'fec0::1', // site-local: deprecated, still routed on legacy networks
-      'ff02::1', // v6 multicast
-      '2002:7f00:1::', // 6to4 wrapping 127.0.0.1
-      '64:ff9b::7f00:1', // NAT64 wrapping 127.0.0.1
-      '64:ff9b:1::a00:1', // RFC 8215 local-use NAT64 wrapping 10.0.0.1
-      '100::1', // discard-only
-      '2001::1', // Teredo - embeds an IPv4 address, like 6to4
-      '2001:2::1', // benchmarking
-      '2001:10::1', // ORCHID, deprecated
-      '2001:20::1', // ORCHIDv2
-      '2001:db8::1', // documentation
-      '3fff::1', // documentation
-      '5f00::1', // segment routing
-    ]) {
-      expect(isBlockedAddress(address)).toBe(true);
-    }
+  it.each([
+    {name: 'the unspecified address, reaching a local listener', address: '::'},
+    {name: 'carrier-grade NAT', address: '100.64.0.1'},
+    {name: 'IETF protocol assignments', address: '192.0.0.1'},
+    {name: 'benchmarking', address: '198.18.0.1'},
+    {name: 'multicast', address: '224.0.0.1'},
+    {name: 'reserved space', address: '240.0.0.1'},
+    {name: 'the broadcast address', address: '255.255.255.255'},
+    {name: 'site-local, deprecated but still routed on legacy networks', address: 'fec0::1'},
+    {name: 'v6 multicast', address: 'ff02::1'},
+    {name: '6to4 wrapping 127.0.0.1', address: '2002:7f00:1::'},
+    {name: 'NAT64 wrapping 127.0.0.1', address: '64:ff9b::7f00:1'},
+    {name: 'RFC 8215 local-use NAT64 wrapping 10.0.0.1', address: '64:ff9b:1::a00:1'},
+    {name: 'discard-only', address: '100::1'},
+    {name: 'Teredo, wrapping an IPv4 address like 6to4', address: '2001::1'},
+    {name: 'benchmarking', address: '2001:2::1'},
+    {name: 'ORCHID, deprecated', address: '2001:10::1'},
+    {name: 'ORCHIDv2', address: '2001:20::1'},
+    {name: 'documentation', address: '2001:db8::1'},
+    {name: 'documentation', address: '3fff::1'},
+    {name: 'segment routing', address: '5f00::1'},
+  ])('blocks $address, which is $name', ({address}) => {
+    expect(isBlockedAddress(address)).toBe(true);
   });
 
   it('allows ordinary public addresses', () => {
@@ -58,39 +52,22 @@ describe('isBlockedAddress', () => {
   });
 
   it('blocks the IPv4-mapped IPv6 form of a private address', () => {
-    // ::ffff:127.0.0.1 is the classic way past a checker that only inspects
-    // dotted-quad strings.
     expect(isBlockedAddress('::ffff:127.0.0.1')).toBe(true);
     expect(isBlockedAddress('::ffff:169.254.169.254')).toBe(true);
   });
 
   it('blocks the IPv4-COMPATIBLE IPv6 form too, not only the mapped one', () => {
-    // The other `::a.b.c.d` form, and the gap the mapped rule does not cover:
-    // BlockList reads ::ffff:0:0/96 against the IPv4 rules, but ::/96 is a
-    // different prefix and matched nothing. Only `::` itself was blocked, as a
-    // /128, so `::169.254.169.254` was ALLOWED - the same wrapped-IPv4 trick
-    // as 6to4 and NAT64, both of which this list already refuses.
-    //
-    // Neither Linux nor macOS routes these today (measured: ENETUNREACH), so
-    // this closes a gap rather than a live bypass - the same standard applied
-    // to fec0::/10, which is blocked for being routable on legacy networks
-    // rather than on this one.
     expect(isBlockedAddress('::127.0.0.1')).toBe(true);
     expect(isBlockedAddress('::169.254.169.254')).toBe(true);
     expect(isBlockedAddress('::10.0.0.1')).toBe(true);
-    // Same address, written the way node normalises it.
     expect(isBlockedAddress('::7f00:1')).toBe(true);
   });
 
   it('still allows a public address in IPv4-mapped form', () => {
-    // The ::/96 rule above must not spill into ::ffff:0:0/96, which is how a
-    // dual-stack host legitimately names a public IPv4 address.
     expect(isBlockedAddress('::ffff:8.8.8.8')).toBe(false);
   });
 
   it('blocks anything that is not an address at all', () => {
-    // node:net BlockList.check returns FALSE for a non-address, so relying on
-    // it alone fails OPEN. Verified against Node 24.
     for (const value of ['', 'not-an-ip', 'localhost', '999.999.999.999', '10.1.2.3 ']) {
       expect(isBlockedAddress(value)).toBe(true);
     }
@@ -123,7 +100,6 @@ describe('parseAuditUrl', () => {
     });
     expect(parseAuditUrl('http://[::1]/', DEFAULT_URL_POLICY)).toEqual({safe: false, reason: 'blocked-address'});
     expect(parseAuditUrl('http://127.0.0.1/', DEFAULT_URL_POLICY)).toEqual({safe: false, reason: 'blocked-address'});
-    // The IPv4-compatible form, which reached this far as a plain accepted url.
     expect(parseAuditUrl('http://[::169.254.169.254]/latest/meta-data/', DEFAULT_URL_POLICY)).toEqual({
       safe: false,
       reason: 'blocked-address',
@@ -135,9 +111,6 @@ describe('parseAuditUrl', () => {
   });
 
   it('rejects a URL carrying credentials', () => {
-    // They survive normalisation, so an accepted URL would be stored and then
-    // returned by the public result endpoint - and cached for an hour -
-    // handing whatever was pasted in to everyone with the share link.
     for (const raw of [
       'https://alice:secret@example.com/',
       'https://alice@example.com/',
@@ -173,8 +146,6 @@ describe('parseAuditUrl', () => {
     const result = parseAuditUrl('HTTPS://Example.COM/Path', DEFAULT_URL_POLICY);
 
     expect(result.safe && result.url.host).toBe('example.com');
-    // Path case is significant to a server, so folding it would audit a
-    // different page than the one asked for.
     expect(result.safe && result.url.pathname).toBe('/Path');
   });
 });

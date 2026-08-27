@@ -4,7 +4,6 @@ import {mockAccountModel} from '../../test/mock-account.js';
 
 describe('MeController', () => {
   it('returns the account the auth middleware already resolved', async () => {
-    // No second session lookup: the middleware put the account in res.locals.
     const sut = new MeController();
 
     const response = await sut.handle({account: mockAccountModel()});

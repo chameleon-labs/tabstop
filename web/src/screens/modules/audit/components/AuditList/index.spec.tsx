@@ -29,7 +29,6 @@ const NEWEST = '2026-08-15T10:00:00.000Z';
 
 const SERIES: PageHistoryPoint[] = [scored(OLDEST, 90), failed(MIDDLE), scored(NEWEST, 74)];
 
-/** Day and hour cycle on different periods, so every timestamp below 168 is distinct. */
 const many = (count: number): PageHistoryPoint[] =>
   Array.from({length: count}, (_, index) =>
     scored(
@@ -48,7 +47,6 @@ describe('AuditList', () => {
   });
 
   it('names what each control opens, rather than repeating "View result"', () => {
-    // Three identical links are three identical entries in a list of links.
     render(<AuditList points={SERIES} selectedAuditId={null} onSelect={vi.fn()} />);
 
     expect(screen.getByRole('button', {name: `View result for ${pointDate(SERIES[2]!)}`})).toBeVisible();
@@ -83,8 +81,6 @@ describe('AuditList', () => {
   });
 
   it('carries the four fields the row is meant to have', () => {
-    // Date, score, change and status, each in its own cell. Merging score and
-    // status into one leaves a completed audit showing a bare number.
     render(<AuditList points={SERIES} selectedAuditId={null} onSelect={vi.fn()} />);
     const row = rows()[0]!;
 
@@ -95,14 +91,12 @@ describe('AuditList', () => {
   });
 
   it('compares a score with the last run that finished, not the last run', () => {
-    // The 90 two rows up is the comparison; the failure between them is not.
     render(<AuditList points={SERIES} selectedAuditId={null} onSelect={vi.fn()} />);
 
     expect(within(rows()[0]!).getByText('Score down 16 points since the previous audit')).toBeInTheDocument();
   });
 
   it('caps the list and says so, rather than printing a year of rows', () => {
-    // A 365-day window is not a 365-row list.
     render(<AuditList points={many(45)} selectedAuditId={null} onSelect={vi.fn()} />);
 
     expect(rows()).toHaveLength(AUDIT_LIST_LIMIT);

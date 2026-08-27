@@ -117,10 +117,6 @@ describe('PostgresAuditRepository completion', () => {
         page_id: pageId,
         url: `https://${randomUUID()}.test/a`,
         status: 'failed',
-        // Deliberately poison the row with a score/version. Production does not
-        // write them on failure, but status is the contract: a query that merely
-        // filters null scores would pass the happy schema by coincidence and
-        // silently regress if stale result fields ever survived a retry.
         score: 0,
         axe_version: '4.12.1',
         error: 'Could not load that page',
@@ -205,16 +201,9 @@ describe('PostgresAuditRepository completion', () => {
   });
 
   it('alerts on an on-demand audit like any other, which is the decision #115 made', async () => {
-    // The alternative was suppressing alerts for an audit the reader asked
-    // for, on the grounds that they are watching it anyway. That leaves a
-    // hole: an on-demand audit also stands tonight's scheduled one down, so a
-    // page audited by hand each day would never alert at all. The one-per-page
-    // -per-day index already stops the two from alerting twice.
     const pageId = await makePage(7);
     const previous = await doneAudit(pageId, {score: 90, createdAt: new Date('2026-01-01T10:00:00Z')});
     const current = await claimedAudit(pageId, new Date('2026-01-02T10:00:00Z'));
-    // What makes it on demand: a spend on the ledger, which is where #115
-    // records the entitlement rather than on the audit row.
     const owner = await db
       .selectFrom('pages')
       .innerJoin('sites', 'sites.id', 'pages.site_id')

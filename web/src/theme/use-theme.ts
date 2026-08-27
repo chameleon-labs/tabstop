@@ -6,10 +6,6 @@ export type ThemeControls = {
   setTheme: (theme: Theme) => void;
 };
 
-/**
- * No mount effect: the boot script has already stamped the document, and
- * re-applying here would hide it failing.
- */
 export const useTheme = (): ThemeControls => {
   const [theme, setThemeState] = useState<Theme>(readStoredTheme);
 

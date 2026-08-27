@@ -10,17 +10,12 @@ import type {RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js'
 import type {AuditJobQueue} from '../../data/protocols/queue/audit-job-queue.js';
 
 export const setupAuditRoutes = (router: Router, rateLimiter: RateLimiter, auditQueue: AuditJobQueue): void => {
-  // Anonymous by design - a one-off audit with no signup is the product's
-  // hook - and each accepted request is roughly thirty seconds of Chromium.
-  // The per-IP bucket is what makes that affordable.
   router.post(
     '/audits',
     makeRateLimit(rateLimiter, [{name: 'audit', bucket: RATE_LIMITS.audit, key: ipKey}]),
     adaptRoute(makeRequestAuditController(auditQueue)),
   );
 
-  // Fully public, gated only by an unguessable uuid. The payload is built by
-  // an explicit mapper so nothing user-identifying can ride along.
   router.get(
     '/audits/:uuid',
     makeRateLimit(rateLimiter, [{name: 'auditRead', bucket: RATE_LIMITS.auditRead, key: ipKey}]),

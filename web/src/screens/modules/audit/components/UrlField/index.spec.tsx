@@ -22,7 +22,6 @@ describe('UrlField', () => {
   });
 
   it('submits on Enter, not only on the button', async () => {
-    // A URL box that ignores Enter is a URL box that feels broken.
     const {onSubmit} = setup();
 
     await userEvent.type(field(), 'example.com{Enter}');
@@ -32,19 +31,11 @@ describe('UrlField', () => {
 
   describe('when validation happens', () => {
     it('says nothing while someone is still typing', async () => {
-      // Telling someone that `e` is not a URL is true and useless. The message
-      // would appear before they could possibly have finished, and reads as the
-      // form arguing with them.
       setup();
 
       await userEvent.type(field(), 'e');
 
       expect(screen.queryByText('That does not look like a URL')).not.toBeInTheDocument();
-      // Not marked invalid, rather than explicitly marked valid. Lattice's
-      // `Input` emits `aria-invalid` only when true, and an absent attribute
-      // means the same thing to assistive tech as `aria-invalid="false"` - so
-      // this asserts the meaning rather than which of two equivalent encodings
-      // the design system happens to use.
       expect(field()).not.toHaveAttribute('aria-invalid', 'true');
     });
 
@@ -102,8 +93,6 @@ describe('UrlField', () => {
     });
 
     it('announces the message, since it appears in response to a keypress', async () => {
-      // Without a live region, someone who pressed Enter gets silence and a
-      // form that appears to have done nothing at all.
       setup();
 
       await userEvent.type(field(), '{Enter}');
@@ -112,8 +101,6 @@ describe('UrlField', () => {
     });
 
     it('accepts a bare domain, which type="url" would have rejected first', async () => {
-      // The browser would refuse `example.com` before this component saw it,
-      // and that input is precisely the one to accept.
       const {onSubmit} = setup();
 
       await userEvent.type(field(), 'example.com{Enter}');

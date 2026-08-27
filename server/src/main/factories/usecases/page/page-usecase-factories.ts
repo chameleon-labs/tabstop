@@ -18,9 +18,6 @@ import type {AuditJobQueue} from '../../../../data/protocols/queue/audit-job-que
 export const makeAddPage = (auditQueue: AuditJobQueue): DbAddPage =>
   new DbAddPage(
     new PostgresPageRepository(getDatabase()),
-    // Only for the cleanup path when the queue refuses the first job. The page
-    // repository owns every other audit write in this flow, inside its
-    // transaction.
     new PostgresAuditRepository(getDatabase()),
     auditQueue,
     new NodeDnsResolver(),

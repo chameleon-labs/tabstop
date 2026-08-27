@@ -25,13 +25,6 @@ export type RegressionResult =
   | {kind: 'score_drop'; delta: number}
   | {kind: 'new_critical'; ruleIds: string[]};
 
-/**
- * The shared rule-level comparison for alerting and the audit diff UI (#22).
- *
- * The objects themselves are preserved so each consumer keeps the details
- * from the side where a rule exists: current details for added/unchanged,
- * previous details for fixed.
- */
 export const diffViolations = <Current extends ViolationSnapshot, Previous extends ViolationSnapshot>(
   current: readonly Current[],
   previous: readonly Previous[],
@@ -46,13 +39,6 @@ export const diffViolations = <Current extends ViolationSnapshot, Previous exten
   };
 };
 
-/**
- * Chooses at most one alert signal for a completed audit.
- *
- * Engine changes suppress the whole comparison: axe can add or reclassify
- * rules between releases, and presenting that as a page regression would make
- * every monitored page cry wolf at once.
- */
 export const detectRegression = (
   current: AuditSnapshot,
   previous: AuditSnapshot | null,

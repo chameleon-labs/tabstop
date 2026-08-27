@@ -54,8 +54,6 @@ export const mockPageHistory = (): PageHistory => ({
   page: mockPageModel(),
   audits: [
     {...mockAuditModel(), pageId: 'page-1', status: 'done', score: 71},
-    // A failed run in the middle: the point of the shape is that it survives
-    // as a point, not that it is dropped or scored zero.
     {...mockAuditModel(), pageId: 'page-1', status: 'failed', error: 'Navigation timed out'},
   ],
 });
@@ -65,21 +63,12 @@ export const mockDuePages = (): DuePage[] => [
   {pageId: 'page-2', url: 'https://other.test/b', domain: 'other.test'},
 ];
 
-/**
- * One batch and no more, so a spec that does not care about paging gets a run
- * that terminates. `after` is honoured rather than ignored: a mock that
- * returned the same batch forever would let a broken cursor pass.
- */
 export const mockLoadDueReauditsRepository = () => ({
   loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>((query) =>
     Promise.resolve(query.after === null ? mockDuePages() : []),
   ),
 });
 
-/**
- * A repository holding `pages`, served in id order through the cursor - so a
- * paging spec exercises the loop rather than a stub that agrees with it.
- */
 export const mockPagedDueReauditsRepository = (pages: DuePage[]) => ({
   loadDueForReaudit: vi.fn<LoadDueReauditsRepository['loadDueForReaudit']>((query) =>
     Promise.resolve(pages.filter((page) => query.after === null || page.pageId > query.after).slice(0, query.limit)),

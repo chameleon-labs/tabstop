@@ -6,8 +6,6 @@ describe('NodeDnsResolver', () => {
   const sut = new NodeDnsResolver();
 
   it('resolves localhost to a loopback address', async () => {
-    // Offline and stable, and it is exactly the address the blocklist most
-    // needs to see coming back from a name.
     const addresses = await sut.resolve('localhost');
 
     expect(addresses.length).toBeGreaterThan(0);
@@ -21,8 +19,6 @@ describe('NodeDnsResolver', () => {
   });
 
   it('returns an empty list rather than throwing for a name that does not exist', async () => {
-    // The guard treats empty as blocked, so a resolution failure fails closed
-    // instead of escaping as an error.
     expect(await sut.resolve('nx-does-not-exist.invalid')).toEqual([]);
   });
 });

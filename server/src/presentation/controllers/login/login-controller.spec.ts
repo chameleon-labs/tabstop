@@ -44,8 +44,6 @@ describe('LoginController', () => {
   });
 
   it('returns one indistinguishable 401 for bad credentials', async () => {
-    // The usecase cannot tell the controller whether the email was unknown or
-    // the password wrong, so the response cannot leak it either.
     const {sut, authenticate} = makeSut();
     authenticate.auth.mockResolvedValueOnce(null);
 

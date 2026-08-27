@@ -13,8 +13,6 @@ describe('stylesheetsFor', () => {
   });
 
   it('collects the stylesheets of everything the chunk imports', () => {
-    // A lazy page's CSS is split across the chunks it pulls in - its own
-    // stylesheet is not the whole page.
     const manifest = {
       [ENTRY]: {file: 'assets/ScoreFormula-abc.js', css: ['assets/ScoreFormula-def.css'], imports: ['_shared-1.js']},
       '_shared-1.js': {file: 'assets/shared-1.js', css: ['assets/shared-1.css'], imports: ['_shared-2.js']},
@@ -48,8 +46,6 @@ describe('stylesheetsFor', () => {
   });
 
   it('throws when the entry is not in the manifest', () => {
-    // A moved or renamed page silently drops out of the manifest, and the
-    // symptom - an unstyled prerendered page - only appears in a browser.
     expect(() => stylesheetsFor({}, ENTRY)).toThrow(ENTRY);
   });
 });

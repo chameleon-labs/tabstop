@@ -44,7 +44,6 @@ const render = (initial: readonly PageSummary[] | undefined) => {
 
 describe('usePageAuditToasts', () => {
   it('says nothing about rows that were already finished when the screen opened', () => {
-    // Otherwise every visit announces the outcome of work done days ago.
     const {push} = render([page('a', 'done', scored), page('b', 'failed')]);
 
     expect(push).not.toHaveBeenCalled();
@@ -87,7 +86,6 @@ describe('usePageAuditToasts', () => {
   });
 
   it('does not repeat itself when the same result arrives again', () => {
-    // The list is polled; the same finished row is delivered every interval.
     const {push, rerender} = render([page('a', 'running')]);
     const finished = page('a', 'done', scored, 'audit-a', 74);
 
@@ -99,8 +97,6 @@ describe('usePageAuditToasts', () => {
   });
 
   it('says nothing when a later audit on an established page finishes', () => {
-    // "First audit complete" is only true once, and this row already had a
-    // score before this run started.
     const {push, rerender} = render([page('a', 'running', scored)]);
 
     rerender([page('a', 'done', [...scored, {score: 80, at: '2026-08-15T11:00:00.000Z'}], 'audit-a', 80)]);

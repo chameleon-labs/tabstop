@@ -12,8 +12,6 @@ const urlOf = (raw: string): string => {
 describe('normaliseUrl', () => {
   describe('being forgiving about what someone types', () => {
     it('adds https to a bare domain', () => {
-      // The single most common input. Demanding a scheme is a form asking a
-      // person to do something the machine can do.
       expect(urlOf('example.com')).toBe('https://example.com/');
     });
 
@@ -30,9 +28,6 @@ describe('normaliseUrl', () => {
     });
 
     it('leaves an explicit http alone rather than upgrading it', () => {
-      // Someone who typed `http://` meant it. Auditing https instead would
-      // audit a different page than the one shown back to them - and on many
-      // sites a genuinely different page.
       expect(urlOf('http://example.com')).toBe('http://example.com/');
     });
 
@@ -49,8 +44,6 @@ describe('normaliseUrl', () => {
     });
 
     it('returns the canonical form, which is also what gets displayed', () => {
-      // Showing one string and submitting another is how "why does the result
-      // say example.com/ when I typed example.com" happens.
       expect(urlOf('example.com')).toBe('https://example.com/');
     });
   });
@@ -64,9 +57,6 @@ describe('normaliseUrl', () => {
       // oxlint-disable-next-line no-script-url -- the refused input under test
       ['javascript:alert(1)', 'a scheme that names no page'],
       ['mailto:someone@example.com', 'an address rather than a page'],
-      // A digit after the colon is not enough to mean "port". Read that way,
-      // `mailto:123` became `https://mailto:123/` - a real address, entirely
-      // unrelated to what was typed, submitted without a word.
       ['mailto:123', 'an opaque scheme whose payload is numeric'],
       // oxlint-disable-next-line no-script-url -- the refused input under test
       ['javascript:1', 'the same trap with an executable scheme'],
@@ -76,8 +66,6 @@ describe('normaliseUrl', () => {
     });
 
     it('has a message for each problem it reports', () => {
-      // The only two sentences this package writes. Everything else is quoted
-      // from the server, which owns the policy that produced it.
       expect(Object.keys(URL_PROBLEMS).toSorted()).toEqual(['empty', 'unparseable']);
       for (const message of Object.values(URL_PROBLEMS)) {
         expect(message).not.toBe('');
@@ -87,11 +75,6 @@ describe('normaliseUrl', () => {
 
   describe('what it deliberately does NOT judge', () => {
     it('passes a non-http scheme through for the server to refuse', () => {
-      // The server has one table of rejection messages, with a comment about
-      // why there must be exactly one: a submission-time rejection and an
-      // audit-time one must read identically, or the difference reveals which
-      // internal addresses exist. A second copy here would erode that from a
-      // package the server cannot see.
       expect(urlOf('ftp://example.com')).toBe('ftp://example.com/');
     });
 
@@ -104,9 +87,6 @@ describe('normaliseUrl', () => {
     });
 
     it('accepts a hostname with no dot, leaving DNS to say so', () => {
-      // `exampl` is a typo the server answers with "Could not resolve that
-      // domain". Rejecting it here would also reject `localhost`, and inventing
-      // a hostname rule is how a client starts disagreeing with its server.
       expect(urlOf('exampl')).toBe('https://exampl/');
     });
   });
@@ -126,8 +106,6 @@ describe('hostOf', () => {
   });
 
   it('hands back whatever it was given rather than throwing', () => {
-    // The server accepted this string; a heading is no place to discover that
-    // the two sides disagree about what parses.
     expect(hostOf('not a url')).toBe('not a url');
   });
 });

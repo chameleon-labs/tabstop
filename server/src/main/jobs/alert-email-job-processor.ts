@@ -15,8 +15,6 @@ type AlertEmailJobProcessorDependencies = {
   send: SendAlertEmail['send'];
 };
 
-// Resend's default limit is team-wide across every API key. Use half of it so
-// this worker cannot consume the whole allowance ahead of another service.
 export const ALERT_EMAIL_WORKER_LIMITER = {max: 5, duration: 1000};
 
 const logDispatch = (summary: AlertEmailDispatchSummary): void => {

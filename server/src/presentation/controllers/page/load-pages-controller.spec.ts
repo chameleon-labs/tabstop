@@ -34,7 +34,6 @@ describe('LoadPagesController', () => {
             completedAt: '2026-07-29T09:00:30.000Z',
             error: null,
           },
-          // The delta badge's two numbers, taken from the finished audits.
           score: 74,
           previousScore: 86,
           history: [
@@ -48,8 +47,6 @@ describe('LoadPagesController', () => {
   });
 
   it('keeps the last finished score when the most recent run failed', async () => {
-    // A page whose latest audit errored still has a trend worth showing, and
-    // "-12 since yesterday" must not vanish because one run broke.
     const {sut, loadPages} = makeSut();
     loadPages.load.mockResolvedValueOnce({
       limit: 10,
@@ -78,10 +75,6 @@ describe('LoadPagesController', () => {
   });
 
   it('reports a still-queued first audit rather than a null latestAudit', async () => {
-    // Adding a page writes its first audit in the same transaction, so a page
-    // seconds old already HAS one - queued, unscored. A client must not read
-    // `latestAudit: null` as "nothing has finished yet" and sit waiting: null
-    // means there is no audit row at all, which after #11 barely happens.
     const {sut, loadPages} = makeSut();
     loadPages.load.mockResolvedValueOnce({
       limit: 10,

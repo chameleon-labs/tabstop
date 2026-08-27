@@ -7,7 +7,6 @@ import type {Controller} from '../../presentation/protocols/controller.js';
 import type {Middleware} from '../../presentation/protocols/middleware.js';
 import type {HttpResponse} from '../../presentation/protocols/http.js';
 
-// noUncheckedIndexedAccess makes headers['set-cookie'][0] a type error.
 const firstSetCookie = (response: request.Response): string => {
   const header: unknown = response.headers['set-cookie'];
   if (!Array.isArray(header) || typeof header[0] !== 'string') {
@@ -75,7 +74,6 @@ describe('adaptRoute', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
     expect(cookie).toContain('Path=/');
-    // Host-only: a compromised sibling subdomain must never receive it.
     expect(cookie).not.toContain('Domain');
   });
 
@@ -107,8 +105,6 @@ describe('adaptRoute', () => {
   });
 
   it('lets res.locals outrank a client trying to spoof userId in the body', async () => {
-    // If res.locals were merged before req.body, a client would post
-    // {"userId": ...} and impersonate. Mutation-check by reordering the spread.
     const middleware: Middleware = {
       handle(): Promise<HttpResponse> {
         return Promise.resolve({statusCode: 200, body: {userId: 'from-session'}});
@@ -124,11 +120,6 @@ describe('adaptRoute', () => {
   });
 
   it('lets a path parameter outrank a query string of the same name', async () => {
-    // Both are client-supplied, so neither can spoof a session - but they are
-    // not interchangeable. A path segment is what the route matched and what a
-    // cache keys on; a query string is an extra the client appended. With the
-    // query spread last, `GET /api/audits/<uuid>?uuid=<other>` is answered
-    // from <other> while the cached url still says <uuid>.
     const app = express();
     app.use(express.json());
     app.get('/probe/:id', adaptRoute(echoController));
@@ -168,9 +159,6 @@ describe('adaptMiddleware', () => {
   });
 
   it('applies headers a controller asked for, overriding a middleware default', async () => {
-    // The no-store middleware runs before the route, so a controller opting
-    // into caching has to be able to win - otherwise an immutable public
-    // result could never be cached at all.
     const controller: Controller = {
       handle(): Promise<HttpResponse> {
         return Promise.resolve({
@@ -193,9 +181,6 @@ describe('adaptMiddleware', () => {
   });
 
   it('refuses header names a controller has no business setting', async () => {
-    // Forwarding arbitrary names would undo the boundary this adapter holds: a
-    // controller could emit its own set-cookie without the security
-    // attributes, or rewrite the CORS headers the middleware just set.
     const controller: Controller = {
       handle(): Promise<HttpResponse> {
         return Promise.resolve({
@@ -220,17 +205,10 @@ describe('adaptMiddleware', () => {
 
     expect(response.headers['set-cookie']).toBeUndefined();
     expect(response.headers['access-control-allow-origin']).toBe('https://app.example.com');
-    // The one thing a controller does legitimately own still works.
     expect(response.headers['cache-control']).toBe('public, max-age=60');
   });
 
   it('adds to Vary rather than replacing what the middleware stack declared', async () => {
-    // Vary is a LIST, and cors.ts appends `origin` to it with a comment saying
-    // that overwriting would drop a variant added elsewhere. This adapter WAS
-    // that elsewhere: it applied every controller header with res.set, so a
-    // controller asking to vary on Cookie silently removed Origin from the
-    // cache key - and a credentialed CORS response cached without varying on
-    // Origin is one that can be served to the wrong origin.
     const controller: Controller = {
       handle(): Promise<HttpResponse> {
         return Promise.resolve({statusCode: 200, body: {}, headers: {vary: 'Cookie'}});
@@ -251,10 +229,6 @@ describe('adaptMiddleware', () => {
   });
 
   it('still lets a controller replace cache-control outright', async () => {
-    // The counterpart to the rule above, and why the adapter cannot simply
-    // append everything: cache-control is a single directive set rather than a
-    // list, so a controller opting into caching has to BEAT the global
-    // no-store, not accumulate alongside it.
     const controller: Controller = {
       handle(): Promise<HttpResponse> {
         return Promise.resolve({

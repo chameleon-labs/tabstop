@@ -1,7 +1,4 @@
 // @vitest-environment node
-//
-// No jsdom on purpose. The build renders this in plain Node, so a spec that
-// grants it a DOM would pass while the build broke.
 import {describe, expect, it} from 'vitest';
 import {render} from './entry-server';
 
@@ -10,8 +7,6 @@ describe('the prerenderer', () => {
     const html = await render('/');
 
     expect(html).toContain('<main');
-    // Contiguous hero copy. The h1 itself is split by <br/>, so asserting
-    // "Accessibility monitoring" would fail against correct output.
     expect(html).toContain('without the setup.');
   });
 
@@ -26,10 +21,6 @@ describe('the prerenderer', () => {
   });
 
   it('prerenders a COMPLETE header, not one waiting on a session', async () => {
-    // The landing is `sessionFree`, so its header renders the signed-out state
-    // immediately rather than the empty `<nav>` `AccountNavigation` shows while
-    // `/me` is in flight. Without that, the page this exists to make paint fast
-    // would paint with a hole where the header's controls belong.
     const html = await render('/');
 
     expect(html).toContain('site-header');
@@ -46,9 +37,6 @@ describe('the prerenderer', () => {
   });
 
   it('asks the API for nothing at build time', async () => {
-    // A guarded route's loader would run here and issue `GET /api/me` against
-    // nothing at all. No guarded route is prerendered, and the landing must not
-    // become the first one that asks.
     const calls: string[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = ((input: RequestInfo | URL) => {

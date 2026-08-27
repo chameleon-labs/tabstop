@@ -35,8 +35,6 @@ describe('the application colour contract', () => {
   });
 
   it('loads the app sheet after the tokens it corrects', () => {
-    // Both declare `--lat-accent-on-solid` at `:root`, so the later import
-    // wins. Ahead of them, the correction above is simply overwritten.
     const main = readFileSync('src/main.tsx', 'utf8');
 
     expect(main.indexOf("import './styles.css'")).toBeGreaterThan(main.indexOf("lattice-tokens/lattice.css'"));

@@ -2,16 +2,10 @@ import {Link} from 'react-router';
 import './score-arc.css';
 
 export interface ScoreArcProps {
-  /** 0–100. Drives both the sweep and the threshold colour. */
   score: number;
-  /** Pixel size of the (square) SVG viewport. Every other dimension —
-   *  radius, stroke, the two text sizes — is a fixed proportion of this. */
   size?: number;
 }
 
-/* Strokes are `currentColor`, set by the `score-arc--*` modifiers: an inline
-   SVG presentation attribute reading a custom property is not reliable across
-   browsers. */
 const toRad = (deg: number): number => (deg * Math.PI) / 180;
 
 export function ScoreArc({score, size = 120}: ScoreArcProps): React.JSX.Element {

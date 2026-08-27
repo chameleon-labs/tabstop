@@ -65,11 +65,8 @@ describe('ViolationList', () => {
   });
 
   it('lists every finding in one list, most severe first', () => {
-    // Flat rather than grouped: one ordering, as the design has it.
     render(<ViolationList violations={[violation('minor', 'a'), violation('critical', 'b')]} />);
 
-    // The disclosure triggers specifically: an open panel contributes list
-    // items and a copy button of its own, and this is about the findings.
     const rows = screen.getAllByRole('button', {expanded: true}).map((row) => row.textContent);
 
     expect(rows[0]).toContain('b');
@@ -77,16 +74,12 @@ describe('ViolationList', () => {
   });
 
   it("carries the severity in each row's own name, since there are no longer sections", () => {
-    // What grouping used to provide. A reader hears "critical" before the rule
-    // rather than having to find the section that holds it.
     render(<ViolationList violations={[violation('critical', 'b')]} />);
 
     expect(screen.getByRole('button', {name: /^critical b Description for b/})).toBeVisible();
   });
 
   it('shows unrated findings rather than hiding them', () => {
-    // axe reports violations with no severity, and they are real findings. A
-    // list that drops them is the product failing at its one job.
     render(<ViolationList violations={[violation(null, 'a')]} />);
 
     expect(screen.getByRole('button', {name: /^unrated a/})).toBeVisible();
@@ -94,9 +87,6 @@ describe('ViolationList', () => {
 
   describe('the disclosure', () => {
     it('is a real button reporting its own state', async () => {
-      // House style everywhere; here it is also the product's own claim. A
-      // disclosure built from a div is one of the failures axe reports, and
-      // shipping one inside an accessibility report would be quotable.
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />);
 
       const [button] = screen.getAllByRole('button');
@@ -107,11 +97,6 @@ describe('ViolationList', () => {
     });
 
     it('names no panel while there is none, rather than pointing at a missing id', async () => {
-      // The panel is unmounted while collapsed, so `aria-controls` goes with
-      // it. That is the correct half of the trade: an attribute naming an id
-      // that is not in the document is a broken relationship, and Ariakit
-      // removes it rather than leaving one behind. `aria-expanded` is what
-      // announces the state either way.
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />);
       const trigger = screen.getAllByRole('button')[0] as HTMLElement;
 
@@ -125,11 +110,6 @@ describe('ViolationList', () => {
     });
 
     it('does not build the panel contents while collapsed', async () => {
-      // `hidden` removes a subtree from presentation, not from the document:
-      // React still builds every node row and HTML snippet inside it. A long
-      // report starts collapsed precisely because it is long, and axe can
-      // return dozens of nodes per rule - so the collapsed case was the one
-      // paying to construct thousands of elements nobody asked to see.
       render(<ViolationList violations={many(EXPAND_ALL_BELOW)} />);
 
       expect(screen.queryByText('<div id="x">hi</div>')).not.toBeInTheDocument();
@@ -154,8 +134,6 @@ describe('ViolationList', () => {
     it('opens everything on a short list, so two problems need no clicks', () => {
       render(<ViolationList violations={many(EXPAND_ALL_BELOW - 1)} />);
 
-      // Only the rows: the panels carry a copy button each, which is not a
-      // disclosure and has no expanded state to report.
       const triggers = screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-expanded'));
       expect(triggers).toHaveLength(EXPAND_ALL_BELOW - 1);
       for (const trigger of triggers) {
@@ -174,10 +152,6 @@ describe('ViolationList', () => {
 
   describe('what an expanded finding shows', () => {
     it('renders the HTML snippet as TEXT, never as markup', () => {
-      // `node.html` is attacker-controlled: a snippet captured from an
-      // arbitrary third-party page, and this product exists to visit pages
-      // nobody vetted. The instinct to "show the HTML properly" is the instinct
-      // that would introduce stored XSS on a public share page.
       const hostile = '<img src=x onerror="document.title=\'pwned\'"><script>alert(1)</script>';
       render(
         <ViolationList
@@ -189,9 +163,7 @@ describe('ViolationList', () => {
         />,
       );
 
-      // The snippet is visible as characters...
       expect(screen.getByText(hostile)).toBeVisible();
-      // ...and produced no elements and ran nothing.
       expect(document.querySelector('img')).toBeNull();
       expect(document.querySelector('script')).toBeNull();
       expect(document.title).not.toBe('pwned');
@@ -204,9 +176,6 @@ describe('ViolationList', () => {
     });
 
     it('links to the rule help with a name that survives being read alone', () => {
-      // A list of links all reading "How to fix this" is useless in a screen
-      // reader's link list. The rule id disambiguates without adding visual
-      // noise.
       render(<ViolationList violations={[violation('critical', 'image-alt')]} />);
 
       const link = screen.getByRole('link', {name: /image-alt/});
@@ -216,9 +185,6 @@ describe('ViolationList', () => {
     });
 
     it('does not turn a frame chain into a descendant selector', () => {
-      // `['iframe#embed', '#inside']` means "in that frame, this element".
-      // Joined with a space it reads as `iframe#embed #inside` - a valid
-      // selector for a different element that almost certainly does not exist.
       render(
         <ViolationList
           violations={[
@@ -234,11 +200,6 @@ describe('ViolationList', () => {
     });
 
     it('renders no link at all when helpUrl is not a web address', () => {
-      // `helpUrl` comes from `window.axe` inside the audited page, and the
-      // audited page can replace that object before the engine runs. React
-      // blocks `javascript:` itself, but not `data:` and not an arbitrary
-      // remote origin - a link reading "How to fix this" inside an
-      // accessibility report, pointing wherever an audited site chose.
       render(
         <ViolationList
           violations={[
@@ -250,8 +211,6 @@ describe('ViolationList', () => {
       );
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      // The rule is still named in the panel, so the finding is not less
-      // useful. Scoped to the `code`, since the row above names it too.
       expect(screen.getByText('a', {selector: 'code'})).toBeVisible();
     });
 

@@ -25,8 +25,6 @@ describe('MemoryTokenBucket', () => {
   });
 
   it('evicts rather than growing without bound', async () => {
-    // An unbounded map would make the fallback a memory-exhaustion vector
-    // during exactly the outage it exists to survive.
     const sut = new MemoryTokenBucket(2);
 
     await sut.consume('a', frozen);
@@ -42,12 +40,10 @@ describe('MemoryTokenBucket', () => {
       await sut.consume('a', frozen);
     }
     await sut.consume('b', frozen);
-    // Touching 'a' makes 'b' the least recently used.
     await sut.consume('a', frozen);
 
     await sut.consume('c', frozen);
 
-    // 'a' survived, so it is still exhausted; 'b' was evicted and is fresh.
     expect((await sut.consume('a', frozen)).allowed).toBe(false);
     expect((await sut.consume('b', frozen)).allowed).toBe(true);
   });

@@ -13,14 +13,6 @@ type Harness = {
   signOut: () => Promise<void>;
 };
 
-/**
- * Two entries deep, because one cannot tell a replace from a push: both leave
- * the visitor at `/`, and only the back button disagrees.
- *
- * The real `useLogout` rather than a stand-in - the hook branches on whether
- * `mutateAsync` settled, which is the one thing a hand-built mutation would
- * have to assert about itself.
- */
 const renderSignOut = (): Harness => {
   let latest: (() => Promise<void>) | null = null;
 
@@ -74,7 +66,6 @@ describe('useSignOut', () => {
     vi.unstubAllGlobals();
   });
 
-  /** Revoked, and the session gone with it. */
   const withRevoke = (): void => {
     fetchMock.mockImplementation((path: string) =>
       Promise.resolve(
@@ -83,12 +74,10 @@ describe('useSignOut', () => {
     );
   };
 
-  /** The revoke never lands. */
   const withBrokenBackend = (): void => {
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Could not revoke this session'})));
   };
 
-  /** The revoke reports success, and the session outlives it anyway. */
   const withSurvivingSession = (): void => {
     fetchMock.mockImplementation((path: string) =>
       Promise.resolve(path === '/api/logout' ? new Response(null, {status: 204}) : jsonResponse(200, account)),
@@ -107,8 +96,6 @@ describe('useSignOut', () => {
   });
 
   it('replaces the signed-in page, so back does not return to it', async () => {
-    // Push would leave `/settings` one step behind `/`, and it renders for
-    // nobody now.
     withRevoke();
     const {signOut, router} = renderSignOut();
 
@@ -130,8 +117,6 @@ describe('useSignOut', () => {
   });
 
   it('stays put when the revoke reports success but the session survives it', async () => {
-    // The dangerous one: the POST looked fine, and only the re-read disagrees.
-    // Leaving here puts a live session behind a page saying it ended.
     withSurvivingSession();
     const {signOut, router} = renderSignOut();
 
@@ -142,7 +127,6 @@ describe('useSignOut', () => {
   });
 
   it('settles rather than rejecting, so a caller can fire it and forget it', async () => {
-    // `void signOut()` on a rejecting promise is an unhandled rejection.
     withBrokenBackend();
     const {signOut} = renderSignOut();
 

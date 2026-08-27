@@ -8,15 +8,6 @@ const DATA = [
   {date: 'Aug 2', score: 71},
 ];
 
-/**
- * A `ResizeObserver` that reports a width, which the one in `vitest.setup.ts`
- * deliberately does not.
- *
- * That stub exists so the landing page mounts at all in a layout-less DOM, and
- * it leaves this chart permanently unmeasured - `width` stays 0, `ready` stays
- * false, and everything below renders nothing. Every home-screen spec passed
- * over the chart without touching a line of it.
- */
 const measuring = (width: number): void => {
   vi.stubGlobal(
     'ResizeObserver',
@@ -26,13 +17,9 @@ const measuring = (width: number): void => {
         this.callback([{contentRect: {width}} as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
       }
 
-      unobserve(): void {
-        /* nothing to release */
-      }
+      unobserve(): void {}
 
-      disconnect(): void {
-        /* nothing to release */
-      }
+      disconnect(): void {}
     },
   );
 };
@@ -51,9 +38,6 @@ describe('ScoreChart', () => {
   });
 
   it('draws nothing until it has been measured', () => {
-    // Not a degenerate case: this is the state of every mount before the first
-    // measurement, and drawing into a zero-width box would put every point on
-    // top of every other.
     const {container} = render(<ScoreChart data={DATA} referenceDate="Jul 21" />);
 
     expect(svgOf(container).querySelector('path')).toBeNull();

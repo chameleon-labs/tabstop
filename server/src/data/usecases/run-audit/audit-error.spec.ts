@@ -84,10 +84,6 @@ describe('classifyAuditError', () => {
   });
 
   it('identifies a timeout by name rather than by constructor', () => {
-    // Playwright's bundling renames the class to TimeoutError2 while keeping
-    // error.name as TimeoutError. An `instanceof` or constructor check here
-    // would silently never match, and every timeout would be retried three
-    // times before failing.
     class TimeoutError2 extends Error {}
     const error = Object.assign(new TimeoutError2('page.goto: Timeout 20000ms exceeded.'), {name: 'TimeoutError'});
 
@@ -96,16 +92,12 @@ describe('classifyAuditError', () => {
   });
 
   it('does not let a crash disguised as an engine failure become permanent', () => {
-    // "page.evaluate: ..." is how a mid-run browser crash surfaces, and the
-    // engine-failure pattern matches that prefix. Classifying it permanent
-    // would make a deliberately retryable failure unretryable.
     expect(
       classifyAuditError(new Error('page.evaluate: Target page, context or browser has been closed')).permanent,
     ).toBe(false);
   });
 
   it('keeps a launch timeout retryable, unlike a navigation timeout', () => {
-    // Both carry error.name === 'TimeoutError'. Only one is the page's fault.
     const launch = named('TimeoutError', 'browserType.launch: Timeout 30000ms exceeded.');
     const navigation = named('TimeoutError', 'page.goto: Timeout 20000ms exceeded.');
 

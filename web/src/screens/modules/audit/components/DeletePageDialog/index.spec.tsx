@@ -32,7 +32,6 @@ type HarnessProps = {
   target?: PageSummary;
 };
 
-/** A real trigger outside the dialog, because Ariakit restores focus to it. */
 const Harness = ({onConfirm, target = page()}: HarnessProps): React.JSX.Element => {
   const [open, setOpen] = useState(true);
   const [trigger, setTrigger] = useState<HTMLElement | null>(null);
@@ -68,8 +67,6 @@ describe('DeletePageDialog', () => {
   });
 
   it('says what is destroyed, since none of it comes back', async () => {
-    // The cascade takes the audit history and every public share link with
-    // it, and there is no undo behind this button.
     render(<Harness onConfirm={vi.fn()} />);
 
     await waitFor(() => {
@@ -90,10 +87,6 @@ describe('DeletePageDialog', () => {
   });
 
   it('traps focus and puts Cancel ahead of the destructive button', async () => {
-    // Where focus actually LANDS is checked in a browser: Ariakit resolves
-    // `initialFocus` on an animation frame, and jsdom leaves it on the dialog
-    // container. What is provable here is the containment and the order that
-    // makes Cancel the safe default in the first place.
     render(<Harness onConfirm={vi.fn()} />);
 
     await waitFor(() => {
@@ -159,8 +152,6 @@ describe('DeletePageDialog', () => {
     });
 
     it('ignores Escape, so a half-finished removal cannot be walked away from', async () => {
-      // The request lands either way, and this dialog is the only thing that
-      // will report which way it landed.
       const user = userEvent.setup();
       const pending = deferred<boolean>();
       const onOpenChange = vi.fn();
@@ -193,8 +184,6 @@ describe('DeletePageDialog', () => {
     });
 
     it('sends exactly one removal however often the button is pressed', async () => {
-      // Submitted directly: the button is already disabled, and the guard has
-      // to hold for anything that reaches the handler another way.
       const user = userEvent.setup();
       const pending = deferred<boolean>();
       const onConfirm = vi.fn(async () => await pending.promise);
@@ -218,8 +207,6 @@ describe('DeletePageDialog', () => {
     });
 
     it('recovers its controls when the screen switches to another page', async () => {
-      // Without a reset keyed on the target, a dialog reopened for a different
-      // page inherits the previous one's in-flight state and stays locked.
       const user = userEvent.setup();
       const pending = deferred<boolean>();
       const {rerender} = render(
@@ -332,9 +319,6 @@ describe('DeletePageDialog', () => {
   });
 
   it('reports a failure inside itself, where the reader still is', async () => {
-    // A modal aria-hides the rest of the page, so a toast raised behind it is
-    // exposed to nobody until the dialog closes - and this dialog deliberately
-    // stays open when removal fails.
     render(
       <DeletePageDialog
         open

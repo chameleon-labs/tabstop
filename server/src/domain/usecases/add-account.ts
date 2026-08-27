@@ -6,6 +6,5 @@ export type AddAccountParams = {
 };
 
 export interface AddAccount {
-  /** Null when the email is already registered. */
   add: (params: AddAccountParams) => Promise<AuthenticatedSession | null>;
 }

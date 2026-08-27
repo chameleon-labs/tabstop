@@ -23,8 +23,6 @@ describe('PostgresViolationRepository', () => {
     await db.destroy();
   });
 
-  // Writes are fenced on the claim, so a fixture audit has to be one this
-  // attempt actually owns: `running`, with a claim token these calls can quote.
   const CLAIM = new Date('2026-07-27T10:00:00Z');
 
   const makeAudit = async (): Promise<string> => {
@@ -71,8 +69,6 @@ describe('PostgresViolationRepository', () => {
     await sut.replaceAll(auditId, CLAIM, [contrast]);
     const loaded = await sut.loadByAuditId(auditId);
 
-    // Structural comparison: jsonb reorders object keys, so comparing
-    // serialised JSON would fail spuriously.
     expect(loaded[0]?.nodes).toEqual([{target: ['#main > p'], html: '<p>hi</p>'}]);
   });
 
@@ -108,8 +104,6 @@ describe('PostgresViolationRepository', () => {
   });
 
   it("replaces an audit's violations instead of appending to them", async () => {
-    // The queue redelivers, and `violations` has no uniqueness constraint, so
-    // a second write of the same result must not double the rows.
     const auditId = await makeAudit();
     const violation = {
       ruleId: 'image-alt',
@@ -143,9 +137,6 @@ describe('PostgresViolationRepository', () => {
   });
 
   it('serialises concurrent replacements instead of duplicating them', async () => {
-    // The transaction alone makes one replacement atomic but does not order
-    // two: under READ COMMITTED both would delete zero rows and both insert.
-    // The audit row lock is what makes this safe.
     const auditId = await makeAudit();
     const violation = {
       ruleId: 'image-alt',
@@ -165,7 +156,6 @@ describe('PostgresViolationRepository', () => {
   });
 
   it('stores a violation axe gave no severity, rather than discarding it', async () => {
-    // Dropping it would mark an audit done while omitting a real finding.
     const auditId = await makeAudit();
 
     await sut.replaceAll(auditId, CLAIM, [
@@ -184,9 +174,6 @@ describe('PostgresViolationRepository', () => {
   });
 
   it('ignores a write from an attempt that no longer owns the audit', async () => {
-    // An attempt that paused past its lease can resume after another worker
-    // claimed and finished the audit. Without the ownership check inside the
-    // lock, it would replace the new owner's violations with its own stale set.
     const auditId = await makeAudit();
     await sut.replaceAll(auditId, CLAIM, [contrast]);
 

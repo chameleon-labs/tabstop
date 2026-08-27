@@ -28,7 +28,6 @@ describe('SignupController', () => {
         action: 'set',
         name: 'sid',
         value: 'any-session-id',
-        // Taken from the persisted session, so the cookie cannot outlive the row.
         expiresAt: new Date('2026-08-25T00:00:00Z'),
       },
     ]);
@@ -55,8 +54,6 @@ describe('SignupController', () => {
   });
 
   it('returns 409 when the email is already registered', async () => {
-    // 409 rather than the reference template's 403: 403 means "we know who you
-    // are and you may not", and signup is unauthenticated.
     const {sut, addAccount} = makeSut();
     addAccount.add.mockResolvedValueOnce(null);
 

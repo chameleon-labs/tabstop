@@ -15,19 +15,6 @@ export type LoadPageHistoryQuery = {
   days: number;
 };
 
-/**
- * Cacheable, and `private` rather than `public`.
- *
- * A finished audit is immutable and a monitored page gains at most one point a
- * day, so a minute of staleness is invisible while the repeat-visit cost goes
- * to zero. But unlike the share page (#23), this is owner-scoped data behind a
- * session - `public` would let a shared cache hand one account's history to
- * the next request that happened to match the URL.
- *
- * `Vary: Cookie` on top, because the URL alone does not identify the response:
- * two accounts on one browser share `/api/pages/1/history` and must not share
- * its cache entry.
- */
 const CACHE_CONTROL = 'private, max-age=60';
 
 export class LoadPageHistoryController implements Controller<LoadPageHistoryRequest> {
@@ -53,8 +40,6 @@ export class LoadPageHistoryController implements Controller<LoadPageHistoryRequ
         days: validated.data.days,
       });
 
-      // Same conflation as every other page route: somebody else's page and a
-      // page that never existed are one answer.
       if (history === null) {
         return notFound(new PageNotFoundError());
       }

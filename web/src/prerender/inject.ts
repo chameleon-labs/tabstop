@@ -2,7 +2,6 @@ import {FALLBACK_SHAPE, SKELETON_BLOCKS, type SkeletonShape} from '../screens/co
 import {bootShapeScript, bootSkeletonMarkup, bootTokenCss, ruleFor, tokensReadBy} from './boot-skeleton.ts';
 import type {PrerenderedPage} from './paths.ts';
 
-/** What Vite's template leaves for React to fill. */
 const ROOT = '<div id="root"></div>';
 const TITLE = /<title>[\s\S]*?<\/title>/;
 const DESCRIPTION = /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/;
@@ -11,18 +10,6 @@ const HEAD_END = '</head>';
 export const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/**
- * Puts prerendered markup into the built `index.html`, recording which path it
- * was rendered for.
- *
- * The stamp is what lets the client tell prerendered markup for THIS page from
- * markup for a different one - see `hydrate.ts`.
- *
- * The head is rewritten in the same pass, because the template's is the landing
- * page's - see `PrerenderedPage`. Each replacement throws rather than no-ops
- * when its anchor is gone: a page that quietly kept the landing page's title,
- * or lost its stylesheets, still renders, and no behavioural test can see it.
- */
 export const injectMarkup = (
   template: string,
   page: PrerenderedPage,

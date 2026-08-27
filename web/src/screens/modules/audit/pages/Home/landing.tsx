@@ -25,36 +25,8 @@ import {ScoreArc} from '../../components/ScoreArc';
 import {ScoreChart} from './LandingParts/score-chart';
 import './landing.css';
 
-/**
- * The tabstop landing page, rebuilt from Lattice components alone.
- *
- * Ported from `packages/react/src/pages/landing-page.tsx` in the Lattice
- * repository, where it was built as the design system's own reference page.
- * Nine sections behind a sticky nav, kept as a faithful port of that
- * structure rather than a reinterpretation.
- *
- * Two constructions the package does not export are vendored beside this
- * file in `LandingParts/`: the hero's `ScoreArc` gauge and the score
- * history line chart, both inline SVG rather than a charting dependency.
- * They have one consumer and offer no reusable guarantee, which is why
- * Lattice keeps them page-local too.
- *
- * Every impact badge (`critical`/`serious`/`moderate`/`minor`) carries both
- * an icon and its text label — colour never carries severity alone, per the
- * spec's §1.4, and it is what keeps the ramp legible under protanopia and
- * deuteranopia regardless of hue.
- */
-
 type Impact = 'critical' | 'serious' | 'moderate' | 'minor';
 
-/**
- * The in-page anchors this screen offers in the shared header.
- *
- * Declared here, beside the sections they point at, and reaching the header
- * through this route's handle in `routes.tsx`. The header renders `{id, label}`
- * pairs and never learns what any of them mean - a screen renders inside the
- * outlet and cannot pass children up to the layout above it.
- */
 export const LANDING_SECTIONS: readonly HeaderSection[] = [
   {id: 'how', label: 'How it works'},
   {id: 'why', label: 'Why tabstop'},
@@ -69,12 +41,6 @@ const TRUST_STATS = [
   {value: '30 sec', label: 'Setup time', sub: 'zero config'},
 ] as const;
 
-// Fabricated, and deliberately attached to `acme.example` rather than to any
-// real site. A made-up score of 71 next to a real domain is a published claim
-// about that site's accessibility - which is the one thing this product must
-// not get wrong, and would be wrong even if the number happened to be close.
-// `.example` is reserved for documentation (RFC 2606), so it cannot ever
-// resolve to somebody's actual page.
 const VIOLATIONS: readonly {impact: Impact; count: number; rule: string; desc: string}[] = [
   {
     impact: 'critical',
@@ -102,9 +68,6 @@ const VIOLATIONS: readonly {impact: Impact; count: number; rule: string; desc: s
   },
 ];
 
-// A `Table` reads these as data rather than as a shape, which is the trade
-// made when the original Recharts line chart was dropped: nine points on a
-// continuous axis become nine rows.
 const SCORE_HISTORY = [
   {date: 'Jul 1', score: 91},
   {date: 'Jul 5', score: 89},
@@ -138,9 +101,6 @@ const STEPS = [
   },
 ] as const;
 
-// `highlight` — only the `tabstop` row carries it in the source, and it is
-// what the comparison table's four-way distinguishing treatment (row tint,
-// left rule, name weight/colour, Check colour) all key off. See `Why()`.
 const COMPETITORS = [
   {
     name: 'Lighthouse CI',
@@ -202,10 +162,6 @@ function Section({id, className, children}: {id?: string; className?: string; ch
   );
 }
 
-// Check reads muted by default and only turns accent-coloured on the
-// highlighted row (`.landing-page__why-grid`'s `[data-highlight='true']`
-// descendant rule); X stays muted at 30% opacity in every row regardless —
-// see the CSS for why an absent feature never competes with a present one.
 function BoolCell({value}: {value: boolean}): React.JSX.Element {
   return (
     <Td className="landing-page__bool-cell">
@@ -230,13 +186,6 @@ function Hero({urlField, feedback}: {urlField: ReactNode; feedback: ReactNode}):
             <span className="landing-page__hero-kicker-sub">Building in public</span>
           </div>
 
-          {/*
-            The explicit spaces are load-bearing, not formatting. `<br>`
-            contributes no whitespace to the accessible name, so the design's
-            three lines computed as "Accessibilitymonitoringwithout the setup."
-            - one run-together word, announced that way. On an accessibility
-            product that is not an acceptable headline.
-          */}
           <h1 className="lat-page__display landing-page__display">
             Accessibility <br />
             monitoring <br />
@@ -258,14 +207,7 @@ function Hero({urlField, feedback}: {urlField: ReactNode; feedback: ReactNode}):
         <div className="landing-page__audit-wrap">
           <div className="landing-page__audit-glow" aria-hidden="true" />
 
-          {/* This remains a sample illustration until an accepted audit moves
-              the visitor to its own result route. Request feedback belongs to
-              the form, not inside a card labelled as acme.example. */}
           <Card data-elevation="floating" className="landing-page__audit-card">
-            {/* Browser chrome, not a panel header — deliberately not `CardHeader`,
-                whose eyebrow convention (uppercase, letter-spaced) is wrong for a
-                URL bar. Built as page markup instead of a `CardHeader` variant,
-                per the resolution recorded in the design spec. */}
             <div className="landing-page__audit-header">
               <div className="landing-page__audit-dots" aria-hidden="true">
                 <span className="landing-page__audit-dot landing-page__audit-dot--critical" />
@@ -358,21 +300,6 @@ const HowItWorks = memo(() => (
   </Section>
 ));
 
-/**
- * Ported from the source bundle's Recharts `<LineChart>` as inline SVG —
- * see `./score-chart.tsx` for the geometry and interpolation, and the gap
- * list's "Deliberate omissions" for why a chart at all: a `Table` alone
- * reads these nine points as data, not as the shape of a regression, and
- * the section's own copy ("−20 pts since Jul 1") is pointing at that
- * shape.
- *
- * The chart is `aria-hidden`, so the `Table` stays — as the accessible
- * equivalent rather than the primary rendering, wrapped in `VisuallyHidden`
- * inside the same `<figure>`. The `figure`'s `aria-label` carries the
- * chart's headline fact for anyone who never sees the SVG at all; the
- * hidden `Table` carries every point for anyone who wants more than the
- * headline.
- */
 const ScoreHistory = memo(() => (
   <Section className="landing-page__score-history">
     <Card>
@@ -530,14 +457,6 @@ const CTA = memo(() => (
         <h2 className="landing-page__heading landing-page__heading--cta">Know the moment you break accessibility.</h2>
         <p className="landing-page__muted">No account needed to run your first audit.</p>
 
-        {/*
-            Sends people back to the ONE form rather than repeating it. The
-            design had a second field here, which works for a static marketing
-            page and does not survive the form becoming real: two inputs both
-            labelled "Page to audit" make the label ambiguous for anyone
-            navigating by it, and leave a visitor who typed into the lower one
-            watching a result appear a screen away.
-          */}
         <Button variant="primary" size="lg" className="landing-page__cta-button" render={<a href="#audit" />}>
           Audit a page
           <ArrowRight size="md" aria-hidden="true" />
@@ -558,8 +477,6 @@ const Footer = memo(() => (
       </div>
 
       <nav className="landing-page__footer-links" aria-label="Footer links">
-        {/* The footer targets do not exist yet; the placeholder keeps these
-              rendering as links so the layout and focus order are final. */}
         {FOOTER_PLACEHOLDER_LINKS.map((label) => (
           // oxlint-disable-next-line jsx-a11y/anchor-is-valid
           <Button key={label} variant="link" size="sm" render={<a href="#" />}>
@@ -575,9 +492,7 @@ const Footer = memo(() => (
 ));
 
 export type LandingProps = {
-  /** tabstop's real URL form, wired to the audit flow by `Home`. */
   urlField: ReactNode;
-  /** Request feedback beside the form; the sample card remains illustrative. */
   feedback: ReactNode;
 };
 

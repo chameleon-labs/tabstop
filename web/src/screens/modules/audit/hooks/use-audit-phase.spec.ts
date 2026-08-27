@@ -5,12 +5,6 @@ import type {ProgressStatus} from '../phase';
 
 const START = 1_700_000_000_000;
 
-/**
- * Fake timers move `Date.now()` as well as the interval, so advancing the clock
- * advances the hook's own notion of elapsed time. That matters: an injected,
- * FROZEN clock once made an assertion here vacuous - the value could not change
- * under any mutation, so the test passed against the bug it was written for.
- */
 describe('useAuditPhase', () => {
   beforeEach(() => {
     vi.useFakeTimers({shouldAdvanceTime: true});
@@ -64,10 +58,6 @@ describe('useAuditPhase', () => {
 
   describe('the clock', () => {
     it('stops when the screen is no longer waiting', () => {
-      // `since` stays populated after an audit ends - that is what makes it a
-      // record of when the work began - so an interval gated on it alone ran
-      // for the lifetime of the tab, re-rendering the finished result and its
-      // whole violation tree once a second, forever.
       const {rerender, unmount} = renderHook(({a}: {a: boolean}) => useAuditPhase('running', START, a), {
         initialProps: {a: true},
       });
@@ -88,14 +78,6 @@ describe('useAuditPhase', () => {
 
   describe('a second audit on the same screen', () => {
     it("does not inherit the first audit's epoch", async () => {
-      // This hook lives on the home screen, which outlives any one audit.
-      // Guarded on `runningSince === null`, a second audit kept the first one's
-      // start time and opened on "Scoring" - counting phases from a job that
-      // had already finished, possibly minutes earlier.
-      // Starts at `queued` and TRANSITIONS into running, which is what sets
-      // the epoch at all. A first audit that begins already in `running` never
-      // sets it, so a test written that way passes with the bug present - as
-      // the first version of this one did.
       const {result, rerender} = renderHook(({s}: {s: ProgressStatus}) => useAuditPhase(s, START, true), {
         initialProps: {s: 'queued' as ProgressStatus},
       });
@@ -103,7 +85,6 @@ describe('useAuditPhase', () => {
       await advance(25_000);
       expect(result.current).toBe('Scoring');
 
-      // First audit ends, a second is submitted and reaches a worker.
       rerender({s: 'done'});
       rerender({s: 'submitting'});
       rerender({s: 'queued'});
@@ -115,9 +96,6 @@ describe('useAuditPhase', () => {
 
   describe('the queue does not count against the phases', () => {
     it('starts at the first phase however long the queue was', async () => {
-      // `startedAt` is when the POST was sent, and the phases describe what a
-      // WORKER is doing. A job that waited twenty-five seconds reached its
-      // first `running` render already claiming to be "Scoring".
       const {result, rerender} = at('queued');
       await advance(25_000);
 

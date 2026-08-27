@@ -16,8 +16,6 @@ describe('ImpactBadge', () => {
   });
 
   it('takes its colour from the design system rather than a table of its own', () => {
-    // Lattice names a variant per impact. A local palette here would drift from
-    // every other severity in the app the first time one was retuned.
     for (const impact of IMPACTS) {
       const {container, unmount} = render(<ImpactBadge impact={impact} />);
 
@@ -41,7 +39,6 @@ describe('ImpactBadge', () => {
 
 describe('a violation axe gave no severity', () => {
   it('says so rather than borrowing the lowest one', () => {
-    // Reading an absent severity as "minor" hides findings that are findings.
     render(<ImpactBadge impact={null} />);
 
     expect(screen.getByText('unrated')).toBeVisible();

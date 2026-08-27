@@ -24,9 +24,6 @@ describe('SvgIcon', () => {
   });
 
   it('hides itself from assistive technology', () => {
-    // Applied here rather than by each icon, which is the point: the previous
-    // shape was a helper returning props, and nothing enforced that an icon
-    // spread them. One that forgot put a decorative graphic into the tree.
     expect(
       svgOf(
         <SvgIcon>
@@ -65,9 +62,6 @@ describe('SvgIcon', () => {
     });
 
     it('carries no width or height of its own, so the scale cannot be bypassed', () => {
-      // The dimensions come from `.icon` in the stylesheet, resolved from the
-      // type tokens. An attribute here would beat the class and pin a pixel
-      // size onto an icon that is meant to grow with the reader's text.
       const svg = svgOf(
         <SvgIcon size="lg">
           <path d="M0 0h24" />
@@ -79,8 +73,6 @@ describe('SvgIcon', () => {
     });
 
     it('keeps a caller class alongside the scale rather than instead of it', () => {
-      // Two icons on the landing page are coloured through their own class.
-      // Replacing the scale classes with it would silently unsize them.
       const svg = svgOf(
         <SvgIcon size="sm" className="landing-page__bool-check">
           <path d="M0 0h24" />

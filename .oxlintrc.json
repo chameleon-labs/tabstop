@@ -306,6 +306,7 @@
       ],
       "rules": {
         "no-undef": "off",
+        "no-empty-function": "off",
         "typescript/no-non-null-assertion": "off",
         "typescript/explicit-function-return-type": "off",
         "no-magic-numbers": "off",

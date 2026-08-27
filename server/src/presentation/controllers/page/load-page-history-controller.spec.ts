@@ -41,7 +41,6 @@ describe('LoadPageHistoryController', () => {
           auditId: '44444444-4444-4444-4444-444444444444',
           createdAt: '2026-07-28T09:00:00.000Z',
           status: 'failed',
-          // Not zero, and not omitted. Either would lie about the run.
           score: null,
           countsByImpact: {minor: 1, moderate: 2, serious: 0, critical: 1},
           axeVersion: null,
@@ -59,9 +58,6 @@ describe('LoadPageHistoryController', () => {
   });
 
   it('carries axeVersion per point so the chart can mark an engine change', async () => {
-    // A score shift across an axe upgrade is not a regression in the page.
-    // Without this the chart raises a false alarm the first time axe is
-    // bumped, which is how a team learns to ignore it.
     const {sut} = makeSut();
 
     const response = await sut.handle({id: 'any-page-id', userId: 'user-1'});
@@ -76,16 +72,12 @@ describe('LoadPageHistoryController', () => {
     const response = await sut.handle({id: 'any-page-id', userId: 'user-1'});
     const {points} = response.body as {points: Record<string, unknown>[]};
 
-    // Every point is addressed by its public uuid, the same id the share page
-    // (#23) uses. `any-audit-id` is what the mock's internal id is.
     for (const point of points) {
       expect(point.auditId).not.toBe('any-audit-id');
     }
   });
 
   it('echoes back the window the server actually used', async () => {
-    // The client may have asked for more. Echoing is what makes clamping
-    // honest rather than a silent truncation.
     const {sut} = makeSut(365);
 
     expect((await sut.handle({id: 'any-page-id', userId: 'user-1'})).body).toMatchObject({days: 365});
@@ -96,10 +88,6 @@ describe('LoadPageHistoryController', () => {
 
     const response = await sut.handle({id: 'any-page-id', userId: 'user-1'});
 
-    // `private`, never `public`: this is owner-scoped data behind a session,
-    // unlike the share page. And `Vary: Cookie`, because the url alone does
-    // not identify the response - two accounts on one browser share
-    // /api/pages/1/history and must not share its cache entry.
     expect(response.headers).toEqual({'cache-control': 'private, max-age=60', vary: 'Cookie'});
   });
 
@@ -111,8 +99,6 @@ describe('LoadPageHistoryController', () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.body).toEqual({error: 'No page found for that id'});
-    // And it must not be cacheable, or a 404 sticks for a minute after the
-    // page is created.
     expect(response.headers).toBeUndefined();
   });
 

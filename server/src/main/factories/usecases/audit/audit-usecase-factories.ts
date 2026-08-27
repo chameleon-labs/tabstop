@@ -12,11 +12,6 @@ import type {AuditJobQueue} from '../../../../data/protocols/queue/audit-job-que
 
 export const makeRequestAudit = (auditQueue: AuditJobQueue): DbRequestAudit => {
   const audits = new PostgresAuditRepository(getDatabase());
-  // The policy is injected rather than defaulted inside the usecase: data/
-  // must not name the concrete rule set, and a default there would have been
-  // a `node:net` import in the layer that is supposed to be free of the
-  // runtime. The composition root is where a concrete belongs - and the same
-  // goes for the queue cap, which is operator configuration.
   return new DbRequestAudit(
     audits,
     audits,
@@ -29,10 +24,6 @@ export const makeRequestAudit = (auditQueue: AuditJobQueue): DbRequestAudit => {
 
 export const makeRequestPageAudit = (auditQueue: AuditJobQueue): DbRequestPageAudit => {
   const audits = new PostgresAuditRepository(getDatabase());
-  // No DNS resolver and no url policy, unlike the anonymous endpoint. The url
-  // is not user input here - it is a page the account already tracks, checked
-  // when it was added - and the worker's own gate re-resolves at fetch time,
-  // which is the only check that can still be true by then.
   return new DbRequestPageAudit(audits, audits, auditQueue, env.auditQueueMaxDepth);
 };
 

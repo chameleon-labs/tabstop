@@ -29,9 +29,6 @@ describe('UpdatePageController', () => {
   });
 
   it('takes the user id from the request rather than trusting the body', async () => {
-    // adaptRoute merges res.locals last, so `userId` here is always the one
-    // the auth middleware resolved. This is the assertion that would fail if
-    // the controller ever started reading it from the validated body.
     const {sut, updatePage} = makeSut(true);
 
     await sut.handle({id: 'any-page-id', userId: 'the-session-user'});
@@ -45,7 +42,6 @@ describe('UpdatePageController', () => {
 
     const response = await sut.handle({id: 'someone-elses-page', userId: 'user-1'});
 
-    // 404 rather than 403: a 403 would confirm the row exists.
     expect(response.statusCode).toBe(404);
     expect(response.body).toEqual({error: 'No page found for that id'});
   });

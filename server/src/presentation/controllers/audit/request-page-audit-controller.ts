@@ -11,7 +11,6 @@ export type RequestPageAuditRequest = {
   userId: string;
 };
 
-/** The same interval the anonymous flow polls at; the client reads it from here. */
 const POLL_AFTER_MS = 2000;
 
 export class RequestPageAuditController implements Controller<RequestPageAuditRequest> {
@@ -29,7 +28,6 @@ export class RequestPageAuditController implements Controller<RequestPageAuditRe
       });
 
       if (result.outcome === 'not-found') {
-        // Same answer for somebody else's page as for one that never existed.
         return notFound(new PageNotFoundError());
       }
 

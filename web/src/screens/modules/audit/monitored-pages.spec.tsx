@@ -122,8 +122,6 @@ describe('useMonitoredPages', () => {
   });
 
   it('backs off to a slow poll once nothing is running', async () => {
-    // Two seconds forever would be a request per tab per two seconds for a
-    // list that changes nightly.
     const {wrapper} = harness();
     renderHook(() => useMonitoredPages(), {wrapper});
 
@@ -182,9 +180,6 @@ describe('useMonitoredPages', () => {
   });
 
   it('stops polling when a loaded list starts failing', async () => {
-    // The dangerous case, and the one "no data yet" does not cover: TanStack
-    // keeps the last successful body, so the rows still say an audit is
-    // running and the interval would fire against a broken endpoint forever.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, list([withStatus('page-1', 'running')]))));
     const {client, wrapper} = harness();
     const {result} = renderHook(() => useMonitoredPages(), {wrapper});
@@ -198,9 +193,6 @@ describe('useMonitoredPages', () => {
       await vi.advanceTimersByTimeAsync(ACTIVE_PAGE_POLL_MS);
     });
 
-    // Read from the cache, not from `isError`: the observer keeps reporting
-    // success while it still has rows to show, which is the whole reason the
-    // interval has to consult the query state instead.
     const query = client.getQueryCache().find({queryKey: pageKeys.list()});
     await waitFor(() => {
       expect(query?.state.status).toBe('error');
@@ -216,8 +208,6 @@ describe('useMonitoredPages', () => {
   });
 
   it('stops polling after a failure and waits to be asked again', async () => {
-    // Polling through an outage turns one broken request into a request every
-    // two seconds for as long as the tab stays open.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Server error'})));
     const {wrapper} = harness();
     const {result} = renderHook(() => useMonitoredPages(), {wrapper});
@@ -319,8 +309,6 @@ describe('useSetPageMonitoring', () => {
   });
 
   it('rolls back only the row that failed, leaving a concurrent change alone', async () => {
-    // Restoring the whole list would discard whatever else succeeded while
-    // this request was in flight.
     const failing = deferred<Response>();
     const {client, wrapper} = harness();
     client.setQueryData(pageKeys.list(), list([page('page-1'), page('page-2')]));
@@ -374,8 +362,6 @@ describe('useSetPageMonitoring', () => {
 
 describe('useDeleteMonitoredPage', () => {
   it('removes nothing until the server confirms it', async () => {
-    // There is no undo behind this, so an optimistic delete that fails would
-    // have shown the user a page vanishing that still exists.
     const pending = deferred<Response>();
     const {client, wrapper} = harness();
     client.setQueryData(pageKeys.list(), list([page('page-1'), page('page-2')]));

@@ -39,7 +39,6 @@ describe('AuthMiddleware', () => {
   });
 
   it('returns 401 when the session is unknown or expired', async () => {
-    // The repository enforces expiry in SQL, so both cases arrive here as null.
     const {sut, loadAccountBySession} = makeSut();
     loadAccountBySession.load.mockResolvedValueOnce(null);
 

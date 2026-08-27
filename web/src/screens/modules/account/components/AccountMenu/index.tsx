@@ -20,10 +20,6 @@ export type AccountMenuProps = {
   logout: LogoutMutation;
 };
 
-/**
- * `role="menuitemradio"` rather than Ariakit's `MenuItemRadio`, which Lattice
- * does not re-export: an unstyled part would look like a system component.
- */
 export const AccountMenu = ({email, logout}: AccountMenuProps): React.JSX.Element => {
   const {theme, setTheme} = useTheme();
   const signOut = useSignOut(logout);

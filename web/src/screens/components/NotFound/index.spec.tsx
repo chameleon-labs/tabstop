@@ -9,17 +9,12 @@ const renderNotFound = (): void => {
 
 describe('NotFound', () => {
   it("is the page heading, not a note inside someone else's page", async () => {
-    // An `h1`, because this replaced the screen. A heading outline still
-    // claiming the previous page is how a screen reader user ends up believing
-    // they are somewhere they are not.
     renderNotFound();
 
     expect(await screen.findByRole('heading', {level: 1, name: 'Page not found'})).toBeVisible();
   });
 
   it('names the likeliest cause rather than blaming the visitor', () => {
-    // The common case is a shared audit link that has since expired, and the
-    // person holding it did nothing wrong.
     renderNotFound();
 
     expect(screen.getByText(/share link that has since expired/)).toBeVisible();

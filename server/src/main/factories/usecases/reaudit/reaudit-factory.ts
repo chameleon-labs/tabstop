@@ -6,12 +6,6 @@ import {getDatabase} from '../../../config/database.js';
 import {MAX_PAGES_PER_RUN, REAUDIT_BATCH_SIZE, STALE_AFTER_MS} from '../../../config/reaudit.js';
 import {getAuditQueue} from '../../queue/audit-queue.js';
 
-/**
- * The fan-out enqueues onto the SAME audit queue everything else does, so a
- * re-audit and a one-off submission are one kind of work with one concurrency
- * cap and one worker pool. A separate queue would give the cost backstop a
- * second ceiling to be under, which is not a ceiling.
- */
 export const makeRunScheduledReaudits = (): RunScheduledReaudits =>
   new DbRunScheduledReaudits(
     new PostgresPageRepository(getDatabase()),

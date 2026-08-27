@@ -4,35 +4,19 @@ import type {AuditStatus} from '../../../domain/models/audit.js';
 import type {CountsByImpact, Impact} from '../../../domain/models/impact.js';
 import type {ViolationNode} from '../../../domain/models/violation.js';
 
-/**
- * Nullable and omittable on insert. Kysely does not infer the second part from
- * `T | null` alone — a bare `string | null` column is required on every insert.
- */
 type Nullable<T> = ColumnType<T | null, T | null | undefined, T | null>;
 
-/**
- * jsonb: reads as a parsed value, but is WRITTEN as a JSON string.
- *
- * Passing a JS value straight through works for plain objects and silently
- * breaks for arrays — node-postgres serialises an array as a Postgres array
- * literal (`{...}`), which the jsonb parser rejects with
- * `invalid input syntax for type json`. Requiring a string on the insert side
- * removes the asymmetry: every jsonb write goes through JSON.stringify.
- */
 type Json<T> = ColumnType<T, string | undefined, string>;
 
 export interface UsersTable {
   id: Generated<string>;
-  /** Lowercased by the repository before every write and lookup. */
   email: string;
   password_digest: string;
-  /** Score points. Read by regression detection (#14). */
   alert_threshold: Generated<number>;
   created_at: Generated<Date>;
 }
 
 export interface SessionsTable {
-  /** The cookie value: 32 random bytes as hex. Not a uuid — the format is ours. */
   id: string;
   user_id: string;
   created_at: Generated<Date>;
@@ -55,17 +39,10 @@ export interface PagesTable {
   created_at: Generated<Date>;
 }
 
-/**
- * One spent allowance (#115). Deliberately not derived from `audits`: deleting
- * a page cascades its audits, and an entitlement that a page deletion refunds
- * is not an entitlement.
- */
 export interface OnDemandAuditsTable {
   id: Generated<string>;
   user_id: string;
-  /** WRITE-ONLY, like `audits.scheduled_for`: node-postgres parses `date` at LOCAL midnight. */
   spent_on: ColumnType<Date, string, string>;
-  /** Null once the audit it paid for has been deleted. The spend stands. */
   audit_id: Nullable<string>;
   created_at: Generated<Date>;
 }
@@ -83,20 +60,8 @@ export interface AuditsTable {
   error: Nullable<string>;
   created_at: Generated<Date>;
   completed_at: Nullable<Date>;
-  /** False when the page never reached network idle and was audited anyway. */
   settled: Generated<boolean>;
-  /** When the current attempt claimed this audit. Null before any attempt. */
   claimed_at: Nullable<Date>;
-  /**
-   * Which day's scheduled run produced this audit (#13). Null for everything
-   * else: a page's first audit, an anonymous one-off, a manual re-audit.
-   *
-   * WRITE-ONLY, and typed to say so. node-postgres parses a `date` into a JS
-   * Date at LOCAL midnight, so a value read back means a different instant
-   * depending on where the process runs. Nothing reads it - it exists for
-   * `audits_one_scheduled_per_page_per_day` - and `toAuditModel` does not map
-   * it, so the read type below is never relied on.
-   */
   scheduled_for: ColumnType<Date | null, string | null | undefined, string | null>;
 }
 
@@ -104,7 +69,6 @@ export interface ViolationsTable {
   id: Generated<string>;
   audit_id: string;
   rule_id: string;
-  /** Null when axe reports a violation whose checks carry no severity. */
   impact: Nullable<Impact>;
   description: string;
   help_url: string;

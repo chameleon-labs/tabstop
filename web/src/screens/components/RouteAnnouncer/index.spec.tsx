@@ -29,7 +29,6 @@ const pageHistory = (id: string): PageHistoryResponse => ({
   points: [],
 });
 
-/** Two pages under one domain, which is what makes their titles identical. */
 const sameSitePages = (path: string): Promise<Response> => {
   const history = /^\/api\/pages\/(\d+)\/history/.exec(path);
   if (history !== null) {
@@ -42,28 +41,17 @@ const sameSitePages = (path: string): Promise<Response> => {
   return Promise.resolve(jsonResponse(200, {id: '1', email: 'a@b.co', alertThreshold: 5}));
 };
 
-/**
- * The gap this closes: a full page load announces the new document, a
- * client-side route change announces nothing, and a screen reader user
- * activates a link and hears silence.
- */
 describe('the route announcer', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  /**
-   * The SHELL's region, which comes first in the document. The home screen now
-   * carries a second one for audit status, so an unscoped query matches both.
-   */
   const liveRegion = (): HTMLElement => screen.getAllByRole('status')[0] as HTMLElement;
 
   it('stays quiet on first load, which the browser has already announced', async () => {
     renderAt('/');
 
     await screen.findByRole('heading', {level: 1});
-    // Long enough for the deferred announcement to have fired if it were going
-    // to. An assertion made immediately would pass whether or not it was.
     await new Promise((resolve) => {
       setTimeout(resolve, 250);
     });
@@ -81,8 +69,6 @@ describe('the route announcer', () => {
 
     await userEvent.click(screen.getByRole('link', {name: 'Back to the start'}));
 
-    // The home screen's own title, not the 404's - so the announcement is read
-    // after the destination has named itself, not before.
     await waitFor(() => {
       expect(liveRegion()).toHaveTextContent('tabstop');
     });
@@ -90,14 +76,6 @@ describe('the route announcer', () => {
   });
 
   it('announces once when the destination names itself late', async () => {
-    // Driven through a router of its own, because the real screens all set
-    // their title fast enough to take the observer path - which is exactly the
-    // case that does NOT reproduce this. A slow screen sets it AFTER the
-    // deadline, and a version that announced on schedule and corrected
-    // afterwards left assistive technology reading two announcements for one
-    // navigation. So this counts mutations, not the text they settle on.
-    // Names itself LATE, the way a screen does when the one it replaced was
-    // expensive to unmount.
     const Named = (): null => {
       useDocumentTitle('Late page');
       return null;
@@ -120,9 +98,6 @@ describe('the route announcer', () => {
       );
     };
 
-    // One announcer, above the routes, the way the shell mounts it. Rendering
-    // one per route remounts it on navigation, and a fresh announcer seeds
-    // itself with the current path and correctly says nothing.
     const router = createMemoryRouter(
       [
         {
@@ -156,8 +131,6 @@ describe('the route announcer', () => {
     await waitFor(() => {
       expect(region).toHaveTextContent('Late page');
     });
-    // Long enough after the announcement for a correction to have landed, if
-    // the implementation were still making one.
     await act(async () => {
       await new Promise((resolve) => {
         setTimeout(resolve, 300);
@@ -169,22 +142,9 @@ describe('the route announcer', () => {
   });
 
   it('announces again when two paths share a title', async () => {
-    // Two pages on one site are both "example.com · tabstop". Writing the same
-    // string back into state is a no-op to React, so the DOM never changes, a
-    // live region with unchanged content has nothing to read, and the second
-    // navigation is announced by silence - the exact failure this component
-    // exists to fix, reintroduced by it.
-    //
-    // Asserted on DOM MUTATIONS rather than on the final text, because the
-    // final text is identical either way. Mutation is what assistive
-    // technology reacts to, so mutation is what to measure.
     vi.stubGlobal('fetch', vi.fn(sameSitePages));
 
     try {
-      // Starts at `/` and navigates TWICE. Landing directly on `/pages/1`
-      // announces nothing - correctly, the browser already named the initial
-      // page - so the first navigation is what gets "Page" into the region and
-      // the second is the one under test.
       const {router} = renderAt('/');
       await act(async () => {
         await router.navigate('/pages/1');
@@ -207,8 +167,6 @@ describe('the route announcer', () => {
       });
       observer.disconnect();
 
-      // Emptied, then filled again. Without the clear there is no mutation at
-      // all and `seen` is empty.
       expect(seen).toContain('');
       expect(seen.at(-1)).toContain('example.com');
     } finally {
@@ -217,8 +175,6 @@ describe('the route announcer', () => {
   });
 
   it('keeps the region mounted and empty while there is nothing to say', () => {
-    // A live region created at the moment it gets content is treated as
-    // initial content and announced by nothing. It has to already be there.
     renderAt('/');
 
     expect(liveRegion()).toBeInTheDocument();

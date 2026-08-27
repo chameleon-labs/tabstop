@@ -1,18 +1,8 @@
 import {describe, expect, it, vi} from 'vitest';
 import {JobTimeoutError, runWithTimeout} from './run-with-timeout.js';
 
-// A handler that hangs forever. Simulating one with a long sleep would leave a
-// live timer behind after the timeout wins the race, and make the suite wait
-// out a delay that proves nothing.
-const hangs = async (): Promise<never> =>
-  await new Promise(() => {
-    /* never settles */
-  });
+const hangs = async (): Promise<never> => await new Promise(() => {});
 
-// A handler that ignores its abort signal makes runWithTimeout wait out the
-// unwind grace before reporting, which is the point of the grace but would
-// otherwise add its full default to the suite. Specs using `hangs` pass a
-// short one explicitly.
 const SHORT_GRACE_MS = 50;
 
 describe('runWithTimeout', () => {
@@ -30,8 +20,6 @@ describe('runWithTimeout', () => {
     let observed: boolean | null = null;
 
     await expect(
-      // Waiting on the abort event rather than a fixed delay also proves the
-      // handler's own listener survives runWithTimeout's cleanup.
       runWithTimeout(
         20,
         async (signal) => {
@@ -76,9 +64,6 @@ describe('runWithTimeout', () => {
   });
 
   it('waits for the handler to finish unwinding before reporting the timeout', async () => {
-    // Settling the moment the signal fires would let BullMQ start the next
-    // attempt while this one is still writing - a late write from the
-    // abandoned attempt then lands on top of the retry.
     const order: string[] = [];
 
     const failure = await runWithTimeout(
@@ -113,13 +98,10 @@ describe('runWithTimeout', () => {
     const failure = await runWithTimeout(20, hangs, SHORT_GRACE_MS).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(JobTimeoutError);
-    // Bounded by the grace, not by the handler.
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it('reports the timeout even when the handler rejects with its own error', async () => {
-    // The abandoned attempt's own "context closed" noise must not replace the
-    // reason the job actually ended.
     const failure = await runWithTimeout(
       20,
       async (signal) => {

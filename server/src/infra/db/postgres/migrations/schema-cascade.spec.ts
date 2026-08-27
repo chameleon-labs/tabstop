@@ -19,8 +19,6 @@ describe('schema deletion semantics', () => {
     await db.destroy();
   });
 
-  // Spec files share one database and run in parallel, so every fixture is
-  // unique and every assertion is scoped to ids this test created.
   const makeFixture = async (): Promise<{
     pageId: string;
     previousAuditId: string;
@@ -143,8 +141,6 @@ describe('schema deletion semantics', () => {
 
   it('allows only one alert per page per UTC day', async () => {
     const fixture = await makeFixture();
-    // The fixture's own alert already used today; use a fixed distant day so
-    // this test does not depend on when it runs.
     const day = '2026-01-15';
     await db
       .insertInto('alert_events')
@@ -170,10 +166,6 @@ describe('schema deletion semantics', () => {
   });
 
   it('dedupes alerts that have not been emailed yet', async () => {
-    // The regression this pins: if the dedupe keyed on emailed_at, unsent
-    // events would carry NULL there, and NULLs never collide in a unique
-    // index - so the rule would silently permit unlimited duplicates for
-    // exactly the rows it exists to catch.
     const fixture = await makeFixture();
     const day = '2026-02-20';
     await db

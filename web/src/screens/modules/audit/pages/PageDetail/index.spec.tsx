@@ -105,7 +105,6 @@ const auditResult = (): AuditResultResponse => ({
 type Handler = (init?: RequestInit) => Response | Promise<Response>;
 type Routes = Record<string, Handler>;
 
-/** Path-aware, so a malformed fixture cannot pass as a different response. */
 const routed = (routes: Routes): ReturnType<typeof vi.fn> =>
   vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -156,7 +155,6 @@ const asked = (fragment: string): boolean =>
 const countFor = (label: string): string =>
   screen.getByText(label).parentElement?.querySelector('dd')?.textContent ?? '';
 
-/** Scoped, because every audit row carries a delta sentence of its own now. */
 const summaryCard = (): HTMLElement => document.querySelector<HTMLElement>('.page-detail__summary')!;
 
 afterEach(() => {
@@ -202,9 +200,6 @@ describe('PageDetail summary', () => {
   });
 
   it('says a retained score is retained, and pairs no counts with it', async () => {
-    // `page.score` is the most recent COMPLETED score, not the latest audit's.
-    // Labelling it "Score" beside the failed run's counts and timestamp
-    // presents fields from two different runs as one result.
     const failedLatest = summary({
       latestAudit: {
         auditId: uuid('9'),
@@ -291,9 +286,6 @@ describe('PageDetail history states', () => {
   });
 
   it('explains a missing summary rather than quietly dropping it', async () => {
-    // The two queries are independent. When the list fails and the history does
-    // not, the trend renders while the summary, the Pause control and the
-    // Remove control simply are not there, with nothing said about why.
     let attempts = 0;
     const {router} = renderDetail('/pages/page-1', {
       ...DEFAULT_ROUTES,
@@ -306,7 +298,6 @@ describe('PageDetail history states', () => {
 
     expect(await screen.findByText(/could not load this page's details/i)).toBeVisible();
     expect(screen.queryByRole('button', {name: /pause monitoring/i})).not.toBeInTheDocument();
-    // The trend is a separate query and is unaffected by the list failing.
     expect(await screen.findByRole('group', {name: /Score trend/})).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/pages/page-1');
 
@@ -326,8 +317,6 @@ describe('PageDetail history states', () => {
   });
 
   it('names the state in the heading rather than falling back to "Page"', async () => {
-    // Breadcrumb, heading and tab all read "Page" otherwise, which describes
-    // nothing and looks like a screen that failed to finish loading.
     renderDetail('/pages/page-1', {
       '/api/pages': () => jsonResponse(200, pageList([])),
       '/api/pages/page-1/history?days=90': () => jsonResponse(404, {error: 'Page not found'}),
@@ -349,8 +338,6 @@ describe('PageDetail history states', () => {
   });
 
   it('says the window is empty once, not once per section', async () => {
-    // The trend and the audit list carry the same sentence, and two of them on
-    // one screen reads as a fault rather than as an empty window.
     renderDetail('/pages/page-1', {
       ...DEFAULT_ROUTES,
       '/api/pages/page-1/history?days=90': () => jsonResponse(200, historyBody([])),
@@ -379,8 +366,6 @@ describe('PageDetail window', () => {
   });
 
   it('replaces rather than pushes, so Back leaves the page', async () => {
-    // Changing a view is not a navigation. Pushing would make Back walk through
-    // every window the reader tried before it left the screen.
     const {router} = renderDetail('/pages/page-1', {
       ...DEFAULT_ROUTES,
       '/api/pages/page-1/history?days=30': () => jsonResponse(200, historyBody(POINTS.slice(-2), 30)),
@@ -403,9 +388,6 @@ describe('PageDetail window', () => {
   });
 
   it.each(['weekly', '1000'])('never passes on ?days=%s, which the server would refuse or clamp', async (value) => {
-    // 1000 is the dangerous one: the server clamps it to 365 rather than
-    // rejecting it, so passing it through leaves the control reading one window
-    // and the chart drawn from another.
     renderDetail(`/pages/page-1?days=${value}`);
 
     await screen.findByRole('heading', {level: 1, name: DOMAIN});
@@ -445,7 +427,6 @@ describe('PageDetail table toggle', () => {
     await user.click(await screen.findByRole('button', {name: 'View as table'}));
 
     expect(router.state.location.search).toBe('?view=table');
-    // A view, like the window: Back leaves the page rather than undoing it.
     expect(router.state.historyAction).toBe('REPLACE');
   });
 
@@ -558,10 +539,6 @@ describe('PageDetail announcements', () => {
     });
 
     it('will not ask again while an audit for this page is already running', async () => {
-      // The refusal the server would send anyway, spent before the request
-      // rather than after it. The ACCESSIBLE NAME carries the state as well as
-      // the visible text: a fixed label reading "Audit now" on a disabled
-      // control tells a screen reader user the opposite of what is happening.
       renderDetail('/pages/page-1', {
         ...DEFAULT_ROUTES,
         '/api/pages': () =>
@@ -577,8 +554,6 @@ describe('PageDetail announcements', () => {
     });
 
     it('polls the audit it started and shows its phase in place', async () => {
-      // The accepted response carries an id and a poll interval, and #115 asks
-      // for progress on this screen rather than a button that merely greys out.
       renderDetail('/pages/page-1', {
         ...DEFAULT_ROUTES,
         'POST /api/pages/page-1/audits': () => jsonResponse(202, acceptedAudit),
@@ -639,8 +614,6 @@ describe('PageDetail announcements', () => {
     });
 
     it('keeps the trend and the controls when a request is refused', async () => {
-      // A refusal is not a broken screen. The reader still has the page they
-      // came for, and a control they can use again tomorrow.
       renderDetail('/pages/page-1', {
         ...DEFAULT_ROUTES,
         'POST /api/pages/page-1/audits': () =>

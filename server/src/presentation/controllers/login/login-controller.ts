@@ -22,7 +22,6 @@ export class LoginController implements Controller {
       }
 
       const session = await this.authenticate.auth(validated.data);
-      // One response for an unknown email and a wrong password alike.
       if (session === null) {
         return unauthorized(new InvalidCredentialsError());
       }

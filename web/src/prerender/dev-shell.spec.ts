@@ -1,7 +1,4 @@
 // @vitest-environment node
-//
-// `readBootCss` resolves its files from `import.meta.url`; jsdom serves that
-// over http, so `fileURLToPath` throws before a single test is collected.
 import {describe, expect, it} from 'vitest';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -55,9 +52,6 @@ describe('the boot shell dev plugin', () => {
   });
 
   it('reads the css on every request, so an edit in dev is not served stale', () => {
-    // Reading once when the config loads outlives the edit: Vite rebuilds the
-    // application CSS graph and never tells this plugin, so a refresh serves
-    // the old boot paint and then swaps to the new one when React arrives.
     const edits = ['.route-skeleton{color:red}', '.route-skeleton{color:blue}'];
     const plugin = bootShellPlugin(() => cssReturning(edits.shift() ?? 'exhausted')());
 
@@ -81,9 +75,6 @@ describe('readBootCss', () => {
 });
 
 describe('servedFromDisk', () => {
-  // The host's `_redirects` rule is a FALLBACK: `/*  /app.html  200` answers
-  // only what no built file already answers. Preview has to ask the same
-  // question of the same directory, or the two disagree.
   const here = dirname(fileURLToPath(import.meta.url));
 
   it('finds a file the build actually wrote, which preview must keep serving', () => {
@@ -91,9 +82,6 @@ describe('servedFromDisk', () => {
   });
 
   it('does not find a route, however much it looks like a file', () => {
-    // `/missing.html` is the case: React Router's catch-all takes it and the
-    // host answers with app.html, so preview must not fall through to the
-    // prerendered landing page instead.
     expect(servedFromDisk(here, '/missing.html')).toBe(false);
     expect(servedFromDisk(here, '/dashboard')).toBe(false);
   });

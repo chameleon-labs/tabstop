@@ -4,14 +4,6 @@ import type {CookieDirective} from '../../presentation/protocols/http.js';
 import {env} from '../config/env.js';
 import {parseCookies} from './cookies.js';
 
-/**
- * Security attributes live here, not in the directive a controller returns, so
- * a controller cannot weaken them and there is one place to audit.
- *
- * No `domain`: the cookie stays host-only to the API, so a compromised sibling
- * subdomain never receives it. sameSite 'lax' requires the frontend and API to
- * share a registrable domain - see the deploy prerequisite recorded on #16.
- */
 const SESSION_COOKIE_ATTRIBUTES: CookieOptions = {
   httpOnly: true,
   sameSite: 'lax',
@@ -19,11 +11,6 @@ const SESSION_COOKIE_ATTRIBUTES: CookieOptions = {
   path: '/',
 };
 
-/**
- * The only response headers a controller may set. Anything else belongs to the
- * middleware stack or to this adapter, both of which a controller must not be
- * able to reach past.
- */
 const CONTROLLER_HEADERS = new Set(['cache-control', 'vary']);
 
 export const applyCookies = (res: Response, cookies: CookieDirective[] | undefined): void => {
@@ -39,36 +26,9 @@ export const applyCookies = (res: Response, cookies: CookieDirective[] | undefin
   }
 };
 
-/**
- * Generic, so a controller can declare the request shape it expects without
- * every factory casting it back to `Controller<unknown>`.
- *
- * `Controller.handle` is a property, so under `strictFunctionTypes` its
- * parameter is contravariant and `Controller<AddPageRequest>` is NOT
- * assignable to `Controller<unknown>` - which is why five factories carried an
- * `as Controller`. The type parameter moves the one unavoidable assertion to
- * the only place that can explain it: see below.
- */
 export const adaptRoute =
   <TRequest>(controller: Controller<TRequest>) =>
   async (req: Request, res: Response): Promise<void> => {
-    // Client-supplied input first, then what WE established - parsed cookies,
-    // then res.locals from the auth middleware. Both must outrank the body, or
-    // a client posts {"userId": 1} and impersonates. Pinned by a spec.
-    //
-    // Within the client half: body, query, params - weakest claim to
-    // strongest. A path segment is what the route matched and what a cache
-    // keys on, so it must not be reachable from a query string, or
-    // `GET /api/audits/<uuid>?uuid=<other>` answers from <other>.
-    //
-    // Logout reads the cookie without sitting behind auth, so it stays
-    // idempotent (204 on an absent session) rather than answering 401.
-    //
-    // The one cast in this layer, and the only place that can account for it:
-    // this is assembled at runtime from a body, query and params the framework
-    // types as `any`, so no static check upstream means anything. Every
-    // controller re-validates what it reads, so the assertion is a claim about
-    // SHAPE that each consumer verifies, not one about trustworthiness.
     const httpRequest = {
       ...req.body,
       ...req.query,
@@ -81,27 +41,12 @@ export const adaptRoute =
 
     applyCookies(res, httpResponse.cookies);
 
-    // After the middleware stack, so a controller opting into caching wins
-    // over the global no-store rather than being silently overridden by it.
-    //
-    // Allowlisted, because forwarding arbitrary names would undo the boundary
-    // this adapter exists to hold: a controller could emit its own set-cookie
-    // without the security attributes below, or rewrite the CORS headers the
-    // middleware just set. Caching is the only thing a controller legitimately
-    // owns here.
     for (const [name, value] of Object.entries(httpResponse.headers ?? {})) {
       const header = name.toLowerCase();
       if (!CONTROLLER_HEADERS.has(header)) {
         continue;
       }
 
-      // `vary` is a LIST, and the middleware stack has already contributed to
-      // it - cors.ts appends `origin`, with a comment saying overwriting would
-      // drop a variant added elsewhere. This was that elsewhere: `res.set`
-      // replaced the whole header, so a controller asking to vary on Cookie
-      // silently removed Origin from the cache key. `cache-control` is the
-      // opposite case - a single directive set that a controller opting into
-      // caching has to be able to replace outright.
       if (header === 'vary') {
         res.append(header, value);
       } else {
@@ -110,9 +55,6 @@ export const adaptRoute =
     }
 
     if (httpResponse.bodyType === 'html') {
-      // HTML is an exceptional response type in this API, so lock its active
-      // capabilities down here where a controller cannot weaken them. The
-      // unsubscribe page needs only a same-origin form submission.
       res.set({
         'content-security-policy': "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         'referrer-policy': 'no-referrer',

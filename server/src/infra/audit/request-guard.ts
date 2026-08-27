@@ -2,38 +2,20 @@ import type {DnsResolver} from '../../data/protocols/net/dns-resolver.js';
 import {bareHostname, parseAuditUrl, type UrlPolicy} from '../../domain/services/url-safety.js';
 import {DEFAULT_URL_POLICY} from '../net/ip-address-policy.js';
 
-/** Chromium's own default is 20; five is ample for a page worth auditing. */
 export const MAX_REDIRECTS = 5;
 
 export type FetchedResponse = {
   status: () => number;
   headers: () => Record<string, string>;
-  /**
-   * Playwright retains every fetched body until this is called or the context
-   * is torn down. Since the guard now fetches every subresource as well as
-   * every navigation, a page serving large responses could otherwise pile them
-   * up in worker memory for the whole audit.
-   */
   dispose: () => Promise<void>;
 };
 
-/**
- * The shape of Playwright's Route, declared structurally so this file does not
- * import Playwright - which keeps the one-file rule intact and makes the whole
- * guard unit-testable against a fake.
- */
 export type RouteLike = {
   request: () => {
     url: () => string;
     isNavigationRequest: () => boolean;
     method: () => string;
     headers: () => Record<string, string>;
-    /**
-     * The BUFFER, not postData(): that decodes as UTF-8, which corrupts binary
-     * bodies and multipart uploads carrying arbitrary file bytes. Every
-     * request passes through here now, so replaying a mangled body is not a
-     * corner case.
-     */
     postDataBuffer: () => Buffer | null;
   };
   abort: (errorCode: string) => Promise<void>;
@@ -53,19 +35,8 @@ export type RouteLike = {
   continue: () => Promise<void>;
 };
 
-/**
- * A redirect is not "the same request at a new URL". 303 always demotes to
- * GET and 301/302 do so universally in practice; 307 and 308 exist to preserve
- * the method. Replaying the original POST at every hop repeats a side effect
- * the server already performed.
- */
 const METHOD_PRESERVING_REDIRECTS = new Set([307, 308]);
 
-/**
- * Only these are redirects. `fetch` follows exactly this set, and a 3xx is not
- * automatically one: a 304 carrying a Location header would otherwise make the
- * auditor issue a request Chromium itself would never make.
- */
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 type Attempt = {url: string; method: string; headers: Record<string, string>; data?: Buffer};
@@ -75,20 +46,10 @@ const followRedirect = (attempt: Attempt, status: number, url: string): Attempt 
     return {...attempt, url};
   }
 
-  // Demoted to GET, so the body goes and the headers describing it go with it -
-  // a content-length left on a bodyless GET is its own source of confusion.
   const {'content-type': _type, 'content-length': _length, ...headers} = attempt.headers;
   return {url, method: 'GET', headers};
 };
 
-/**
- * Taking over the fetch means taking over its failures too. A connection
- * refused inside the handler would otherwise escape as an unhandled route
- * error: the navigation is never answered, `page.goto` runs to its full
- * timeout, and a fast, accurate "Nothing responded at that address" becomes a
- * slow, wrong "The page took too long to load". Aborting with the matching
- * code puts the original net::ERR_* back in front of the classifier.
- */
 const abortCodeFor = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
   if (/ECONNREFUSED/.test(message)) {
@@ -109,11 +70,6 @@ const abortCodeFor = (error: unknown): string => {
   return 'connectionfailed';
 };
 
-/**
- * Serve the body, then release Playwright's copy of it. fulfill() has already
- * handed the bytes to the browser by the time this resolves, so disposing
- * afterwards frees the Node-side buffer without affecting the page.
- */
 const fulfilAndDispose = async (route: RouteLike, response: FetchedResponse): Promise<void> => {
   try {
     await route.fulfill({response});
@@ -130,9 +86,6 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
     }
 
     const addresses = await resolver.resolve(host);
-    // Empty means resolution failed: fail closed. And EVERY address has to be
-    // safe - a host answering with one public and one private address is a
-    // rebinding attempt, not a coincidence.
     return addresses.length > 0 && addresses.every((address) => !policy.isBlockedAddress(address));
   };
 
@@ -144,17 +97,6 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
   return async (route: RouteLike): Promise<void> => {
     const request = route.request();
 
-    // Every request is walked, subresources included: handing one to
-    // route.continue() after a single check reopens the bypass this guard
-    // closes, since Chromium follows its own 30x and the handler never fires
-    // for the target. Navigations and subresources differ only in what
-    // aborting COSTS - a failed audit versus a page auditable without it.
-    //
-    // Redirect-following is taken from the browser deliberately. Verified:
-    // context.route fires only for the FIRST hop, so a 302 to a private
-    // address is followed internally and page.goto resolves with the private
-    // response in the page. Walking the chain by hand is what makes every hop
-    // checkable, and the cap countable.
     const body = request.postDataBuffer();
     const originalUrl = request.url();
     let attempt: Attempt = {
@@ -178,19 +120,10 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
 
       const status = response.status();
       if (!REDIRECT_STATUSES.has(status)) {
-        // The chain ended here. If it never moved, serve what we fetched.
         if (attempt.url === originalUrl) {
           return await fulfilAndDispose(route, response);
         }
 
-        // Fulfilling this body against the original request would collapse
-        // the chain: Playwright copies status, headers and body onto the FIRST
-        // url. Measured - `/start` redirecting to `/dir/page` left the page at
-        // `/start`, resolved `<img src="asset.png">` to a 404, and ran the
-        // target's content under the start origin.
-        //
-        // So hand the browser a redirect to the final url and let it own the
-        // document. Every hop is already checked; the cost is one repeated GET.
         await response.dispose();
         return await route.fulfill({
           status: 302,
@@ -204,18 +137,12 @@ export const makeRequestGuard = (resolver: DnsResolver, policy: UrlPolicy = DEFA
         return await fulfilAndDispose(route, response);
       }
 
-      // An intermediate hop's body is never served, so it is dead weight the
-      // moment its status and Location have been read.
       await response.dispose();
 
       let target: string;
       try {
         target = new URL(location, attempt.url).toString();
       } catch {
-        // A malformed Location thrown from here would escape the fetch
-        // handler above and leave the route unanswered, turning an invalid
-        // redirect into a full navigation timeout and three audit attempts
-        // rather than one prompt, classified failure.
         return await route.abort('blockedbyclient');
       }
 

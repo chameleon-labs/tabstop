@@ -30,7 +30,6 @@ const renderMenu = (): ReturnType<typeof createMemoryRouter> => {
   return router;
 };
 
-/** Reads the rendered icon, not a `data-testid` put there for the test. */
 const checkIn = (name: string): Element | null =>
   screen.getByRole('menuitemradio', {name}).querySelector('.account-menu__check svg');
 
@@ -61,8 +60,6 @@ describe('AccountMenu', () => {
   });
 
   it('draws two initials from the address, not the one Lattice reads from a single word', () => {
-    // `ada.lovelace@` is one word to a whitespace splitter, which renders `A`
-    // for every address a person is likely to have.
     renderMenu();
 
     expect(screen.getByRole('button', {name: /Account menu/})).toHaveTextContent('AL');
@@ -76,8 +73,6 @@ describe('AccountMenu', () => {
   });
 
   it('shows the signed-in address inside, without putting it in the a11y tree twice', async () => {
-    // Visible, but the trigger already announces it - and a menu may not
-    // own a bare paragraph.
     renderMenu();
 
     await open();
@@ -88,8 +83,6 @@ describe('AccountMenu', () => {
   });
 
   it('owns only what a menu is allowed to own', async () => {
-    // A `<p>` slipped in here and rendered perfectly. This class of bug is
-    // invisible to every other assertion in the file.
     const PERMITTED = new Set(['menuitem', 'menuitemradio', 'menuitemcheckbox', 'group', 'separator']);
     renderMenu();
 
@@ -97,8 +90,6 @@ describe('AccountMenu', () => {
 
     const offenders = [...screen.getByRole('menu').children]
       .filter((child) => child.getAttribute('aria-hidden') !== 'true')
-      // `<hr>` carries `separator` implicitly, so a missing role attribute is
-      // correct there rather than an omission.
       .filter((child) => child.tagName !== 'HR')
       .filter((child) => !PERMITTED.has(child.getAttribute('role') ?? ''))
       .map((child) => `${child.tagName.toLowerCase()}[role=${child.getAttribute('role') ?? 'none'}]`);
@@ -108,7 +99,6 @@ describe('AccountMenu', () => {
 
   describe('the theme control', () => {
     it('offers all three choices as a labelled radio group', async () => {
-      // Three, not two: "match system" is a real state, and needs a menu.
       renderMenu();
 
       await open();
@@ -140,8 +130,6 @@ describe('AccountMenu', () => {
     });
 
     it('marks the selected choice with something a person can see', async () => {
-      // `aria-checked` says nothing to a sighted reader, and a highlight is
-      // taken: `[data-active-item]` uses one for the keyboard position.
       localStorage.setItem(THEME_STORAGE_KEY, 'dark');
       renderMenu();
 
@@ -153,8 +141,6 @@ describe('AccountMenu', () => {
     });
 
     it('puts the mark after the label, so every item in the menu starts at the same edge', async () => {
-      // A leading slot would indent these three past "Log out", which has
-      // none. Structure, not pixels: jsdom computes no layout.
       renderMenu();
       await open();
 
@@ -162,14 +148,11 @@ describe('AccountMenu', () => {
         const slot = item.querySelector('.account-menu__check');
 
         expect(slot).not.toBeNull();
-        // `lastChild`: the label is a text node, so the element-only
-        // version passes against a leading slot too. It did.
         expect(item.lastChild).toBe(slot);
       }
     });
 
     it('reserves room for the mark on every choice, whether or not it holds one', async () => {
-      // So the trailing edge does not jump as the choice moves.
       renderMenu();
       await open();
 
@@ -201,7 +184,6 @@ describe('AccountMenu', () => {
     });
 
     it('stays open while the theme is changed, so the result is visible behind it', async () => {
-      // Closing would hide the page the choice just repainted.
       renderMenu();
       await open();
 
@@ -240,7 +222,6 @@ describe('AccountMenu', () => {
     });
 
     it('stays where it is and explains when the revoke fails', async () => {
-      // Leaving would put a live session behind a page saying otherwise.
       fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {error: 'Could not revoke this session'})));
       const router = renderMenu();
       await open();
@@ -261,7 +242,6 @@ describe('AccountMenu', () => {
       await userEvent.click(screen.getByRole('menuitem', {name: 'Log out'}));
       await screen.findByRole('alert');
 
-      // The menu stays open behind the callout, so retrying is one click.
       expect(screen.getByRole('menu')).toBeVisible();
       const item = screen.getByRole('menuitem', {name: 'Log out'});
       expect(item).not.toHaveAttribute('aria-disabled', 'true');

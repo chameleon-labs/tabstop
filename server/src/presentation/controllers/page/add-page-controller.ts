@@ -10,12 +10,7 @@ import type {HttpResponse} from '../../protocols/http.js';
 import type {Validation} from '../../protocols/validation.js';
 
 export type AddPageRequest = {
-  /** Supplied by the request body and narrowed by validation before use. */
   url?: unknown;
-  /**
-   * Written by the auth middleware into res.locals, which adaptRoute merges
-   * LAST - after body, query and params - so a client cannot post its own.
-   */
   userId: string;
 };
 
@@ -45,8 +40,6 @@ export class AddPageController implements Controller<AddPageRequest> {
         return badRequest(new Error(REJECTION_MESSAGES[result.reason]));
       }
 
-      // Both are 409s a client has to tell apart to render the right thing, so
-      // each carries a code rather than only a sentence.
       if (result.outcome === 'limit-reached') {
         return codedConflict(
           PAGE_CONFLICT.limitReached,
@@ -61,9 +54,6 @@ export class AddPageController implements Controller<AddPageRequest> {
 
       return created({
         ...toPageView(result.page),
-        // Null when the queue would not take the job. The page is tracked
-        // either way; this is what the client polls, so it must not name an
-        // audit that will never run.
         firstAuditId: result.firstAuditId,
       });
     } catch (error) {

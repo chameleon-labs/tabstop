@@ -58,12 +58,6 @@ const FAILED_AUDIT: AuditResultResponse = {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-/**
- * A live router rather than `Providers`, whose route element is captured once:
- * this spec re-renders the panel with a different audit, and a captured element
- * would show the first one forever. `ScoreArc` links to the score formula, so
- * some router has to be present.
- */
 const Harness = ({children}: {children: React.ReactNode}): React.JSX.Element => {
   const [client] = useState(() => new QueryClient({defaultOptions: {queries: {retry: false}}}));
 
@@ -134,9 +128,6 @@ describe('AuditPanel', () => {
   it.each(['queued', 'running'] as const)(
     'waits for a %s audit rather than reporting it as a result',
     async (status) => {
-      // `AuditResult` would print "Not scored", four zero counts and an empty
-      // violation list, which reads as a clean audit rather than an unfinished
-      // one.
       fetchMock.mockImplementation(() =>
         Promise.resolve(
           jsonResponse(200, {...AUDIT, status, score: null, completedAt: null, settled: false, violations: []}),
@@ -152,9 +143,6 @@ describe('AuditPanel', () => {
   );
 
   it('stops promising a result once the poll behind it has died', async () => {
-    // `useAudit` stops its interval on error but keeps the last queued body, so
-    // the panel went on saying the result would appear while nothing was left
-    // to fetch it. A screen that claims to be waiting must actually be waiting.
     let answered = false;
     fetchMock.mockImplementation(() => {
       if (answered) {
@@ -186,8 +174,6 @@ describe('AuditPanel', () => {
   });
 
   it('offers no retry for a result that is gone for good', async () => {
-    // A 404 is the one permanent poll failure; a button that cannot succeed is
-    // worse than no button.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(404, {error: 'Audit not found'})));
     renderPanel();
 
@@ -218,8 +204,6 @@ describe('AuditPanel', () => {
   });
 
   it('drops the old result when it is pointed at another audit', async () => {
-    // Leaving the previous violations up while the next result loads shows one
-    // audit's findings under another audit's heading.
     const {rerender} = renderPanel();
     await screen.findByText('Elements must have sufficient colour contrast');
 

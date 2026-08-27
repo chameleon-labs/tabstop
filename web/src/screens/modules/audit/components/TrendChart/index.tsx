@@ -11,10 +11,6 @@ import {
 } from '../../trend-geometry';
 import './trend-chart.css';
 
-/**
- * A fixed coordinate space scaled by the viewBox, so the chart resizes with its
- * container and never has to measure one.
- */
 const BOX: TrendBox = {width: 720, height: 220, padding: {top: 16, right: 16, bottom: 34, left: 44}};
 const PLOT_TOP = BOX.padding.top;
 const PLOT_LEFT = BOX.padding.left;
@@ -25,7 +21,6 @@ const MARKER_SIZE = 5;
 
 export type TrendChartProps = {
   points: readonly PageHistoryPoint[];
-  /** Called when the reader moves to a point, so the screen can announce it. */
   onFocusPoint?: (description: string) => void;
 };
 
@@ -91,7 +86,6 @@ export const TrendChart = ({points, onFocusPoint}: TrendChartProps): React.JSX.E
 
   return (
     <div className="trend-chart">
-      {/* The tooltip is positioned in percentages of the viewBox, so its containing block has to be the plot and nothing else. */}
       <div className="trend-chart__canvas">
         {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- The points are what the reader focuses; arrow-key routing has to sit on the element they share. */}
         <svg
@@ -201,8 +195,6 @@ export const TrendChart = ({points, onFocusPoint}: TrendChartProps): React.JSX.E
             aria-hidden="true"
             data-place={(tipEntry.y ?? PLOT_BOTTOM) < BOX.height / 2 ? 'below' : 'above'}
             style={{
-              // Anchored by its near edge rather than centred, so a point at
-              // either end of the window cannot push the tooltip off the chart.
               ...(tipEntry.x > BOX.width / 2
                 ? {right: `${100 - (tipEntry.x / BOX.width) * 100}%`}
                 : {left: `${(tipEntry.x / BOX.width) * 100}%`}),
@@ -233,8 +225,6 @@ export const TrendChart = ({points, onFocusPoint}: TrendChartProps): React.JSX.E
         )}
       </ul>
 
-      {/* Naming the marker is not enough: the first engine upgrade otherwise
-          reads as a regression in the page. */}
       {boundaries.length > 0 && (
         <p className="trend-chart__caveat">
           Scores either side of an axe-core version change are not directly comparable — the engine changed, not

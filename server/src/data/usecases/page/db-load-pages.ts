@@ -37,8 +37,6 @@ export class DbLoadPages implements LoadPages {
   }
 
   async load(userId: string): Promise<LoadPagesResult> {
-    // The limit rides along with the list so the dashboard can show "7 of 10"
-    // before anyone hits the cap, rather than discovering it as a rejection.
     const now = new Date();
     const summaries = await this.loadPageSummariesRepository.loadSummariesForUser(userId);
 

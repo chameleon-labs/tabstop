@@ -30,7 +30,6 @@ describe('destinationFrom', () => {
     expect(destinationFrom('?days=30')).toBe('/dashboard');
   });
 
-  // The parameter arrives from the address bar, so anyone can write it by hand.
   it('rejects a destination someone typed rather than one we recorded', () => {
     expect(destinationFrom(`?${RETURN_TO_KEY}=https://evil.example`)).toBe('/dashboard');
   });
@@ -38,8 +37,6 @@ describe('destinationFrom', () => {
 
 describe('returnToSearch', () => {
   it('encodes the destination so its own query survives the round trip', () => {
-    // Written unencoded, `?days=30` would parse as a second parameter of the
-    // login URL and the returning visitor would lose their filters.
     expect(returnToSearch('/pages/42?days=30#history')).toBe('?from=%2Fpages%2F42%3Fdays%3D30%23history');
   });
 });

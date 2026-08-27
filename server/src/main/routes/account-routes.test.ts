@@ -10,11 +10,6 @@ import {makeTestAppDependencies} from '../test/test-app-dependencies.js';
 const password = 'correct horse battery staple';
 const newEmail = (): string => `${randomUUID()}@routes.test`;
 
-// signup, login and me are all per-IP rate limited, and the buckets live for
-// the whole process. Without a distinct address per test, every plain
-// request in this file would share supertest's own loopback address and the
-// unrelated tests below would rate-limit each other - signup's capacity of 3
-// is exhausted by the third unrelated test that forgets this.
 let ipSeq = 0;
 const uniqueIp = (): string => {
   ipSeq += 1;
@@ -42,8 +37,6 @@ describe('account routes', () => {
     const dependencies = makeTestAppDependencies();
     app = setupApp(dependencies);
 
-    // Shared by the login rate-limit specs below, which need an account that
-    // is known to exist without spending their own signup bucket allowance.
     existingAccountEmail = newEmail();
     await request(app)
       .post('/api/signup')
@@ -57,9 +50,6 @@ describe('account routes', () => {
   });
 
   it('does not share the me quota between independently constructed apps', async () => {
-    // The real in-memory limiter refills from Date.now(). Freeze only that
-    // clock so this isolation check cannot cross me's six-second refill
-    // boundary while issuing its 60 HTTP requests under a loaded test worker.
     const now = vi.spyOn(Date, 'now').mockReturnValue(0);
     try {
       const first = setupApp(makeTestAppDependencies());
@@ -128,11 +118,6 @@ describe('account routes', () => {
     });
 
     it('returns 409, never 500, for the loser of a concurrent signup', async () => {
-      // The race this proves is on the email's unique constraint, not on the
-      // rate limiter, so each request gets its own address. Sharing one IP
-      // here left this spec running at exactly signup's capacity of 3 with
-      // no margin - any future change coupling the two would have started
-      // failing this spec instead of whichever one actually regressed.
       const email = newEmail();
 
       const responses = await Promise.all([
@@ -183,14 +168,6 @@ describe('account routes', () => {
     });
 
     it('rejects on the email bucket even when the IP bucket is fresh', async () => {
-      // Credential stuffing is many addresses against one account, which a
-      // per-IP limit cannot see. Every attempt below comes from a different
-      // address, so only the per-email bucket can stop it.
-      //
-      // A single value, not "x, 203.0.113.1": with one trusted hop, Express
-      // takes the LAST entry as the client - appending a fixed trailing
-      // address (as the spoofing spec does on purpose) would make every
-      // attempt resolve to that same constant address instead of varying it.
       const email = `stuffing-${randomUUID()}@example.com`;
       const attempt = async (index: number) =>
         await request(app)
@@ -208,20 +185,9 @@ describe('account routes', () => {
     });
 
     it('rate limits an unknown address exactly like a registered one', async () => {
-      // The bucket is keyed on the submitted string, never on whether an
-      // account exists - otherwise the 429 becomes the account-existence
-      // oracle that #10's dummy scrypt verify was written to close.
-      //
-      // Every call carries its own forwarded address so the per-IP bucket
-      // (capacity 10) can never be what rejects: two exhaustions of a
-      // capacity-5 email bucket is twelve requests.
       const exhaust = async (email: string) => {
         let last;
         for (let i = 0; i <= RATE_LIMITS.loginEmail.capacity; i++) {
-          // A single value: with one trusted proxy hop, Express reads the
-          // client address from the LAST X-Forwarded-For entry, so this has
-          // to be the whole header rather than a prefix in front of a fixed
-          // trusted address - otherwise every attempt shares one IP bucket.
           last = await request(app)
             .post('/api/login')
             .set('x-forwarded-for', `192.0.2.${i + 1}`)
@@ -239,28 +205,10 @@ describe('account routes', () => {
       expect(registered.status).toBe(429);
       expect(unknown.status).toBe(429);
 
-      // Naming individual fields (or comparing key sets alone) only catches
-      // a field present on one body and absent on the other. It misses a
-      // field present on BOTH bodies with a DIFFERENT value - the actual
-      // leak shape: a bucket-derived field such as `scope: 'ip' | 'email'`
-      // would differ because the registered address trips the IP bucket and
-      // the unknown one trips the email bucket, and no assertion above would
-      // ever inspect it. Destructuring out only the two genuinely
-      // time-derived fields and deep-comparing everything else catches that,
-      // for any field present today or added later, without this spec
-      // needing to change.
       const {retryAfter: unknownRetry, resetAt: unknownResetAt, ...unknownRest} = unknown.body;
       const {retryAfter: knownRetry, resetAt: knownResetAt, ...knownRest} = registered.body;
 
-      // Everything that is not time-derived must match exactly - including
-      // any field added later, which is the case a named-field check would
-      // miss.
       expect(unknownRest).toEqual(knownRest);
-      // These two are wall-clock-derived and the two exhaust() runs are
-      // sequential, so they are compared with tolerance rather than excluded
-      // from the comparison: enough real time between them legitimately
-      // shifts retryAfter by a second, and resetAt is a fresh timestamp
-      // every response.
       expect(Math.abs(unknownRetry - knownRetry)).toBeLessThanOrEqual(1);
       expect(typeof unknownResetAt).toBe('string');
       expect(typeof knownResetAt).toBe('string');
@@ -312,8 +260,6 @@ describe('account routes', () => {
       const logout = await request(app).post('/api/logout').set('x-forwarded-for', ip).set('Cookie', cookie);
       expect(logout.status).toBe(204);
 
-      // The assertion that proves revocation is real rather than cosmetic: the
-      // client still holds the cookie, and it is now worthless.
       const after = await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie);
       expect(after.status).toBe(401);
     });
@@ -329,15 +275,6 @@ describe('account routes', () => {
     });
 
     it('stays idempotent right up to the limit, then answers 429', async () => {
-      // Logout was the one route with no bucket, on the reasoning that it is
-      // idempotent and nothing accumulates from repeating it. Both true, and
-      // neither is about load: every call with a cookie is an indexed DELETE,
-      // and an anonymous caller can drive them as fast as it can open sockets.
-      //
-      // The bucket has to be generous enough that no real client ever meets
-      // it - a person with several tabs signing out is still nowhere near -
-      // which is why this asserts the idempotence survives all the way to
-      // capacity rather than just that a 429 eventually arrives.
       const ip = uniqueIp();
       const logout = async () => await request(app).post('/api/logout').set('x-forwarded-for', ip);
 
@@ -353,8 +290,6 @@ describe('account routes', () => {
 
   describe('CORS', () => {
     it('sends credentialed headers and never a wildcard', async () => {
-      // `*` is invalid on a credentialed request - for the origin and for the
-      // allowed headers alike - so both are stated exactly.
       const response = await request(app).get('/api/health');
 
       expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
@@ -366,9 +301,6 @@ describe('account routes', () => {
 
   describe('CSRF', () => {
     it('rejects a state-changing request from another origin', async () => {
-      // SameSite=Lax does not help here: this design puts the app and the API
-      // under one registrable domain, so a page on a sibling host is same-site
-      // and its form POST would carry the session cookie.
       const ip = uniqueIp();
       const signup = await request(app)
         .post('/api/signup')
@@ -385,7 +317,6 @@ describe('account routes', () => {
 
       expect(forced.status).toBe(403);
 
-      // and the session was NOT revoked
       await request(app).get('/api/me').set('x-forwarded-for', ip).set('Cookie', cookie).expect(200);
     });
 
@@ -419,10 +350,6 @@ describe('account routes', () => {
 
   describe('caching', () => {
     it('marks authenticated responses no-store', async () => {
-      // GET /api/me returns per-user data. A 200 with no Cache-Control is
-      // heuristically cacheable, and the only thing a shared cache in front of
-      // the API could vary on is the session cookie - so without this, a CDN
-      // could serve one user's identity to another.
       const ip = uniqueIp();
       const signup = await request(app)
         .post('/api/signup')

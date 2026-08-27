@@ -88,8 +88,6 @@ describe('PageRow identity', () => {
   });
 
   it('shows the domain first and the address under it', () => {
-    // The API has no page title, and inventing "Acme checkout" would be a
-    // label nothing else in the product agrees with.
     renderRow();
 
     expect(screen.getByText('example.test')).toBeVisible();
@@ -97,8 +95,6 @@ describe('PageRow identity', () => {
   });
 
   it('is a list item, not a giant button', () => {
-    // It contains its own controls; making the whole row activatable would
-    // nest interactive elements.
     renderRow();
 
     expect(row().tagName).toBe('LI');
@@ -148,7 +144,6 @@ describe('PageRow states', () => {
   });
 
   it('never renders a failed audit as a score of zero', () => {
-    // A zero reads as a catastrophic regression, which is a false alarm.
     renderRow(page({latestAudit: audit('failed', null)}));
 
     expect(row()).toHaveAttribute('data-state', 'failed');
@@ -172,7 +167,6 @@ describe('PageRow states', () => {
     expect(row()).toHaveAttribute('data-state', 'first-audit');
     expect(screen.getByText(/First audit: Waiting for a free worker/)).toBeVisible();
     expect(scoreText()).toBeUndefined();
-    // No chart at all, not even the empty one: there is nothing yet to chart.
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
@@ -204,8 +198,6 @@ describe('PageRow states', () => {
   });
 
   it('says a first audit could not start rather than that it is running', () => {
-    // The server deletes the queued row when the job fails to enqueue, and
-    // reading that as "running" leaves a spinner up forever.
     renderRow(page({latestAudit: null, history: []}));
 
     expect(row()).toHaveAttribute('data-state', 'unstarted');
@@ -241,8 +233,6 @@ describe('PageRow monitoring', () => {
   });
 
   it('marks only its own control as working', async () => {
-    // Held open on purpose: pending state that resolves immediately is not
-    // pending state anyone can see.
     const user = userEvent.setup();
     let release!: (value: Response) => void;
     fetchMock.mockImplementation(
@@ -304,8 +294,6 @@ describe('PageRow clocks', () => {
   });
 
   it('runs no clock for a row that has finished', () => {
-    // The phase hook ticks every second while it is active. Left active for
-    // settled rows, every row in the list re-renders once a second forever.
     renderRow();
 
     expect(vi.getTimerCount()).toBe(0);

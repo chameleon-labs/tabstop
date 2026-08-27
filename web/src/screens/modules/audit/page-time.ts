@@ -60,9 +60,6 @@ export const pageTimestamp = (page: PageSummary): PageTimestamp => {
     return {value: page.createdAt, prefix: 'Added'};
   }
 
-  // A scheduled audit is queued for hours before it runs, so "Audit started"
-  // beside a future slot claims two contradictory things. Until it starts, the
-  // last finished audit is what this page was last measured by.
   if (latest.status === 'queued' && page.nextAuditAt !== null) {
     const finished = page.history.at(-1);
     return finished === undefined ? {value: page.createdAt, prefix: 'Added'} : {value: finished.at, prefix: 'Audited'};
@@ -99,18 +96,12 @@ export const nextAuditTime = (
   }
 
   const zone = timeZone === undefined ? {} : {timeZone};
-  // Named zone, not a bare clock: "at 05:30" is unreadable to anyone who
-  // cannot tell whose 05:30 it is, and the schedule itself is set in UTC.
   const clock = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',
     timeZoneName: 'short',
     ...zone,
   }).format(parsed);
-  // Differenced as calendar dates rather than by adding 24 hours: a local day
-  // is 23 or 25 hours long across a DST change, so "now + DAY" lands on today
-  // or on the day after tomorrow and an audit due tomorrow loses its clock
-  // time. Both keys are plain YYYY-MM-DD, so parsing them is exact.
   const days = (Date.parse(dayKey(parsed, timeZone)) - Date.parse(dayKey(now, timeZone))) / DAY;
 
   if (days <= 0) {

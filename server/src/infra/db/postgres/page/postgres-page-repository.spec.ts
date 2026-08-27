@@ -22,11 +22,6 @@ const connectionUrl = (): string => {
   return url;
 };
 
-/**
- * A counting connection stays local: only this file cares about round trips,
- * and it needs the SQL alone. The EXPLAIN tooling next to it is shared, since
- * the history spec wants it too.
- */
 const makeCountingDatabase = (sink: string[]): Kysely<Database> =>
   new Kysely<Database>({
     dialect: new PostgresDialect({pool: new Pool({connectionString: connectionUrl()})}),
@@ -54,8 +49,6 @@ describe('PostgresPageRepository', () => {
     await db.destroy();
   });
 
-  // Every fixture is suffixed with a uuid rather than truncating between
-  // tests: spec files share one database and run in parallel.
   const makeUser = async (): Promise<string> => {
     const user = await db
       .insertInto('users')
@@ -103,8 +96,6 @@ describe('PostgresPageRepository', () => {
         monitoringEnabled: true,
         createdAt: expect.any(Date),
       });
-      // The audit exists before anything is enqueued, so the page can never be
-      // monitored with no history at all.
       expect(result.firstAudit.status).toBe('queued');
       expect(result.firstAudit.pageId).toBe(result.page.id);
       expect(result.firstAudit.url).toBe(url);
@@ -174,8 +165,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('answers duplicate before limit-reached for an account already at the cap', async () => {
-      // Being told to upgrade when the real answer is "you already track this"
-      // is a worse experience than either message alone.
       const userId = await makeUser();
       const domain = newDomain();
       const url = `https://${domain}/0`;
@@ -197,10 +186,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('keeps the limit exact when three adds race', async () => {
-      // The reason `add` locks the account row. Counting and then inserting is
-      // check-then-act: under READ COMMITTED all three transactions see the
-      // same pre-existing count, so without the lock all three are admitted
-      // and an account allowed two pages ends up with four.
       const userId = await makeUser();
       const domain = newDomain();
       await sut.add({userId, domain, url: `https://${domain}/seed`, limit: 2});
@@ -270,9 +255,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('reports the latest audit whatever its status, not the latest scored one', async () => {
-      // The dashboard has to make "this page is broken" look different from
-      // "this page scores badly". Reporting the last SCORED audit as the
-      // latest would hide a page whose monitoring has been failing for a week.
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
@@ -297,9 +279,6 @@ describe('PostgresPageRepository', () => {
         throw new Error('expected the page to be added');
       }
 
-      // Sequential rather than parallel so created_at orders the way the
-      // scores do; the assertion below is about order, so it must not depend
-      // on how the database happened to interleave the inserts.
       for (let score = 1; score <= 35; score++) {
         await addAudit(added.page.id, {status: 'done', score});
       }
@@ -308,14 +287,10 @@ describe('PostgresPageRepository', () => {
       const history = summaries[0]?.history ?? [];
 
       expect(history).toHaveLength(30);
-      // The newest thirty of thirty-five, still in oldest-first order.
       expect(history.map((point) => point.score)).toEqual(Array.from({length: 30}, (_value, index) => index + 6));
     });
 
     it('caps the history PER PAGE rather than across the whole account', async () => {
-      // A single `limit 30` over a multi-page result cuts the list off at
-      // whichever pages sort first, leaving later pages with no sparkline at
-      // all. The window function is what makes the bound per page.
       const userId = await makeUser();
       const domain = newDomain();
       const first = await sut.add({userId, domain, url: `https://${domain}/a`, limit: 10});
@@ -336,21 +311,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('reads about thirty audit rows for a page with two thousand', async () => {
-      // The bound has to be on WORK, not only on output. `row_number() ...
-      // where rank <= 30` returns thirty rows per page and looks equivalent -
-      // Postgres 15+ even pushes the comparison into the window as a Run
-      // Condition - but the scan underneath still reads every finished audit
-      // the page has ever had. On a nightly monitor that means the dashboard,
-      // which is the polled endpoint, gets slower for as long as the account
-      // exists.
-      //
-      // Counted across EVERY query the load issued, not just the one matching
-      // some pattern. That matters: the first version of this spec found the
-      // history query by searching for `lateral`, so replacing the lateral
-      // with the window function made the search fail and the "did we find it"
-      // guard went red before the count was ever compared. It looked
-      // mutation-checked and was not - and the row counter it relied on was
-      // itself returning 0 for every input.
       const issued: IssuedQuery[] = [];
       const recording = makeRecordingDatabase(issued);
       const repository = new PostgresPageRepository(recording);
@@ -370,11 +330,6 @@ describe('PostgresPageRepository', () => {
                  now() - (i || ' hours')::interval
           from generate_series(1, ${history}) i
         `.execute(db);
-        // Without this the planner still thinks the page has one audit, picks
-        // a bitmap scan with a top-N sort, and reads all 2000 rows even from
-        // the lateral - which is a fact about missing statistics rather than
-        // about the query. Production has them from autovacuum; a spec that
-        // bulk-inserts has to ask.
         await sql`analyze audits`.execute(db);
 
         issued.length = 0;
@@ -386,9 +341,6 @@ describe('PostgresPageRepository', () => {
           rowsRead += await explainRowsRead(recording, query, 'audits');
         }
 
-        // Thirty for the history plus one for the latest-audit lookup. The
-        // window-function version reads all 2000, so the gap is two orders of
-        // magnitude and any threshold between them separates the two.
         expect(rowsRead).toBeGreaterThan(0);
         expect(rowsRead).toBeLessThan(HISTORY_POINTS * 2);
       } finally {
@@ -397,11 +349,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('costs the same number of queries for ten pages as for one', async () => {
-      // The acceptance criterion on #11, asserted as the property it actually
-      // is: not "three queries" - that number may legitimately change - but
-      // that the count does not grow with the list. An N+1 here is invisible
-      // until somebody tracks their tenth page, and then it is ten round trips
-      // on the one screen the product is opened for.
       const counted: string[] = [];
       const counting = makeCountingDatabase(counted);
       const repository = new PostgresPageRepository(counting);
@@ -447,7 +394,6 @@ describe('PostgresPageRepository', () => {
   describe('loadHistoryForUser', () => {
     const daysAgo = (days: number): Date => new Date(Date.now() - days * 86_400_000);
 
-    /** An audit at a chosen moment, which the window specs need to control. */
     const addAuditAt = async (
       pageId: string,
       at: Date,
@@ -472,7 +418,6 @@ describe('PostgresPageRepository', () => {
       if (added.outcome !== 'added') {
         throw new Error('expected the page to be added');
       }
-      // The first audit is queued and dated now; the specs below add their own.
       await db.deleteFrom('audits').where('id', '=', added.firstAudit.id).execute();
       return {userId, pageId: added.page.id};
     };
@@ -485,16 +430,11 @@ describe('PostgresPageRepository', () => {
 
       const history = await sut.loadHistoryForUser(pageId, userId, daysAgo(90));
 
-      // Ascending, so the chart renders in array order - the opposite of what
-      // `order by created_at desc` habit produces.
       expect(history?.audits.map((audit) => audit.score)).toEqual([60, 70, 80]);
       expect(history?.page.id).toBe(pageId);
     });
 
     it('keeps failed audits as points, with a null score', async () => {
-      // Dropping them would make an outage look like continuity; scoring them
-      // zero would make it look like a catastrophic regression. The gap is the
-      // information.
       const {userId, pageId} = await pageWithHistory();
       await addAuditAt(pageId, daysAgo(2), {status: 'done', score: 90});
       await addAuditAt(pageId, daysAgo(1), {status: 'failed'});
@@ -518,8 +458,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('returns the page with no audits rather than null for a quiet window', async () => {
-      // An empty chart and a missing page are different answers: one renders
-      // an empty state for a real page, the other is a 404.
       const {userId, pageId} = await pageWithHistory();
       await addAuditAt(pageId, daysAgo(40), {status: 'done', score: 10});
 
@@ -544,14 +482,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('reads the audits through audits_page_created_idx', async () => {
-      // The acceptance criterion on #12, asserted rather than assumed. The
-      // index is declared (page_id, created_at desc) and this query wants
-      // ascending, which is exactly the shape a planner quietly abandons - and
-      // a sequential scan here is invisible until the table is large.
-      //
-      // Seeded first: on a handful of rows Postgres will correctly prefer a
-      // sequential scan, so a spec that asserted the index without enough data
-      // would be asserting the opposite of what it means.
       const issued: IssuedQuery[] = [];
       const recording = makeRecordingDatabase(issued);
       const repository = new PostgresPageRepository(recording);
@@ -589,26 +519,8 @@ describe('PostgresPageRepository', () => {
         after: overrides.after ?? null,
       });
 
-    /**
-     * A day boundary no audit can be on the far side of, which switches the
-     * "audited today" clause off - so a spec about the in-flight clause is
-     * testing the in-flight clause. Without it a fixture dated a few hours ago
-     * is excluded by whichever clause fires first, and after midday that is the
-     * wrong one, so the assertion passes without exercising what it names.
-     *
-     * In the FUTURE, not the past. The clause reads `created_at >= dayStart`,
-     * so an old boundary matches every audit ever written and excludes every
-     * page that has one - the opposite of switching it off.
-     */
     const NO_DAY_BOUNDARY = new Date('3000-01-01T00:00:00.000Z');
 
-    /**
-     * A monitored page with NO audits at all.
-     *
-     * `sut.add` would create a queued first audit, which makes the page
-     * ineligible - correctly, since it already has work in flight. These specs
-     * decide for themselves what history each page has.
-     */
     const monitoredPage = async (
       options: {monitoring?: boolean} = {},
     ): Promise<{pageId: string; domain: string; url: string}> => {
@@ -628,12 +540,6 @@ describe('PostgresPageRepository', () => {
       return {pageId: page.id, domain, url};
     };
 
-    /**
-     * Every spec file shares one database and they run in parallel, so this
-     * query - which is deliberately global, since the nightly run audits
-     * everyone's pages - sees other files' fixtures too. Assertions are made
-     * about the pages a spec created, never about the whole result.
-     */
     const dueIds = async (limit = NO_CAP): Promise<Set<string>> =>
       new Set((await due({limit})).map((page) => page.pageId));
 
@@ -650,9 +556,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('skips a page that already has an audit in flight', async () => {
-      // Both live statuses, because a page can be either at 02:00: queued from
-      // a manual submission that has not started, or running from a job that
-      // began before the fan-out did.
       const queued = await monitoredPage();
       const running = await monitoredPage();
       await addAudit(queued.pageId, {status: 'queued'});
@@ -665,15 +568,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('keeps skipping a page with an unfinished audit however old it is', async () => {
-      // No age limit here, deliberately - the first version of this had one.
-      // Ageing unfinished audits out compounds under load: once the queue stops
-      // draining inside the window, every real pending audit looks abandoned,
-      // its page is scheduled again, and each night piles more work onto a
-      // backlog the workers are already behind on.
-      //
-      // A row that genuinely has no job behind it is retired by asking the
-      // queue - a question no predicate here can answer. See the reclaim specs
-      // beside the audit repository.
       const {pageId} = await monitoredPage();
       await db
         .insertInto('audits')
@@ -691,10 +585,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('returns the page once that audit has finished, however it finished', async () => {
-      // The release, without which the rule above is indistinguishable from "a
-      // page that has ever had an audit is never due again". `failed` because
-      // that is what the reclaim path writes: retiring an abandoned row is
-      // what puts its page back in the worklist.
       const {pageId} = await monitoredPage();
       const audit = await db
         .insertInto('audits')
@@ -715,10 +605,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('skips a page already audited today, however that audit came about', async () => {
-      // Keyed on created_at rather than on scheduled_for, so a page somebody
-      // audited manually an hour ago is not fetched again tonight. That is a
-      // cost control the unique index deliberately does not enforce - it only
-      // knows about scheduled work.
       const {pageId} = await monitoredPage();
       await addAudit(pageId, {status: 'done', score: 90});
 
@@ -726,9 +612,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('stands down tonight for a page audited on demand today', async () => {
-      // The interaction #115 relies on rather than changes: an on-demand audit
-      // suppresses that night's scheduled one, so the two cannot both run and
-      // the reader does not get two points for one day.
       const {pageId} = await monitoredPage();
       await db
         .insertInto('audits')
@@ -744,8 +627,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('returns a page whose last audit was yesterday', async () => {
-      // The counterpart to the rule above: a bound that never released would
-      // audit every page exactly once, ever.
       const {pageId} = await monitoredPage();
       await db
         .insertInto('audits')
@@ -762,9 +643,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('returns a page whose last audit failed, rather than giving up on it', async () => {
-      // A failed audit is not work in flight and it is not a result. Excluding
-      // these would mean one bad night silently ends monitoring for a page -
-      // the failure mode that looks most like the product simply working.
       const {pageId} = await monitoredPage();
       await db
         .insertInto('audits')
@@ -788,10 +666,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('starts after the cursor, so the caller can page through', async () => {
-      // Keyset, and it has to be: the run mutates what it is paging over -
-      // every page it schedules gains an audit in flight and leaves the
-      // predicate - so an offset would step over exactly as many pages as the
-      // previous batch handled.
       const first = await monitoredPage();
       const second = await monitoredPage();
       const ordered = [first.pageId, second.pageId].toSorted((left, right) => Number(BigInt(left) - BigInt(right)));
@@ -805,9 +679,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('pages through the whole worklist without repeating or skipping a page', async () => {
-      // The property the run depends on, asserted end to end rather than
-      // inferred from the two rules above: walking one page at a time has to
-      // arrive at every row exactly once.
       const mine = new Set(await Promise.all([0, 1, 2].map(async () => (await monitoredPage()).pageId)));
 
       const seen: string[] = [];
@@ -827,25 +698,6 @@ describe('PostgresPageRepository', () => {
       expect(new Set(seen)).toEqual(mine);
       expect(seen).toHaveLength(mine.size);
     });
-
-    // There is deliberately NO assertion here about how much of `audits` this
-    // query reads, and the reason is worth writing down.
-    //
-    // The obvious one - seed a page with thousands of audits, EXPLAIN the
-    // load, assert it reads almost none of them - passes when this file runs
-    // alone and fails in the suite, measured: 7,635 rows against a threshold
-    // of 1,000. Not a flake. This query is global, because the nightly run
-    // audits everyone's pages, so it also evaluates every fixture the other
-    // spec files are creating in parallel - and once the outer side is a few
-    // hundred pages Postgres correctly stops probing per page and hash
-    // anti-joins the whole audits table instead. That is the better plan for
-    // that shape, so the assertion was pinning the size of the shared fixture
-    // set rather than anything about this query.
-    //
-    // The same lesson #12 recorded about the lateral: an index makes a cheap
-    // plan AVAILABLE, it does not guarantee one. What can be pinned is that
-    // the index answers the predicate at all, which is asserted next to the
-    // migration that creates it.
   });
 
   describe('setMonitoringForUser cancelling scheduled work', () => {
@@ -877,7 +729,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it("keeps the page's first audit, which runs at once rather than on a schedule", async () => {
-      // Cancelling it would cost a page added seconds ago its first score.
       const userId = await makeUser();
       const domain = newDomain();
       const added = await sut.add({userId, domain, url: `https://${domain}/`, limit: 10});
@@ -906,9 +757,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it("never reaches another account's scheduled audits", async () => {
-      // The update matches no row for a page this account does not own, so the
-      // delete must not run either - otherwise an unowned id is a way to
-      // interfere with somebody else's monitoring.
       const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
       const domain = newDomain();
       const hers = await sut.add({userId: alice, domain, url: `https://${domain}/`, limit: 10});
@@ -961,8 +809,6 @@ describe('PostgresPageRepository', () => {
     });
 
     it('returns null for an id no bigint column could hold', async () => {
-      // Postgres raises on a malformed bigint comparison rather than matching
-      // nothing, so an id from a url path has to be a miss, not a 500.
       const userId = await makeUser();
 
       expect(await sut.setMonitoringForUser('not-a-number', userId, false)).toBeNull();
@@ -1003,8 +849,6 @@ describe('PostgresPageRepository', () => {
 
       expect(await sut.deleteForUser(added.page.id, userId)).toBe(true);
 
-      // Deleting a page revokes every public share link for its audits. That
-      // is the intended privacy behaviour, and the reason there is no undo.
       expect(
         await db.selectFrom('pages').select('id').where('id', '=', added.page.id).executeTakeFirst(),
       ).toBeUndefined();

@@ -32,7 +32,6 @@ const renderLayout = (): QueryClient => {
   return queryClient;
 };
 
-/** A screen that brings its own `<main>` and footer - as the landing page does. */
 const renderOwnMain = (): void => {
   const router = createMemoryRouter(
     [
@@ -44,8 +43,6 @@ const renderOwnMain = (): void => {
             index: true,
             handle: {ownMain: true},
             element: (
-              // No header of its own: that is shared now, and supplying a
-              // second one is the two-banner bug this flag used to prevent.
               <div>
                 <main id="main" tabIndex={-1}>
                   <h1>A screen</h1>
@@ -90,10 +87,6 @@ describe('Layout', () => {
   });
 
   it('carries the shell classes the sticky-footer column is written against', () => {
-    // jsdom computes no layout, so this ties the MARKUP to the stylesheet -
-    // which is the half that can rot. `site-header.css.spec.ts` asserts the
-    // rules exist; without this, dropping the class here leaves the landing
-    // footer floating on a short page and every test still green.
     renderLayout();
 
     expect(document.querySelector('.app-shell')).not.toBeNull();
@@ -102,10 +95,6 @@ describe('Layout', () => {
 
   describe('when a screen brings its own main', () => {
     it('steps back, leaving exactly one of each landmark', async () => {
-      // The shell's `<main>` wrapping the screen's own made a `<main>` inside a
-      // `<main>` - invalid, and it gives the skip link two `#main` candidates.
-      // The header is no longer part of this: it is shared, and the screen
-      // supplying one was the two-banner half of the bug.
       renderOwnMain();
       await screen.findByRole('heading', {level: 1, name: 'A screen'});
 
@@ -116,11 +105,6 @@ describe('Layout', () => {
     });
 
     it('still has a #main for the skip link when the screen throws', async () => {
-      // The route still matches and its handle still says `ownMain`, so the
-      // shell steps back exactly as it would for a working screen - but what
-      // renders is the error boundary, which is not the screen. Left alone that
-      // produces an error page with no landmarks and a retained skip link
-      // pointing at a `#main` that does not exist.
       const Boom = (): React.JSX.Element => {
         throw new Error('boom');
       };
@@ -152,9 +136,6 @@ describe('Layout', () => {
     });
 
     it("keeps the skip link, which stays the shell's job either way", async () => {
-      // The screen supplies the landmarks; it does not supply the escape from
-      // them. Dropping this with the header would take the skip link off the
-      // one screen with the most chrome to skip.
       renderOwnMain();
       await screen.findByRole('heading', {level: 1, name: 'A screen'});
 
@@ -170,9 +151,6 @@ describe('Layout', () => {
 
   describe('the skip link', () => {
     it('is the first thing a keyboard reaches', async () => {
-      // The entire point. If anything in the header comes first, a keyboard
-      // user tabs through the whole navigation on every page to reach content,
-      // and the link may as well not exist.
       renderLayout();
 
       await userEvent.tab();
@@ -181,8 +159,6 @@ describe('Layout', () => {
     });
 
     it('points at a target that exists', () => {
-      // A skip link to a missing id is worse than none: it looks like an
-      // affordance and silently does nothing.
       renderLayout();
 
       const link = screen.getByRole('link', {name: 'Skip to content'});
@@ -193,9 +169,6 @@ describe('Layout', () => {
     });
 
     it('targets an element that can actually take focus', () => {
-      // Without `tabIndex={-1}` the browser scrolls to `#main` but leaves focus
-      // where it was, so the next Tab starts from the top of the page again -
-      // the link appears to work and does not.
       renderLayout();
 
       expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1');
@@ -203,8 +176,6 @@ describe('Layout', () => {
   });
 
   it('gives the navigation an accessible name', () => {
-    // A landmark with no name is one of several identical "navigation" entries
-    // in a screen reader's landmark list.
     renderLayout();
 
     expect(screen.getByRole('navigation', {name: 'Main'})).toBeVisible();
@@ -222,8 +193,6 @@ describe('Layout', () => {
     renderLayout();
 
     expect(await screen.findByRole('link', {name: 'Dashboard'})).toHaveAttribute('href', '/dashboard');
-    // Log out moved inside the account menu; the header's signed-in control is
-    // the avatar that opens it.
     expect(screen.getByRole('button', {name: /Account menu/})).toBeVisible();
     expect(screen.queryByRole('link', {name: 'Log in'})).not.toBeInTheDocument();
   });
@@ -392,9 +361,6 @@ describe('Layout', () => {
   });
 
   it('carries the route announcer, since only the shell renders once', () => {
-    // It has to persist ACROSS navigations. Mounted per screen, the region
-    // would be new each time and a new region's content is initial content -
-    // announced by nothing.
     renderLayout();
 
     expect(screen.getByRole('status')).toBeInTheDocument();

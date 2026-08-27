@@ -45,8 +45,6 @@ describe('relativeTime', () => {
     {name: 'minutes', value: '2026-08-15T12:10:00.000Z'},
     {name: 'hours', value: '2026-08-15T15:00:00.000Z'},
   ])('never says a page was audited $name into the future', ({value}) => {
-    // Clock skew between the server and the browser is ordinary, and "in 3
-    // hours" reads as a bug in the product rather than in the clock.
     expect(relativeTime(value, NOW, 'en')).toBe('just now');
   });
 
@@ -113,7 +111,6 @@ describe('nextAuditTime', () => {
   });
 
   it('says tomorrow rather than leaving the day to be guessed', () => {
-    // "at 05:30" alone is read as today, and the slot is usually not today.
     expect(nextAuditTime('2026-08-16T05:30:00.000Z', AT, 'en-GB', 'UTC')).toBe('tomorrow at 05:30 UTC');
   });
 
@@ -122,10 +119,6 @@ describe('nextAuditTime', () => {
   });
 
   it('reads today in the reader own zone, not in the machine one', () => {
-    // 23:00 UTC is already tomorrow in Tokyo, so "now" and the slot fall on one
-    // calendar day there while landing on two anywhere west of it. Comparing
-    // the slot against a day computed in some other zone reports "tomorrow" for
-    // something happening this evening.
     const late = Date.parse('2026-08-15T23:00:00.000Z');
 
     expect(nextAuditTime('2026-08-16T00:30:00.000Z', late, 'en-GB', 'Asia/Tokyo')).toBe('at 09:30 GMT+9');
@@ -137,12 +130,7 @@ describe('nextAuditTime', () => {
 });
 
 describe('nextAuditTime across a daylight-saving change', () => {
-  // London gains an hour on 25 October 2026: that local day is 25 hours long,
-  // so "now + 24h" is still the same day and an audit due tomorrow would be
-  // reported without its clock time.
   it('still says tomorrow when the local day is twenty-five hours', () => {
-    // 25 October is 25 hours long in London, so adding a day to a moment just
-    // after its midnight lands back on the same date and tomorrow is missed.
     const justAfterMidnight = Date.parse('2026-10-24T23:30:00.000Z');
 
     expect(nextAuditTime('2026-10-26T00:30:00.000Z', justAfterMidnight, 'en-GB', 'Europe/London')).toBe(
@@ -151,8 +139,6 @@ describe('nextAuditTime across a daylight-saving change', () => {
   });
 
   it('still says tomorrow when the local day is twenty-three hours', () => {
-    // 29 March is 23 hours long, so the same addition overshoots it entirely
-    // and lands on the day after tomorrow.
     const justBeforeMidnight = Date.parse('2026-03-28T23:30:00.000Z');
 
     expect(nextAuditTime('2026-03-29T22:00:00.000Z', justBeforeMidnight, 'en-GB', 'Europe/London')).toBe(
@@ -169,8 +155,6 @@ describe('pageTimestamp for an audit that is scheduled but not started', () => {
   });
 
   it('reports the last finished audit rather than claiming this one started', () => {
-    // "Audit started 2 hours ago" beside "Next audit at 05:30" says the audit
-    // both has and has not begun.
     const timestamp = pageTimestamp(queued('2026-08-16T05:30:00.000Z', [{score: 74, at: '2026-08-15T05:30:00.000Z'}]));
 
     expect(timestamp).toEqual({value: '2026-08-15T05:30:00.000Z', prefix: 'Audited'});
@@ -181,8 +165,6 @@ describe('pageTimestamp for an audit that is scheduled but not started', () => {
   });
 
   it('still says an audit started once it really has', () => {
-    // No future slot means the queued job is the one about to run, not one
-    // waiting behind a jitter delay.
     expect(pageTimestamp(queued(null)).prefix).toBe('Audit started');
   });
 });

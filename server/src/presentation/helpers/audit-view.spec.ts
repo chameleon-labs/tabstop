@@ -41,9 +41,6 @@ describe('toAuditResultResponse', () => {
   });
 
   it('omits every field that could identify a user', () => {
-    // This response is public, gated only by an unguessable uuid. pageId links
-    // to a site and therefore to an account, so it is the leak - and a spread
-    // or a later select * is exactly how it comes back.
     const response = toAuditResultResponse({
       audit: audit({pageId: 'page-99'}),
       violations: [],
@@ -93,8 +90,6 @@ describe('toAuditResultResponse', () => {
   });
 
   it('keeps a violation whose severity axe did not report', () => {
-    // Dropping it would hide a real finding, which is why the column is
-    // nullable in the first place.
     const response = toAuditResultResponse({
       audit: audit(),
       violations: [violation({impact: null})],

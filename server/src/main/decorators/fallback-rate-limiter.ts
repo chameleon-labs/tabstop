@@ -1,25 +1,9 @@
 import type {BucketConfig, RateLimitDecision, RateLimiter} from '../../data/protocols/rate-limit/rate-limiter.js';
 
-/** An outage that logged per request would do more damage than the outage. */
 const LOG_INTERVAL_MS = 30_000;
 
-/**
- * How long one failure keeps traffic on the fallback before the primary is
- * tried again.
- *
- * It avoids paying a dead Redis command timeout on every request and accepts
- * up to five seconds of per-process counting after recovery. It no longer
- * provides refund consistency; the allowance capability does.
- */
 const DEGRADED_WINDOW_MS = 5_000;
 
-/**
- * Tries the shared limiter and degrades to a local one when it cannot answer.
- *
- * The alternative - refusing the request - was rejected: it would hand an
- * attacker who can make Redis flaky a complete authentication outage, and it
- * would make the queue's health a hard dependency of logging in.
- */
 export class FallbackRateLimiter implements RateLimiter {
   private lastLoggedAt = 0;
   private degradedUntil = 0;
