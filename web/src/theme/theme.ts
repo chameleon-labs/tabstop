@@ -22,6 +22,7 @@ export const storeTheme = (theme: Theme): void => {
       return;
     }
     localStorage.setItem(THEME_STORAGE_KEY, theme);
+    // oxlint-disable-next-line no-empty -- storage is unavailable in private mode; a theme is not worth a broken page
   } catch {}
 };
 

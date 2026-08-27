@@ -10,7 +10,7 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 `web/src`, `web/scripts`, `server/src` and `contract/src` hold no explanatory
 comments. 4,994 of them went - 8,687 lines across 414 of the 594 TypeScript
-files, about 15% of the source. What is left is 39 machine-read directives:
+files, about 15% of the source. What is left is 41 machine-read directives:
 `@vitest-environment`, `oxlint-disable`, `eslint-disable`, `@ts-expect-error`
 and one `/// <reference`.
 
@@ -42,13 +42,24 @@ filename - but it resolves in `web/` only, because `server` has vitest and not
 vite. Web CI does not watch `server/**` either, so such a check would have to
 run from the Lint workflow to see all three packages.
 
-Two lint rules were being held up by the comments themselves. ESLint's
+Two lint rules turned out to be held up by the comments themselves.
 `no-empty-function` and `no-empty` both treat a body containing a comment as
-deliberate, so `/* no-op */` was the thing keeping 35 test doubles and 2
-catch blocks quiet. A codebase without comments has no such escape hatch, so
-the fact moves into `.oxlintrc.json`: `no-empty-function` is off for specs and
-`test/` doubles, where an empty body is the point, and `no-empty` allows an
-empty catch. Everywhere else both still bite.
+deliberate, so `/* no-op */` was the thing keeping 35 test doubles and 2 catch
+blocks quiet. A codebase without comments has no such escape hatch, and the two
+rules needed opposite answers.
+
+`no-empty` stays an error, with an `oxlint-disable-next-line` on each of the two
+catches. Two sites is cheap, and `allowEmptyCatch` would have bought that at the
+price of every other empty catch in the codebase passing silently - which is the
+rule's whole job.
+
+`no-empty-function` is off for specs and `test/` doubles, where an empty body is
+the point. Thirty-five directives is not cheap, and the alternatives are worse
+than they look: `async () => undefined` is non-empty but trips `require-await`,
+so it trades one warning for another. What makes the override safe is that the
+failure worth catching is already caught by a stricter rule: an empty test body
+is a `vitest/expect-expect` error, where `no-empty-function` was only ever a
+warning - and warnings do not fail this build.
 
 One file lost something the code could not say back. `ip-address-policy.ts`
 labelled each blocked range in a trailing comment - `2001::` is Teredo, `3fff::`

@@ -28,6 +28,7 @@ export class DbAuthenticate implements Authenticate {
   private async burnComparableWork(password: string): Promise<void> {
     try {
       await this.hashComparer.compare(password, await this.getDummyDigest());
+      // oxlint-disable-next-line no-empty -- the work is the point; its result is deliberately unused
     } catch {}
   }
 
