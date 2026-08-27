@@ -53,9 +53,6 @@ describe('RequestAuditController', () => {
       ['invalid-url', 'That does not look like a URL'],
       ['blocked-scheme', 'Only http and https addresses can be audited'],
       ['blocked-port', 'Only standard web ports can be audited'],
-      // Identical to the worker's wording on purpose: if submission and
-      // audit-time rejections differed, the difference would tell an attacker
-      // which internal addresses exist.
       ['blocked-address', "That address can't be audited"],
     ] as const;
 
@@ -70,8 +67,6 @@ describe('RequestAuditController', () => {
   });
 
   it('answers 503 when the queue is unreachable', async () => {
-    // The row has already been removed, so this is a clean retry rather than a
-    // half-created audit the client has to reason about.
     const {sut, requestAudit} = makeSut();
     requestAudit.request.mockResolvedValueOnce({outcome: 'unavailable'});
 

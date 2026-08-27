@@ -5,9 +5,7 @@ import type {DnsResolver} from '../../data/protocols/net/dns-resolver.js';
 const mockResolver = (impl: DnsResolver['resolve']) => ({resolve: vi.fn(impl)});
 
 const deferred = () => {
-  let release: (value: string[]) => void = () => {
-    /* replaced below */
-  };
+  let release: (value: string[]) => void = () => {};
   const promise = new Promise<string[]>((resolve) => {
     release = resolve;
   });
@@ -25,11 +23,6 @@ describe('CoalescingDnsResolver', () => {
   });
 
   it('does NOT reuse a completed answer for a later request', async () => {
-    // The regression this pins: holding a resolved answer means validating an
-    // address once and trusting it for the rest of an audit that can run for
-    // tens of seconds - long enough to answer publicly, flip DNS, and have a
-    // later request approved against the stale public answer while the browser
-    // resolves the private one.
     const inner = mockResolver(() => Promise.resolve(['93.184.216.34']));
     const sut = new CoalescingDnsResolver(inner);
 

@@ -23,14 +23,6 @@ afterAll(async () => {
   await redis.quit();
 });
 
-/**
- * One table, both implementations. The decorator swaps between them during a
- * Redis outage, so a behavioural difference would show up as the limits
- * quietly changing shape at the worst possible moment.
- *
- * The factories are called inside each spec rather than at describe time,
- * because `redis` is only assigned in beforeAll.
- */
 describe.each<[string, () => RateLimiter]>([
   ['RedisTokenBucket', () => new RedisTokenBucket(redis)],
   ['MemoryTokenBucket', () => new MemoryTokenBucket()],
@@ -72,18 +64,11 @@ describe.each<[string, () => RateLimiter]>([
     if (denied.allowed) {
       throw new Error('expected the bucket to be empty');
     }
-    // One token per hour, so one token of deficit is most of an hour.
     expect(denied.retryAfterMs).toBeGreaterThan(3_000_000);
     expect(denied.retryAfterMs).toBeLessThanOrEqual(3_600_000);
   });
 
   it('scales the wait with the refill rate, not a constant', async () => {
-    // The spec above tests exactly one deficit against one rate, so
-    // `return { allowed: false, retryAfterMs: 3_600_000 }` hardcoded in both
-    // implementations would leave it green - it never proves retryAfterMs is
-    // computed from the bucket at all. A second bucket with the same
-    // capacity and deficit but four times the refill rate should wait about
-    // a quarter as long; a constant would make the two waits equal instead.
     const quadRefill: BucketConfig = {capacity: 3, refillPerHour: 4};
     const sut = make();
     const slowKey = key();

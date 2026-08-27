@@ -73,8 +73,6 @@ describe('dashboardRowState', () => {
     {name: 'paused', patch: {monitoringEnabled: false}},
     {name: 'failed', patch: {latestStatus: 'failed' as const}},
   ])('keeps $name history but calls the number what it is', ({patch}) => {
-    // The retained score is not the current one. Labelling it "Score" would
-    // claim the page scores 74 right now, which is exactly what is unknown.
     const state = dashboardRowState(pageSummary(patch));
 
     expect(state.scoreLabel).toBe('Last successful score');
@@ -96,7 +94,6 @@ describe('dashboardRowState', () => {
     {name: 'queued', status: 'queued' as const},
     {name: 'running', status: 'running' as const},
   ])('hides every metric while the $name first audit runs', ({status}) => {
-    // There is nothing to compare against yet, and a zero would be a lie.
     const state = dashboardRowState(pageSummary({latestStatus: status, history: []}));
 
     expect(state.kind).toBe('first-audit');
@@ -120,8 +117,6 @@ describe('dashboardRowState', () => {
   });
 
   it('shows a single score with its one-point trend, and no invented delta', () => {
-    // `previousScore` is null here, which is what makes ScoreDelta say "First
-    // score" rather than a zero change that never happened.
     const page = pageSummary({history: [{score: 74, at: '2026-08-15T10:00:00.000Z'}]});
     const state = dashboardRowState(page);
 
@@ -142,8 +137,6 @@ describe('dashboardRowState', () => {
   });
 
   it('never treats a missing audit row as work in progress', () => {
-    // The server deletes the queued row when the first job definitively fails
-    // to enqueue. Reading null as "running" leaves a spinner up forever.
     const state = dashboardRowState(pageSummary({latestStatus: null, history: []}));
 
     expect(state.kind).toBe('unstarted');
@@ -167,8 +160,6 @@ describe('dashboardRowState', () => {
 
 describe('a scheduled audit that has not started', () => {
   it('is not treated as work in progress', () => {
-    // The row would otherwise give two reasons for one wait - a phase line and
-    // a future slot - and keep a one-second timer running through the delay.
     const state = dashboardRowState(
       pageSummary({latestStatus: 'queued', latestScore: null, nextAuditAt: '2026-08-16T05:30:00.000Z'}),
     );

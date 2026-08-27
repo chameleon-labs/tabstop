@@ -63,14 +63,12 @@ describe('SiteHeader', () => {
   });
 
   it('treats an empty section list as none, rather than an empty landmark', () => {
-    // An empty `<nav>` is a landmark with nothing in it.
     renderHeader({sections: []});
 
     expect(screen.queryByRole('navigation', {name: 'Page sections'})).not.toBeInTheDocument();
   });
 
   it('knows nothing about what any section means', () => {
-    // The header never learns that `how` is a landing page section.
     renderHeader({sections: [{id: 'anything', label: 'Anything at all'}]});
 
     expect(screen.getByRole('link', {name: 'Anything at all'})).toHaveAttribute('href', '#anything');
@@ -84,8 +82,6 @@ describe('SiteHeader', () => {
   });
 
   it('costs a session-free route nothing at all', async () => {
-    // The constraint the landing design turns on, and nothing on screen
-    // would look wrong if it were lost.
     renderHeader({sessionFree: true});
 
     expect(await screen.findByRole('link', {name: 'Log in'})).toBeVisible();

@@ -8,10 +8,6 @@ export type MeRequest = {
   account: AccountModel;
 };
 
-/**
- * The auth middleware has already resolved the session, so this reads what the
- * middleware put in res.locals rather than loading the account a second time.
- */
 export class MeController implements Controller<MeRequest> {
   handle(request: MeRequest): Promise<HttpResponse> {
     try {

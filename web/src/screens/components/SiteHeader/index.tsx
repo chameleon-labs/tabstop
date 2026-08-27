@@ -5,23 +5,17 @@ import {AccountNavigation} from '@/screens/modules/account/components/AccountNav
 import type {LogoutMutation} from '@/screens/modules/account/mutations';
 import './site-header.css';
 
-/** An in-page anchor a screen wants offered in the header. */
 export type HeaderSection = {
   id: string;
   label: string;
 };
 
 export type SiteHeaderProps = {
-  /**
-   * Data, not markup: a screen renders inside the outlet and cannot pass
-   * children up to the layout above it, so these arrive via its route handle.
-   */
   sections?: readonly HeaderSection[] | undefined;
   sessionFree?: boolean;
   logout: LogoutMutation;
 };
 
-/** The one header, on every route. Ported from the landing page's design. */
 export const SiteHeader = ({sections, sessionFree = false, logout}: SiteHeaderProps): React.JSX.Element => (
   <header className="site-header">
     <div className="site-header__inner">

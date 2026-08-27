@@ -4,7 +4,6 @@ import {URL_PROBLEMS, normaliseUrl} from '../../url';
 import {Globe, Zap} from '@/screens/components/Icons';
 
 export type UrlFieldProps = {
-  /** Receives the canonical URL, never the raw text. */
   onSubmit: (url: string) => void;
   disabled?: boolean;
 };
@@ -32,11 +31,7 @@ export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX
       <div className="landing-page__url-row">
         <Input
           id={inputId}
-          // Not the placeholder: it disappears on the first keystroke, and
-          // is not exposed as a name by every browser and screen reader.
           aria-label="Page to audit"
-          // `type="url"` would let the browser reject `example.com` before this
-          // component ever sees it, which is precisely the input to accept.
           type="text"
           inputMode="url"
           autoComplete="url"
@@ -49,12 +44,6 @@ export const UrlField = ({onSubmit, disabled = false}: UrlFieldProps): React.JSX
           onChange={(event) => {
             setRaw(event.target.value);
           }}
-          // Lattice's own prop, not `aria-invalid` directly: `Input` applies
-          // its version AFTER spreading props, so passing the attribute here
-          // is silently overwritten. It emits the attribute only when true,
-          // which is equivalent for assistive tech - `aria-invalid` defaults
-          // to false when absent - but it does mean the valid state is an
-          // absent attribute rather than `aria-invalid="false"`.
           invalid={problem !== null}
           aria-describedby={problem === null ? undefined : errorId}
         />

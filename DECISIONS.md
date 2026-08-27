@@ -6,6 +6,66 @@ Format: **date · decision · why · what was rejected/deferred**.
 
 ---
 
+## 2026-08-26 — the source carries no prose
+
+`web/src`, `web/scripts`, `server/src` and `contract/src` hold no explanatory
+comments. 4,994 of them went - 8,687 lines across 414 of the 594 TypeScript
+files, about 15% of the source. What is left is 39 machine-read directives:
+`@vitest-environment`, `oxlint-disable`, `eslint-disable`, `@ts-expect-error`
+and one `/// <reference`.
+
+Why: most of it narrated the next line, which the code already says. The rest
+was rationale, and rationale pinned to a line rots there - the line moves, the
+reason stays, and nothing fails when they stop matching. A commit message and
+this file are both dated and searchable, and neither can drift away from what
+it describes. The prose is not gone either way: `git log -p` still has every
+line of it.
+
+The specs went too. The argument for keeping them was that a comment says why a
+case exists where an assertion cannot. The argument against won: a test name
+says it, and a comment is where a bad test name hides.
+
+Config files keep theirs, capped at about two lines. That is the one place the
+reason genuinely cannot live anywhere else - nobody reading
+`allowImportingTsExtensions` in `web/tsconfig.json` knows which commit to go
+looking for. The same holds for the workflow YAML and `.oxlintrc.json`.
+
+Nothing enforces this. The issue proposed a guard spec and one was written -
+it walked the tracked files and failed on any comment that was not a directive -
+and it was dropped as not worth its weight. The convention is held in review.
+
+What is worth keeping if it ever comes back: it has to PARSE rather than scan.
+`//` inside a URL, a regex, a template literal or JSX text is not a comment, and
+a check that gets that wrong fails the build on correct code. The parser is
+already here - `parseSync` from `vite` is oxc and reads TS and JSX from the
+filename - but it resolves in `web/` only, because `server` has vitest and not
+vite. Web CI does not watch `server/**` either, so such a check would have to
+run from the Lint workflow to see all three packages.
+
+Two lint rules were being held up by the comments themselves. ESLint's
+`no-empty-function` and `no-empty` both treat a body containing a comment as
+deliberate, so `/* no-op */` was the thing keeping 35 test doubles and 2
+catch blocks quiet. A codebase without comments has no such escape hatch, so
+the fact moves into `.oxlintrc.json`: `no-empty-function` is off for specs and
+`test/` doubles, where an empty body is the point, and `no-empty` allows an
+empty catch. Everywhere else both still bite.
+
+One file lost something the code could not say back. `ip-address-policy.ts`
+labelled each blocked range in a trailing comment - `2001::` is Teredo, `3fff::`
+is documentation - and a bare CIDR literal cannot be reviewed without them. Those
+labels became data: a `BLOCKED_RANGES` table with a `name` on every row, fed to
+`BlockList` in a loop. Its spec did the same, turning one loop over twenty
+opaque literals into twenty named cases, so the name is now in the test output.
+This is what the rule asks for. A comment that is load-bearing means the code
+is not saying enough yet.
+
+Everything else changed no code at all, and that is checked rather than
+asserted: parsing all 414 files before and after gives the same syntax tree,
+once the removed JSX comment containers and the whitespace around them are
+accounted for.
+
+---
+
 ## 2026-08-21 — a lazy route says it is loading, with a bar or a skeleton
 
 A client-side route reports its own wait from the shell. `useRouteBusy` watches

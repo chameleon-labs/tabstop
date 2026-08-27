@@ -15,10 +15,6 @@ describe('the prerendered landing page', () => {
   });
 
   it('hydrates without React discarding the markup', async () => {
-    // The assertion for "cleanly" is the console gate in `vitest.setup.ts`:
-    // React reports a hydration mismatch through console.error, and the gate
-    // fails any test that writes there. What is asserted explicitly is that the
-    // page is INTERACTIVE afterwards, which the gate cannot see.
     const container = document.createElement('div');
     container.dataset.prerendered = '/';
     container.innerHTML = await prerender('/');

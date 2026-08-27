@@ -25,8 +25,6 @@ const addButton = (): HTMLElement => screen.getByRole('button', {name: /Add page
 
 describe('AddPageForm', () => {
   it('submits the canonical url rather than what was typed', async () => {
-    // The row, the request and the confirmation all have to name the same
-    // string, and the server stores the canonical one.
     const user = userEvent.setup();
     const {onSubmit} = renderForm();
 
@@ -110,8 +108,6 @@ describe('AddPageForm', () => {
   });
 
   it('keeps what was typed when the request is refused', async () => {
-    // Retyping a URL the server rejected for a reason the user can fix is
-    // pure punishment.
     const user = userEvent.setup();
     renderForm({onSubmit: vi.fn(async () => await Promise.resolve(false))});
 
@@ -125,8 +121,6 @@ describe('AddPageForm', () => {
   });
 
   it('refuses to submit twice while the first request is running', async () => {
-    // Submitted directly rather than clicked: the button is already disabled,
-    // and the guard has to hold for a form submitted any other way.
     const user = userEvent.setup();
     const pending = deferred<boolean>();
     const onSubmit = vi.fn(async () => await pending.promise);
@@ -163,8 +157,6 @@ describe('AddPageForm', () => {
         'You are monitoring 10 of 10 pages. Remove a page before adding another.',
       );
 
-      // The guard, not the disabled attribute: the count can be stale, and
-      // another tab may have freed a slot or filled the last one.
       fireEvent.submit(container.querySelector('form')!);
       expect(onSubmit).not.toHaveBeenCalled();
     });

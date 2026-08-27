@@ -29,11 +29,6 @@ const auditBody = (over: Partial<AuditResultResponse> = {}): AuditResultResponse
   ...over,
 });
 
-/**
- * Routed by method, because this screen drives two endpoints in sequence and a
- * single canned response cannot express "accepted, then still running, then
- * done" - which is the only interesting shape this screen has.
- */
 const server = (handlers: {post?: () => Response; get?: () => Response}): ReturnType<typeof vi.fn> => {
   const mock = vi.fn((url: string, init?: RequestInit) => {
     if (url === '/api/me') {
@@ -49,14 +44,7 @@ const server = (handlers: {post?: () => Response; get?: () => Response}): Return
   return mock;
 };
 
-/**
- * The shell carries its own polite region for route announcements and appears
- * first in the document, so the audit's status line is the later one.
- */
 const statusLine = (): HTMLElement => {
-  // Filtered by `aria-atomic`, which is what separates the two regions that
-  // narrate an audit - the shell's announcer and this screen's status line -
-  // from the copy confirmation beside the result, which is neither.
   const regions = screen.getAllByRole('status').filter((region) => region.getAttribute('aria-atomic') === 'true');
   return regions[regions.length - 1] as HTMLElement;
 };
@@ -87,8 +75,6 @@ describe('the home screen', () => {
   });
 
   it('links the landing navigation to the working credential routes', () => {
-    // Through the SHARED header now, which labels this "Log in" - the landing
-    // no longer carries a nav of its own.
     renderAt('/');
 
     expect(screen.getByRole('link', {name: 'Log in'})).toHaveAttribute('href', '/login');
@@ -125,8 +111,6 @@ describe('the home screen', () => {
   });
 
   it('does not claim a queue place while the request is still in flight', async () => {
-    // A slow POST announced "Waiting for a free worker" before anything had
-    // been accepted - a queue the request had not reached, and might never.
     let release = (): void => undefined;
     vi.stubGlobal(
       'fetch',
@@ -144,14 +128,11 @@ describe('the home screen', () => {
 
     await submit('example.com');
 
-    // The sentence lives only in the polite region. The visible pending state
-    // belongs to the disabled button, and neither should claim a queue place.
     await waitFor(() => {
       expect(statusLine()).toHaveTextContent(/Requesting the audit/);
     });
     expect(screen.getAllByText(/Requesting the audit/)).toHaveLength(1);
     expect(screen.queryByText(/Waiting for a free worker/)).not.toBeInTheDocument();
-    // Releasing it navigates, so React updates: `act` or the console gate trips.
     await act(() => {
       release();
     });
@@ -216,8 +197,6 @@ describe('the home screen', () => {
 
   describe('handing over to the audit page', () => {
     it('leaves for the audit as soon as the server accepts it', async () => {
-      // An accepted audit is addressable from that moment, so this screen has
-      // nothing left to show. One result view, at one address.
       const {router} = renderAt('/');
 
       await submit('example.com');
@@ -228,9 +207,6 @@ describe('the home screen', () => {
     });
 
     it("carries the server's poll interval, so it can still be widened without a deploy", async () => {
-      // The old flow handed `pollAfterMs` straight to `useAudit`. Through a
-      // redirect it has to travel in state, or every new audit polls at the
-      // hard-coded fallback.
       server({post: () => jsonResponse(202, {auditId: 'abc', status: 'queued', pollAfterMs: 750})});
       const {router} = renderAt('/');
 
@@ -242,8 +218,6 @@ describe('the home screen', () => {
     });
 
     it("marks the audit as this visitor's own, which the report reads", async () => {
-      // The same page serves whoever they send the link to, and only the state
-      // of this navigation tells the two apart.
       const {router} = renderAt('/');
 
       await submit('example.com');
@@ -254,7 +228,6 @@ describe('the home screen', () => {
     });
 
     it('shows the report it handed over to', async () => {
-      // End to end through the redirect: paste, wait, read the result.
       renderAt('/');
 
       await submit('example.com');
@@ -313,9 +286,6 @@ describe('the home screen', () => {
 
       expect(await screen.findByRole('heading', {name: 'You have used your free audits'})).toBeVisible();
 
-      // The link has to GO somewhere. It pointed at `/signup`, which was not a
-      // route, so the most motivated visitor this product will ever see landed
-      // on the 404 screen.
       await userEvent.click(screen.getByRole('link', {name: 'Create an account'}));
       expect(await screen.findByRole('heading', {level: 1, name: 'Create an account'})).toBeVisible();
       expect(screen.queryByText('Page not found')).not.toBeInTheDocument();
@@ -339,17 +309,6 @@ describe('the home screen', () => {
     });
 
     it('clears the progress line when the request fails after it appeared', async () => {
-      // Reported from a browser: "That audit could not be started / Method Not
-      // Allowed" with "Requesting the audit… this usually takes about 30
-      // seconds" still underneath it.
-      //
-      // Every other failure spec misses this because they fail INSTANTLY.
-      // `AuditStatus` defers its write by ANNOUNCE_DELAY_MS, so a failure that
-      // arrives inside that window cancels the write and the line is empty for
-      // the right reason rather than the intended one. A real request takes
-      // longer than 100ms to fail, the sentence lands first, and nothing ever
-      // takes it back down.
-      // Slow enough that the progress line is on screen before the failure.
       const slowFetch = vi.fn(async (_url: string, init?: RequestInit) => {
         await new Promise((resolve) => {
           setTimeout(resolve, ANNOUNCE_DELAY_MS * 3);
@@ -387,7 +346,6 @@ describe('the home screen', () => {
   });
 
   it('is completable with the keyboard alone', async () => {
-    // An accessibility product whose own hook needs a mouse is not shippable.
     renderAt('/');
 
     const field = screen.getByLabelText('Page to audit');

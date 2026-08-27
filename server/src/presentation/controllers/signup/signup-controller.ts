@@ -22,8 +22,6 @@ export class SignupController implements Controller {
       }
 
       const session = await this.addAccount.add(validated.data);
-      // Null means the email is taken - including when a concurrent signup won
-      // the race, which the repository turns into the same outcome.
       if (session === null) {
         return conflict(new EmailInUseError());
       }

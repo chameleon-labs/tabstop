@@ -18,15 +18,10 @@ const sheets = Object.entries(SHEETS).map(([name, path]) => [name, read(path)] a
 
 describe('the dashboard visual contract', () => {
   it.each(sheets)('keeps %s free of raw colour', (_name, css) => {
-    // A literal here is a colour that cannot follow the theme, and both themes
-    // ship from the same stylesheet.
     expect(css).not.toMatch(/#[\da-f]{3,8}\b|\brgba?\(|\bhsla?\(|\boklch\(/i);
   });
 
   it.each(sheets)('keeps %s free of hardcoded type', (_name, css) => {
-    // Read the value rather than lookahead past the colon: `\s*` backtracks to
-    // nothing, so `font-family:\s*(?!var\()` matches every declaration ever
-    // written with a space after the colon.
     const values = [...css.matchAll(/font-family:\s*([^;]+);/gi)].map(([, value]) => value!.trim());
 
     expect(values.filter((value) => !value.startsWith('var(--lat-'))).toEqual([]);
@@ -48,8 +43,6 @@ describe('the dashboard visual contract', () => {
   });
 
   it('keeps the row readable when colour is taken away', () => {
-    // The leading edge is the row's signature device and the first thing a
-    // forced-colours palette flattens.
     expect(sheets.find(([name]) => name === 'row')?.[1]).toContain('@media (forced-colors: active)');
   });
 

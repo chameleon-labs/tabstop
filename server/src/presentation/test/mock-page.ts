@@ -79,7 +79,6 @@ export const mockPageHistory = (): PageHistory => ({
       createdAt: new Date('2026-07-27T09:00:00Z'),
       completedAt: new Date('2026-07-27T09:00:30Z'),
     },
-    // The middle of a chart is where a failed run has to survive as a point.
     {
       ...mockLatestAudit(),
       publicUuid: '44444444-4444-4444-4444-444444444444',

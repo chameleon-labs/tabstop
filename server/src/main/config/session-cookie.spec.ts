@@ -3,8 +3,6 @@ import {sessionCookieName} from './session-cookie.js';
 
 describe('sessionCookieName', () => {
   it('uses the __Host- prefix wherever the cookie is Secure', () => {
-    // Browsers reject a __Host- cookie that carries a Domain attribute, which
-    // is what prevents a sibling subdomain from overwriting the session.
     expect(sessionCookieName(true)).toBe('__Host-sid');
   });
 

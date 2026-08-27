@@ -8,8 +8,6 @@ const stateOf = (label: string): string | null =>
 
 describe('AuditProgress', () => {
   it('says nothing to a screen reader, because the status line already does', () => {
-    // Every word here restates the live region beside it. Two copies means the
-    // reader hears each phase twice, three times over one audit.
     const {container} = render(<AuditProgress phase={PHASES[1]?.label ?? null} />);
 
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
@@ -55,8 +53,6 @@ describe('AuditProgress', () => {
   });
 
   it('draws one step per phase the app actually infers', () => {
-    // Not the six the mock invented: this panel may not claim more resolution
-    // than `phaseFor` has.
     render(<AuditProgress phase={PHASES[0]?.label ?? null} />);
 
     expect(screen.getAllByText(/./, {selector: '.audit-progress__step'})).toHaveLength(PHASES.length);

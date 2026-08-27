@@ -8,10 +8,6 @@ import {PostgresViolationRepository} from '../../../../infra/db/postgres/violati
 import {getDatabase} from '../../../config/database.js';
 import {env} from '../../../config/env.js';
 
-/**
- * One auditor for the process, because it owns the shared browser. Building a
- * new one per job would launch a new Chromium per job and leak the old ones.
- */
 let auditor: PlaywrightAxeAuditor | null = null;
 
 export const getPageAuditor = (): PlaywrightAxeAuditor => {
@@ -32,8 +28,6 @@ export const closePageAuditor = async (): Promise<void> => {
 };
 
 export const makeRunAudit = (): RunAudit => {
-  // Derived from the configured budget so that raising AUDIT_JOB_TIMEOUT_MS
-  // cannot leave the lease shorter than an attempt is allowed to run.
   const audits = new PostgresAuditRepository(getDatabase(), claimLeaseFor(env.auditJobTimeoutMs, JOB_UNWIND_GRACE_MS));
   return new DbRunAudit(audits, audits, new PostgresViolationRepository(getDatabase()), getPageAuditor());
 };

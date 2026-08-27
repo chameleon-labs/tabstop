@@ -44,7 +44,6 @@ describe('HistoryTable', () => {
   });
 
   it('reads newest first, because a table is read from the top', () => {
-    // The chart runs oldest to newest; a list does not.
     renderTable();
 
     expect(bodyRows().map(dateOf)).toEqual([NEWEST, MIDDLE, OLDEST]);
@@ -76,8 +75,6 @@ describe('HistoryTable', () => {
   });
 
   it('compares against the last run that finished, not the last run', () => {
-    // A failure between two audits must not blank the comparison; the reader
-    // still wants to know the score fell eight points.
     renderTable();
 
     expect(within(bodyRows()[0]!).getByText('Score down 8 points since the previous audit')).toBeInTheDocument();
@@ -97,8 +94,6 @@ describe('HistoryTable', () => {
   });
 
   it('scrolls sideways in its own region a keyboard can reach', () => {
-    // Five columns do not fit a phone, and a region nobody can focus cannot be
-    // scrolled without a pointer.
     renderTable();
     const region = screen.getByRole('region', {name: 'Score history table'});
 

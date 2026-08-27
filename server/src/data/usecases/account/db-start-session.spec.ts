@@ -28,9 +28,6 @@ describe('DbStartSession', () => {
   });
 
   it('reports the expiry the repository persisted, not the one it proposed', async () => {
-    // The cookie's lifetime is taken from this value. If it diverged from the
-    // stored row, a user would be logged out early or stay valid past expiry -
-    // and neither would be visible until it happened.
     const {sut, addSessionRepository} = makeSut();
     const persisted = new Date('2027-01-01T00:00:00Z');
     addSessionRepository.add.mockResolvedValueOnce({

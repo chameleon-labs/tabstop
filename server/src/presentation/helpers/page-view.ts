@@ -8,13 +8,6 @@ import type {AuditModel} from '../../domain/models/audit.js';
 import type {PageModel, ScheduledPageSummary} from '../../domain/models/page.js';
 import type {PageHistory} from '../../domain/usecases/load-page-history.js';
 
-/**
- * The page wire shapes live in `@tabstop/contract`, so the dashboard (#20) and
- * these mappers cannot drift apart. What stays here is the mapping itself,
- * which is a security boundary: `PageModel` carries `siteId` and `AuditModel`
- * carries its primary key, and both are built field by field rather than
- * spread precisely so a later `select *` cannot put either on the wire.
- */
 export const toPageView = (page: PageModel): PageView => ({
   id: page.id,
   url: page.url,
@@ -36,7 +29,6 @@ export const toPageSummaryView = (summary: ScheduledPageSummary): PageSummaryRes
   ...toPageView(summary.page),
   domain: summary.domain,
   latestAudit: summary.latestAudit === null ? null : toLatestAuditView(summary.latestAudit),
-  // History is oldest first, so the two most recent scores are at the end.
   score: summary.history.at(-1)?.score ?? null,
   previousScore: summary.history.at(-2)?.score ?? null,
   history: summary.history.map((point) => ({score: point.score, at: point.at.toISOString()})),
@@ -51,8 +43,6 @@ export const toPageHistoryView = (history: PageHistory, days: number): PageHisto
     auditId: audit.publicUuid,
     createdAt: audit.createdAt.toISOString(),
     status: audit.status,
-    // A failed run is a point with no score, not a zero and not a missing
-    // entry. Both alternatives lie about what happened.
     score: audit.score,
     countsByImpact: audit.countsByImpact,
     axeVersion: audit.axeVersion,

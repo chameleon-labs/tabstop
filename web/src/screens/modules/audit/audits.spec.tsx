@@ -48,9 +48,6 @@ describe('useAudit', () => {
   });
 
   it('stops the moment the audit is done', async () => {
-    // The whole reason the interval is a function of the response. A tab left
-    // open on a finished audit must not keep asking about it forever, and no
-    // component should have to remember to clear a timer to make that true.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, audit('done'))));
     renderHook(() => useAudit('abc', {pollAfterMs: 1000}), {wrapper});
     await waitFor(() => {
@@ -79,8 +76,6 @@ describe('useAudit', () => {
   });
 
   it('honours the server-chosen interval rather than one of its own', async () => {
-    // `pollAfterMs` exists so the server can widen the interval without a
-    // frontend deploy. A client that ignores it takes that lever away.
     renderHook(() => useAudit('abc', {pollAfterMs: 5000}), {wrapper});
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -113,9 +108,6 @@ describe('useRequestAudit', () => {
   });
 
   it('posts the url and returns the server-chosen poll interval', async () => {
-    // `pollAfterMs` is the whole reason this returns a body rather than an id:
-    // it is what `useAudit` should then be given, so the server can widen the
-    // interval without a frontend deploy.
     const {result} = renderHook(() => useRequestAudit(), {wrapper});
 
     result.current.mutate('https://example.com');
@@ -133,8 +125,6 @@ describe('useRequestAudit', () => {
   });
 
   it('surfaces a 429 as a wait a screen can render, not as a bare failure', async () => {
-    // Anonymous and per-IP rate limited, so a 429 here is an expected outcome
-    // of the product's main hook rather than something to hide.
     const resetAt = '2026-08-02T10:00:00.000Z';
     fetchMock.mockImplementation(() =>
       Promise.resolve(jsonResponse(429, {error: 'Too many requests', retryAfter: 45, resetAt})),
@@ -185,10 +175,6 @@ describe('useRequestAudit', () => {
 
 describe('the audit id on the wire', () => {
   it('cannot walk out of its own endpoint', async () => {
-    // React Router decodes `%2F` before this ever sees it, so a crafted share
-    // link would otherwise resolve to `/api/me` - a credentialed endpoint,
-    // fetched and rendered by a page whose whole premise is that the uuid is
-    // the only credential.
     const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse(200, audit('done'))));
     vi.stubGlobal('fetch', fetchMock);
 

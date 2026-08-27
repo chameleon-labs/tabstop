@@ -20,8 +20,6 @@ describe('DbLoadPages', () => {
   });
 
   it('attaches the schedule the repository cannot know', async () => {
-    // The repository reads rows; when the run will next reach one is a domain
-    // rule, so the use case is where the two meet.
     vi.useFakeTimers();
     const now = new Date('2026-08-01T23:00:00.000Z');
     vi.setSystemTime(now);
@@ -51,8 +49,6 @@ describe('DbLoadPages', () => {
   });
 
   it('still reports the cap for an account with no pages', async () => {
-    // The empty state is most new users' first authenticated impression (#20),
-    // and it has to be able to say how many pages they may add.
     const repository = mockLoadPageSummariesRepository();
     repository.loadSummariesForUser.mockResolvedValueOnce([]);
 

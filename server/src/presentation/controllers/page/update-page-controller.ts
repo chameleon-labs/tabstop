@@ -15,11 +15,6 @@ export type UpdatePageBody = {
   monitoringEnabled: boolean;
 };
 
-/**
- * Pause and resume, which is deliberately not the same as delete: the history
- * stays, so a page can be taken off the nightly schedule without losing the
- * trend that made it worth watching.
- */
 export class UpdatePageController implements Controller<UpdatePageRequest> {
   constructor(
     private readonly validation: Validation<UpdatePageBody>,
@@ -43,8 +38,6 @@ export class UpdatePageController implements Controller<UpdatePageRequest> {
         monitoringEnabled: validated.data.monitoringEnabled,
       });
 
-      // 404, not 403. A page owned by somebody else and a page that does not
-      // exist have to be the same answer, or the status code confirms the row.
       if (page === null) {
         return notFound(new PageNotFoundError());
       }

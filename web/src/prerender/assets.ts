@@ -6,13 +6,6 @@ export type ManifestChunk = {
 
 export type BuildManifest = Readonly<Record<string, ManifestChunk>>;
 
-/**
- * Every stylesheet a route needs, as host paths.
- *
- * The whole import graph, not the entry's own `css`: a page's styles are split
- * across every chunk it pulls in, and linking only the first leaves the rest
- * to arrive with the JavaScript.
- */
 export const stylesheetsFor = (manifest: BuildManifest, entry: string): string[] => {
   if (manifest[entry] === undefined) {
     throw new Error(`${entry} is not in the build manifest; its stylesheets cannot be linked`);

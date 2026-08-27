@@ -35,27 +35,6 @@ describe('page routes', () => {
     await disconnectDatabase();
   });
 
-  /**
-   * A fresh client address per request, out of a block no other spec file
-   * uses.
-   *
-   * Two separate hazards, and the second one cost a morning. Within this file,
-   * every bucket is per-IP and lives for the whole process, so a fixed address
-   * would make unrelated specs below rate-limit each other - pageAdd's
-   * capacity of 10 is spent by the tenth test that forgot.
-   *
-   * ACROSS files, the buckets live in a Redis that every worker process
-   * shares, and this file signs accounts up - so its addresses collide with
-   * `account-routes.test.ts`, which mints its own from 10.0.0.1 upward for the
-   * same `signup` bucket. Two files each politely using a "unique" address
-   * still hand the same key to Redis, and signup's capacity of 3 is small
-   * enough that the third caller gets a 429. The symptom was neither file's
-   * fault in isolation: whichever spec happened to run third failed, in a
-   * different place on each run.
-   *
-   * 172.20/16 is this file's alone. The rule for the next route spec is to
-   * take a block of its own rather than a counter of its own.
-   */
   let ipSeq = 0;
   const uniqueIp = (): string => {
     ipSeq += 1;
@@ -70,7 +49,6 @@ describe('page routes', () => {
     return header[0];
   };
 
-  /** A signed-in account, as its session cookie. */
   const signUp = async (target: Express = app): Promise<string> => {
     const response = await request(target)
       .post('/api/signup')
@@ -80,15 +58,8 @@ describe('page routes', () => {
     return firstSetCookie(response);
   };
 
-  /**
-   * A public literal address, so the usecase's resolution check
-   * short-circuits: a hostname would need real DNS, and `.test` deliberately
-   * does not resolve at all. Nothing here ever fetches the url - no worker
-   * runs in these specs.
-   */
   const auditableUrl = (): string => `http://93.184.216.34/${randomUUID()}`;
 
-  /** The account behind a session cookie, for specs that seed rows directly. */
   const accountIdFor = async (cookie: string): Promise<string> => {
     const sessionId = cookie.split(';')[0]?.split('=')[1];
     if (sessionId === undefined) {
@@ -102,15 +73,6 @@ describe('page routes', () => {
     return session.user_id;
   };
 
-  /**
-   * A page owned by this session, created through the repository.
-   *
-   * Not through `POST /api/pages`, because these specs need an owned page as
-   * a precondition, not the add endpoint's enqueue semantics. Keeping that
-   * setup at the repository boundary isolates assertions about an existing
-   * page from whether an accepted add enqueues work; specs about creating a
-   * page still exercise the API.
-   */
   const seedPage = async (cookie: string): Promise<{pageId: string; url: string}> => {
     const url = auditableUrl();
     const added = await new PostgresPageRepository(db).add({
@@ -142,16 +104,6 @@ describe('page routes', () => {
     });
 
     it('meters an unauthenticated caller rather than letting it drive session lookups', async () => {
-      // The limiter has to run BEFORE the auth middleware, which looks a
-      // session up before rejecting it - otherwise an anonymous caller gets an
-      // indexed query per request, as fast as it can open sockets, and every
-      // bucket on this router sits behind the lookup it was meant to protect.
-      //
-      // This is the assertion that catches it, because the wrong order still
-      // answers 401 forever and looks perfectly healthy. Registering auth as a
-      // `router.use('/pages', ...)` above the routes is the tempting way to get
-      // it wrong: Express runs layers in registration order, so the prefix
-      // middleware wins wherever the limiters are written.
       const ip = '172.21.0.2';
       const probe = async (): Promise<number> =>
         (await request(app).get('/api/pages').set('x-forwarded-for', ip)).status;
@@ -179,8 +131,6 @@ describe('page routes', () => {
         url,
         monitoringEnabled: true,
         createdAt: expect.any(String),
-        // The public uuid, so the client can watch the first run exactly the
-        // way an anonymous submission does.
         firstAuditId: expect.stringMatching(UUID),
       });
 
@@ -200,11 +150,6 @@ describe('page routes', () => {
     });
 
     it('answers with exactly the documented fields and nothing else', async () => {
-      // A key-set assertion rather than a search for the site id's VALUE: both
-      // are bigserials, so a page id of "2" and a site id of "2" collide by
-      // coincidence and a value check passes or fails on insertion order. What
-      // actually needs pinning is that no field can appear here without
-      // somebody adding it to the mapper on purpose.
       const cookie = await signUp();
 
       const response = await addPage(cookie, auditableUrl());
@@ -226,7 +171,6 @@ describe('page routes', () => {
       const again = await addPage(cookie, `http://93.184.216.34/${path}#pricing`);
 
       expect(first.status).toBe(201);
-      // A fragment is never sent to the server, so the two audit identically.
       expect(again.status).toBe(409);
       expect(again.body.code).toBe('page_already_tracked');
     });
@@ -274,11 +218,6 @@ describe('page routes', () => {
 
     it('refuses the page past the account cap, with a body the UI can render', async () => {
       const cookie = await signUp();
-      // Seeded through the repository so the setup does not couple this cap
-      // response assertion to the enqueue semantics of the first ten adds.
-      // This spec is about the ELEVENTH request's body, so only that request
-      // goes through the API. The cap itself, including under concurrency, is
-      // pinned in the repository spec.
       const pages = new PostgresPageRepository(db);
       const userId = await accountIdFor(cookie);
       for (let index = 0; index < PAGE_LIMIT; index++) {
@@ -305,8 +244,6 @@ describe('page routes', () => {
 
       const loopback = await addPage(cookie, 'http://127.0.0.1/admin');
       expect(loopback.status).toBe(400);
-      // Word for word what the worker says about an address it refuses at
-      // fetch time: a difference would map the internal network.
       expect(loopback.body.error).toBe("That address can't be audited");
 
       expect((await addPage(cookie, 'ftp://example.com/')).status).toBe(400);
@@ -319,16 +256,7 @@ describe('page routes', () => {
 
     it('rate limits by address once the burst is spent', async () => {
       const cookie = await signUp();
-      // Fixed, because this spec is about exhausting one address's bucket -
-      // and out of a block the sequence above will never reach.
       const ip = '172.21.0.1';
-      // Deliberately unauditable urls. A rejected submission is NOT refunded -
-      // that is recorded in DECISIONS.md, because refunding a 400 would make
-      // hostname probing free - so each of these spends a token just as an
-      // accepted one would, while costing no page, no audit row and no
-      // enqueue. Spending the bucket with real adds instead made this spec the
-      // slowest in the suite and, when the shared Redis was busy, timed it out
-      // on the queue rather than on anything to do with rate limiting.
       const submit = async (): Promise<number> =>
         (
           await request(app)
@@ -342,7 +270,6 @@ describe('page routes', () => {
         expect(await submit()).toBe(400);
       }
 
-      // The limiter runs before the controller, so it answers first.
       expect(await submit()).toBe(429);
     });
   });
@@ -387,8 +314,6 @@ describe('page routes', () => {
       const cookie = await signUp();
       const {pageId, url} = await seedPage(cookie);
 
-      // Three finished audits and then a failure, so the row exercises both
-      // halves: a trend to draw, and a latest run that has no score.
       for (const score of [70, 82, 91]) {
         await db
           .insertInto('audits')
@@ -419,8 +344,6 @@ describe('page routes', () => {
         id: pageId,
         domain: '93.184.216.34',
         monitoringEnabled: true,
-        // The delta badge survives the failed run, which is the whole point of
-        // taking these from the finished audits rather than from the latest.
         score: 91,
         previousScore: 82,
         latestAudit: {status: 'failed', score: null, error: 'Navigation timed out'},
@@ -471,8 +394,6 @@ describe('page routes', () => {
       const cookie = await signUp();
       const {pageId} = await seedPage(cookie);
 
-      // "false" as a STRING is the trap: a coercing schema reads it as true
-      // and silently resumes monitoring the client asked to pause.
       const coerced = await request(app)
         .patch(`/api/pages/${pageId}`)
         .set('x-forwarded-for', uniqueIp())
@@ -502,8 +423,6 @@ describe('page routes', () => {
 
       expect(response.status).toBe(204);
       expect(await db.selectFrom('pages').select('id').where('id', '=', pageId).executeTakeFirst()).toBeUndefined();
-      // The share links for those audits stop resolving. Intended, and the
-      // reason #20 confirms before calling this.
       expect(
         await db.selectFrom('audits').select('id').where('page_id', '=', pageId).executeTakeFirst(),
       ).toBeUndefined();
@@ -534,16 +453,9 @@ describe('page routes', () => {
         .set('x-forwarded-for', uniqueIp())
         .set('cookie', cookie);
 
-    /** A page with three finished audits and one failure, oldest to newest. */
     const pageWithTrend = async (cookie: string): Promise<string> => {
       const {pageId, url} = await seedPage(cookie);
 
-      // The page's own first audit is queued and undated by these specs; the
-      // trend below is what the assertions read.
-      // Spaced so no spec's window boundary lands on a fixture timestamp: a
-      // request made milliseconds after setup computes `since` from a slightly
-      // later `now`, so an audit dated exactly on the edge falls out about
-      // half the time.
       for (const [days, score] of [
         [5, 70],
         [3, 82],
@@ -585,7 +497,6 @@ describe('page routes', () => {
       expect(response.body.days).toBe(90);
 
       const points = response.body.points as Record<string, unknown>[];
-      // The page's own queued first audit is in here too, newest of all.
       expect(points.map((point) => point.score)).toEqual([70, 82, 91, null, null]);
       expect(points.map((point) => point.status)).toEqual(['done', 'done', 'done', 'failed', 'queued']);
       expect(points[3]).toMatchObject({
@@ -603,7 +514,6 @@ describe('page routes', () => {
       const response = await historyOf(cookie, pageId, '?days=2');
 
       expect(response.body.days).toBe(2);
-      // The audits from five and three days ago fall outside it.
       expect((response.body.points as unknown[]).map((point) => (point as {score: number | null}).score)).toEqual([
         91,
         null,
@@ -618,9 +528,6 @@ describe('page routes', () => {
       const response = await historyOf(cookie, pageId, '?days=100000');
 
       expect(response.status).toBe(200);
-      // Echoed back, which is what makes clamping honest rather than a silent
-      // truncation - the client can see it got a year rather than what it
-      // asked for.
       expect(response.body.days).toBe(365);
     });
 
@@ -628,9 +535,6 @@ describe('page routes', () => {
       const cookie = await signUp();
       const pageId = await pageWithTrend(cookie);
 
-      // Clamping these would mean picking a number on the caller's behalf and
-      // pretending they asked for it - different from `days=100000`, which is
-      // a coherent request for more than we serve.
       for (const query of ['?days=abc', '?days=0', '?days=-5', '?days=1.5', '?days=']) {
         expect((await historyOf(cookie, pageId, query)).status).toBe(400);
       }
@@ -642,13 +546,7 @@ describe('page routes', () => {
 
       const response = await historyOf(cookie, pageId);
 
-      // Beats the global no-store middleware, which is the point of the
-      // allowlist on adaptRoute.
       expect(response.headers['cache-control']).toBe('private, max-age=60');
-      // BOTH variants survive. `Vary` is a list and the CORS middleware has
-      // already put `origin` in it; asserting only `Cookie` here passed while
-      // the adapter was overwriting the header and quietly dropping Origin
-      // from the cache key.
       expect(response.headers.vary).toContain('Cookie');
       expect(response.headers.vary?.toLowerCase()).toContain('origin');
     });
@@ -666,12 +564,6 @@ describe('page routes', () => {
   });
 
   describe('cross-account access', () => {
-    /**
-     * The acceptance criterion #10 handed to this issue. 404, never 403: a 403
-     * says "this exists and is not yours", which is precisely the fact the
-     * response must not carry - it turns id enumeration into an inventory of
-     * everyone else's monitored pages.
-     */
     it('answers 404, never 403, on every route that names a page', async () => {
       const [alice, bob] = await Promise.all([signUp(), signUp()]);
       const {pageId} = await seedPage(alice);
@@ -692,7 +584,6 @@ describe('page routes', () => {
 
       expect([patched.status, deleted.status, history.status]).toEqual([404, 404, 404]);
 
-      // And nothing happened to her page.
       const row = await db
         .selectFrom('pages')
         .select('monitoring_enabled')
@@ -702,7 +593,6 @@ describe('page routes', () => {
     });
 
     describe('POST /api/pages/:id/audits', () => {
-      /** The page's first audit finished, so nothing is in flight to refuse the request. */
       const settledPage = async (cookie: string): Promise<string> => {
         const {pageId} = await seedPage(cookie);
         await db.updateTable('audits').set({status: 'done', score: 90}).where('page_id', '=', pageId).execute();
@@ -736,8 +626,6 @@ describe('page routes', () => {
         const cookie = await signUp();
         const pageId = await settledPage(cookie);
         expect((await askForAudit(cookie, pageId)).status).toBe(202);
-        // Out of the way, so the refusal is the allowance rather than the audit
-        // still being in flight - which would pass for the wrong reason.
         await db.updateTable('audits').set({status: 'done'}).where('page_id', '=', pageId).execute();
 
         const response = await askForAudit(cookie, pageId);
@@ -779,8 +667,6 @@ describe('page routes', () => {
     it('answers the same 404 for an id that could never be a row', async () => {
       const cookie = await signUp();
 
-      // A bigint column raises on these rather than matching nothing, so
-      // without a guard they would be 500s that tell a prober the difference.
       const responses = await Promise.all([
         request(app).delete('/api/pages/not-a-number').set('x-forwarded-for', uniqueIp()).set('cookie', cookie),
         request(app).delete('/api/pages/99999999999999999999').set('x-forwarded-for', uniqueIp()).set('cookie', cookie),

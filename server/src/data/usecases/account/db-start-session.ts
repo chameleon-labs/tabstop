@@ -19,8 +19,6 @@ export class DbStartSession implements StartSession {
 
     const session = await this.addSessionRepository.add({id, userId: account.id, expiresAt});
 
-    // expiresAt comes back from the stored row, so the cookie and the session
-    // cannot disagree about when it dies.
     return {account, sessionId: session.id, expiresAt: session.expiresAt};
   }
 }

@@ -5,12 +5,10 @@ import {AbsentValue} from '../AbsentValue';
 import {ScoreDelta} from '../ScoreDelta';
 import './audit-list.css';
 
-/** A 365-day window is not a 365-row list. */
 export const AUDIT_LIST_LIMIT = 30;
 
 export type AuditListProps = {
   points: readonly PageHistoryPoint[];
-  /** The uuid currently open, so the row can mark itself. */
   selectedAuditId: string | null;
   onSelect: (auditId: string) => void;
 };
@@ -23,8 +21,6 @@ export const AuditList = ({points, selectedAuditId, onSelect}: AuditListProps): 
     return <p className="audit-list__empty">No audits in this window yet.</p>;
   }
 
-  // Rows are built across the whole window and capped afterwards, so the
-  // oldest one shown still compares against the run that really preceded it.
   const shown = historyRows(points).slice(0, AUDIT_LIST_LIMIT);
 
   return (

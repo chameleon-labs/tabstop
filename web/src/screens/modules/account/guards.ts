@@ -15,17 +15,12 @@ export const requireSession =
     const account = await sessionOf(queryClient);
 
     if (account === null) {
-      // `url`, not `request.url`. The router strips the fragment on its way
-      // into the Request (`stripHashFromPath`) and puts it back on this URL,
-      // and dropping it here would return the visitor to the top of a page
-      // they had scrolled into.
       throw replace(`${SIGNED_OUT_REDIRECT}${returnToSearch(`${url.pathname}${url.search}${url.hash}`)}`);
     }
 
     return account;
   };
 
-/** The mirror: keeps a signed-in visitor off the credential screens. */
 export const requireAnonymous =
   (queryClient: QueryClient): LoaderFunction =>
   async ({url}): Promise<null> => {

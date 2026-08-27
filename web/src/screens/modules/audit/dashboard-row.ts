@@ -32,10 +32,6 @@ export const dashboardRowState = (page: PageSummary): DashboardRowState => {
     return {kind: 'failed', ...retained, inFlightPrefix: null};
   }
 
-  // A scheduled audit is queued for hours before a worker may take it, so it
-  // is not work in progress: treating it as such gives the row two reasons for
-  // the same wait and leaves a one-second phase timer running through the whole
-  // delay.
   const waitingOnSchedule = page.latestAudit?.status === 'queued' && page.nextAuditAt !== null;
 
   if (inFlight(page.latestAudit?.status) && !waitingOnSchedule) {

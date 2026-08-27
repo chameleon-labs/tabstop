@@ -22,9 +22,6 @@ export class AuthMiddleware implements Middleware {
         return unauthorized(new UnauthorizedError());
       }
 
-      // userId is what #11's ownership-scoped repositories need; account saves
-      // /api/me a second lookup. Both land in res.locals, which adaptRoute
-      // merges last so neither can be spoofed from the request body.
       return ok({userId: account.id, account});
     } catch (error) {
       return serverError(error as Error);

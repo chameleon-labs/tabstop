@@ -51,7 +51,6 @@ describe('PostgresAuditRepository', () => {
     await sut.complete(id, claimedAt, {...result, violations: []});
   };
 
-  /** An account with two pages, so allowance specs can tell per-account from per-page. */
   const makeAccount = async (pages = 1): Promise<{userId: string; pageIds: string[]}> => {
     const user = await db
       .insertInto('users')
@@ -91,8 +90,6 @@ describe('PostgresAuditRepository', () => {
       }
       expect(result.audit.pageId).toBe(pageIds[0]);
       expect(result.audit.status).toBe('queued');
-      // Null, so it cannot collide with the unique index the nightly dedupe
-      // relies on - and so the run does not mistake it for its own work.
       expect(result.audit.scheduledFor).toBeNull();
     });
 
@@ -113,10 +110,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('survives the page being deleted, so the allowance cannot be refunded', async () => {
-      // The bypass a flag on `audits` would leave open: deleting a page
-      // cascades its audits, so an allowance counted through the account's
-      // pages comes back by removing the page it was spent on. Audit one page,
-      // delete it, audit the next - free, all day.
       const {userId, pageIds} = await makeAccount(2);
       const first = await ask(userId, pageIds[0]!);
       if (first.outcome !== 'added') {
@@ -167,16 +160,12 @@ describe('PostgresAuditRepository', () => {
       if (first.outcome !== 'added') {
         throw new Error('expected an audit');
       }
-      // Out of the way, so the second attempt meets the allowance rather than
-      // the in-flight check - which would pass for the wrong reason.
       await db.updateTable('audits').set({status: 'done'}).where('id', '=', first.audit.id).execute();
 
       expect(await ask(userId, pageIds[0]!)).toEqual({outcome: 'allowance-spent'});
     });
 
     it('counts the allowance across the account, not per page', async () => {
-      // The property that makes this a plan entitlement rather than a
-      // per-page cooldown: spending it on one page spends it for all of them.
       const {userId, pageIds} = await makeAccount(2);
       const first = await ask(userId, pageIds[0]!);
       if (first.outcome !== 'added') {
@@ -203,9 +192,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('ignores audits the account did not ask for', async () => {
-      // The nightly run and the insert that adding a page performs both write
-      // rows for this page today. Counting them would refuse somebody an
-      // on-demand audit because their page was audited on schedule.
       const {userId, pageIds} = await makeAccount();
       await db
         .insertInto('audits')
@@ -234,13 +220,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('leaves a released audit that has already started alone, allowance included', async () => {
-      // `releaseOnDemand` undoes an accepted request that never reached the
-      // queue. A run that has begun is not that: a worker may have claimed it
-      // between the enqueue failing and this call, because what the enqueue
-      // lost was the reply and not necessarily the job. Deleting its row
-      // mid-audit is how a worker completes an audit that no longer exists -
-      // and refunding the allowance hands back a day for a run that is
-      // happening anyway.
       const {userId, pageIds} = await makeAccount();
       const first = await ask(userId, pageIds[0]!);
       if (first.outcome !== 'added') {
@@ -259,9 +238,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses a scheduled audit for a page an on-demand run already holds', async () => {
-      // The other half of the same race. The account lock cannot help here:
-      // the nightly run never takes it, so without the page lock both paths
-      // pass their own checks and the page is audited twice in one night.
       const {userId, pageIds} = await makeAccount();
       const asked = await ask(userId, pageIds[0]!);
       if (asked.outcome !== 'added') {
@@ -278,10 +254,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses a scheduled audit for a page already audited on demand that day', async () => {
-      // The window the in-flight check alone leaves open. The run loads a batch
-      // and then schedules each page in turn, so an audit requested AND
-      // FINISHED between the two is gone by the time this page is reached -
-      // and the day it belongs to already has its audit.
       const {userId, pageIds} = await makeAccount();
       const asked = await ask(userId, pageIds[0]!);
       if (asked.outcome !== 'added') {
@@ -299,9 +271,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses while yesterday on-demand audit is still queued tonight', async () => {
-      // The other direction, which matching the day alone would miss: a
-      // request made just before midnight can still be queued when tonight's
-      // run arrives, and its spend belongs to yesterday.
       const {userId, pageIds} = await makeAccount();
       const asked = await ask(userId, pageIds[0]!, 1, '2026-08-17');
       if (asked.outcome !== 'added') {
@@ -318,9 +287,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('schedules a page whose on-demand audit was a different day and has finished', async () => {
-      // The counterpart that keeps the two conditions honest: neither of them
-      // should hold here, and a run that refused this would stop auditing any
-      // page anybody had ever asked about.
       const {userId, pageIds} = await makeAccount();
       const asked = await ask(userId, pageIds[0]!, 1, '2026-08-17');
       if (asked.outcome !== 'added') {
@@ -338,9 +304,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('waits behind the nightly run rather than inserting alongside it', async () => {
-      // `addScheduled` locks the page row, so locking it here is what puts the
-      // two in a queue. FOR NO KEY UPDATE for the reason the account lock test
-      // records: the audits insert takes FOR KEY SHARE on this row by itself.
       const url = process.env.DATABASE_URL;
       if (url === undefined) {
         throw new Error('DATABASE_URL not set by globalSetup');
@@ -394,10 +357,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('audits a paused page, because pausing stops the schedule and not the person', async () => {
-      // Deliberate, and the opposite of `addScheduled`, which refuses one.
-      // Pausing says "stop fetching this nightly"; it does not say "refuse me
-      // when I ask for it myself", and a control that went dead on a paused
-      // page would read as a bug.
       const {userId, pageIds} = await makeAccount();
       await db.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageIds[0]!).execute();
 
@@ -405,15 +364,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('waits behind another request from the same account rather than counting past it', async () => {
-      // Check-then-act is what this closes. A plain select takes no row lock
-      // under READ COMMITTED, so two requests arriving together both count the
-      // same zero on-demand audits, both insert, and an account entitled to one
-      // run gets two Chromium runs. Reading the count in the same statement as
-      // the insert would not close it either - only the lock does.
-      //
-      // Driven by holding the account row from outside rather than by racing
-      // two calls, because a race that happens to serialise passes without the
-      // lock and proves nothing. This blocks or it does not.
       const url = process.env.DATABASE_URL;
       if (url === undefined) {
         throw new Error('DATABASE_URL not set by globalSetup');
@@ -426,20 +376,10 @@ describe('PostgresAuditRepository', () => {
         release = resolve;
       });
       let locked!: () => void;
-      // Signalled by the lock itself rather than by a timer: a sleep long
-      // enough on this machine is not long enough on a loaded one, and the
-      // failure it produces looks like the bug rather than like a slow test.
       const lockTaken = new Promise<void>((resolve) => {
         locked = resolve;
       });
 
-      // FOR NO KEY UPDATE, not FOR UPDATE, and the distinction is what makes
-      // this test discriminate. The ledger insert carries a foreign key to
-      // `users`, so it takes FOR KEY SHARE on that row by itself - and FOR
-      // UPDATE conflicts with that, which would block the request whether or
-      // not `addOnDemand` locks anything. FOR NO KEY UPDATE conflicts with the
-      // explicit FOR UPDATE and not with the foreign key's share, so what is
-      // measured here is the lock this code takes rather than Postgres's.
       const holding = db.transaction().execute(async (trx) => {
         await trx.selectFrom('users').select('id').where('id', '=', userId).forNoKeyUpdate().execute();
         locked();
@@ -488,8 +428,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('returns an id and an unguessable public uuid, which are not the same value', async () => {
-      // The share page (#23) is addressed by public_uuid; the internal id must
-      // never be what the world sees.
       const audit = await sut.add({url: `https://${randomUUID()}.test/y`, pageId: null});
 
       expect(typeof audit.id).toBe('string');
@@ -537,9 +475,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('answers null rather than throwing when the day is already scheduled', async () => {
-      // The second idempotency layer, and the reason it returns a value rather
-      // than raising: the caller is looping over every monitored page, and a
-      // 23505 would abort the transaction it is in and end the night there.
       const pageId = await makePage();
       const url = `https://${randomUUID()}.test/a`;
 
@@ -554,9 +489,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('leaves the connection usable after a conflict', async () => {
-      // What `do nothing` buys over catching the error: a raised 23505 inside
-      // a transaction aborts it, so every statement after the catch fails with
-      // 25P02 and the only recovery is starting over.
       const pageId = await makePage();
       const url = `https://${randomUUID()}.test/a`;
       await sut.addScheduled({pageId, url, scheduledFor: DAY});
@@ -577,9 +509,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('does not block an unscheduled audit of the same page on the same day', async () => {
-      // The conflict target names the partial index, so it only ever sees
-      // scheduled rows. A manual re-audit and the first audit an added page
-      // gets both carry a null scheduled_for and are untouched by it.
       const pageId = await makePage();
       const url = `https://${randomUUID()}.test/a`;
       await sut.addScheduled({pageId, url, scheduledFor: DAY});
@@ -614,8 +543,6 @@ describe('PostgresAuditRepository', () => {
       (await sut.loadStaleInFlight(olderThan, limit, after)).map((row) => row.auditId);
 
     it('offers unfinished audits older than the cutoff, in both live statuses', async () => {
-      // Both, because either can be stranded: `queued` when an enqueue was
-      // lost, `running` when the worker died holding it and its job is gone.
       const queued = await inFlightAudit('queued', hoursAgo(30));
       const running = await inFlightAudit('running', hoursAgo(30));
 
@@ -643,18 +570,12 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('leaves recent unfinished audits alone', async () => {
-      // The cutoff is what keeps this off the healthy pending work that exists
-      // on any night - a page waiting out its six-hour jitter delay is not
-      // abandoned, it has not started.
       const recent = await inFlightAudit('queued', hoursAgo(1));
 
       expect(await staleIds(hoursAgo(12))).not.toContain(recent);
     });
 
     it('offers the oldest first, since that is where the abandoned ones are', async () => {
-      // A row waiting on a busy queue gets older every night, but so does
-      // everything ahead of it. The ones with no job at all never move, so
-      // they sink to the front and a bounded scan still reaches them.
       const older = await inFlightAudit('queued', hoursAgo(400));
       const newer = await inFlightAudit('queued', hoursAgo(300));
 
@@ -670,17 +591,6 @@ describe('PostgresAuditRepository', () => {
       expect(await staleIds(hoursAgo(12), 1)).toHaveLength(1);
     });
 
-    // The cursor specs below assert only about the rows they created.
-    // `loadStaleInFlight` is global by design - the reclaim pass reconciles
-    // every unfinished audit there is - so every other spec file's in-flight
-    // fixtures are in these results too, and one that asserted "mine is at the
-    // head" would be asserting the suite's insertion order.
-    //
-    // They also take the cursor from a real load rather than building one, so
-    // it carries whatever the repository actually emits. A hand-built cursor
-    // is a second implementation of the thing under test, and this is exactly
-    // where the two would disagree: the database's microseconds do not survive
-    // a JavaScript Date.
     const cursorFor = async (auditId: string, olderThan: Date): Promise<StaleAudit> => {
       const rows = await sut.loadStaleInFlight(olderThan, 10_000, null);
       const found = rows.find((row) => row.auditId === auditId);
@@ -691,11 +601,6 @@ describe('PostgresAuditRepository', () => {
     };
 
     it('resumes after the cursor rather than serving the same batch again', async () => {
-      // What stops the reclaim pass starving. Old candidates that are
-      // legitimately pending never change their `created_at`, so they hold the
-      // front of this list every night - without a cursor the orphan behind
-      // them is never examined, and its page is excluded from re-audits for
-      // good.
       const first = await inFlightAudit('queued', hoursAgo(500));
       const second = await inFlightAudit('queued', hoursAgo(499));
 
@@ -706,17 +611,7 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('does not serve a row again as its own successor', async () => {
-      // Postgres keeps `timestamptz` to microseconds; a JavaScript Date holds
-      // milliseconds. Carry the cursor as a Date and the value sent back is
-      // smaller than the value stored, so `created_at > cursor` is true of the
-      // row the cursor came FROM and it arrives again at the head of the next
-      // batch. With a small batch that repeats forever, spending the run's
-      // whole ceiling re-reading one row while the abandoned audits behind it
-      // are never reached.
       const pageId = await makePage();
-      // Microseconds a Date cannot hold, which is what makes the round trip
-      // lossy. Every real row has them - `now()` is microsecond-resolution -
-      // so this is the ordinary case rather than a contrived one.
       const cutoff = new Date('2026-07-02T00:00:00Z');
       const inserted = await db
         .insertInto('audits')
@@ -735,10 +630,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('separates rows sharing a timestamp, which is why the cursor carries the id', async () => {
-      // `now()` is transaction time, so a fan-out's rows routinely share one.
-      // A cursor comparing `created_at` alone would place all three on the
-      // same side of it: resuming after the first would skip the other two
-      // entirely, and one of them may be the orphan this pass exists to find.
       const sharedAt = hoursAgo(600);
       const [first, ...rest] = [
         await inFlightAudit('queued', sharedAt),
@@ -758,10 +649,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('retires an abandoned audit as failed rather than deleting it', async () => {
-      // The audit is a fact: the page was due, a run was created, nothing ran
-      // it. A failure is what the dashboard should show and what the trend
-      // chart should keep as a scoreless point - deleting it would make the
-      // night look like it never happened.
       const auditId = await inFlightAudit('queued', hoursAgo(30));
 
       expect(await sut.markAbandoned(auditId, 'Abandoned')).toBe(true);
@@ -773,10 +660,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses to touch an audit that has already finished', async () => {
-      // The fence. Between the run deciding a row is abandoned and this
-      // statement, a worker may have picked it up after all - and overwriting
-      // a real result with "abandoned" is worse than the stranded row this
-      // exists to fix.
       const auditId = await inFlightAudit('running', hoursAgo(30));
       await db.updateTable('audits').set({status: 'done', score: 88}).where('id', '=', auditId).execute();
 
@@ -823,8 +706,6 @@ describe('PostgresAuditRepository', () => {
       return audit.id;
     };
 
-    // Terminal writes are fenced on the claim, so a test that finishes an
-    // audit has to claim it first, exactly as the worker does.
     const makeClaimedAudit = async (): Promise<{id: string; claimedAt: Date}> => {
       const id = await makeQueuedAudit();
       const claimedAt = await sut.claimForRun(id);
@@ -845,9 +726,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses a second claim while the first is still live', async () => {
-      // Status alone is not exclusion: under READ COMMITTED the second
-      // delivery re-checks the predicate after the first commits, and would
-      // match the row the first just claimed. The lease is what excludes it.
       const id = await makeQueuedAudit();
       await sut.claimForRun(id);
 
@@ -858,10 +736,6 @@ describe('PostgresAuditRepository', () => {
       const id = await makeQueuedAudit();
       await sut.claimForRun(id);
 
-      // Age the claim rather than shortening the lease: a zero-length lease
-      // compares two clock reads that can land in the same millisecond, which
-      // makes the test flaky. Writing an old timestamp exercises the real
-      // production lease and is deterministic.
       await db
         .updateTable('audits')
         .set({claimed_at: new Date(Date.now() - 60 * 60_000)})
@@ -880,9 +754,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses to resurrect an audit that already finished', async () => {
-      // Two deliveries can race: one finishes while the other is between
-      // reading the row and claiming it. A plain update would put a completed
-      // audit back into `running` and let a later run overwrite its result.
       for (const finish of ['done', 'failed'] as const) {
         const {id, claimedAt} = await makeClaimedAudit();
         if (finish === 'done') {
@@ -918,9 +789,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('ignores a terminal write from an attempt that lost its claim', async () => {
-      // A paused attempt can resume after another worker reclaimed and finished
-      // the audit. Unfenced, completion would overwrite the new owner's result
-      // and markFailed would turn a success into a failure.
       const {id, claimedAt} = await makeClaimedAudit();
       await db
         .updateTable('audits')
@@ -947,9 +815,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('lets the next attempt claim once the previous one released', async () => {
-      // The regression this pins: a retryable failure writes no terminal
-      // status, so without a release the row keeps a live lease and the retry
-      // - which arrives seconds later - can never claim it.
       const id = await makeQueuedAudit();
       const claimedAt = await sut.claimForRun(id);
       if (claimedAt === null) {
@@ -971,7 +836,6 @@ describe('PostgresAuditRepository', () => {
       await sut.releaseClaim(id, stale);
       const current = await sut.claimForRun(id);
 
-      // The superseded attempt tries to release the claim it used to hold.
       await sut.releaseClaim(id, stale);
 
       expect(current).toBeInstanceOf(Date);
@@ -991,9 +855,6 @@ describe('PostgresAuditRepository', () => {
       const {id, claimedAt} = await makeClaimedAudit();
 
       await complete(id, claimedAt, {
-        // Not derived from the counts below: the repository writes whatever
-        // score it is given, so this pins that the column round-trips it
-        // rather than that it matches any particular formula.
         score: 42,
         countsByImpact: {minor: 1, moderate: 0, serious: 2, critical: 3},
         axeVersion: '4.12.1',
@@ -1004,7 +865,6 @@ describe('PostgresAuditRepository', () => {
       const row = await load(id);
       expect(row.status).toBe('done');
       expect(row.score).toBe(42);
-      // jsonb reorders keys, so this must be compared structurally.
       expect(row.counts_by_impact).toEqual({minor: 1, moderate: 0, serious: 2, critical: 3});
       expect(row.axe_version).toBe('4.12.1');
       expect(row.duration_ms).toBe(1234);
@@ -1027,9 +887,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('persists both ends of the score range', async () => {
-      // audits.score is a smallint with `check (score between 0 and 100)`. A
-      // score outside it fails at completion time, a long way from whatever
-      // produced it.
       for (const score of [0, 100]) {
         const {id, claimedAt} = await makeClaimedAudit();
         await complete(id, claimedAt, {
@@ -1070,8 +927,6 @@ describe('PostgresAuditRepository', () => {
 
   describe('addScheduled and a page paused mid-run', () => {
     it('schedules nothing for a page that is no longer monitored', async () => {
-      // The worklist is read once at the top of a run that can last half an
-      // hour. Pausing in between used to leave the insert unaware.
       const pageId = await makePage();
       await db.updateTable('pages').set({monitoring_enabled: false}).where('id', '=', pageId).execute();
 
@@ -1086,10 +941,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('waits for a pause in flight rather than slipping in behind it', async () => {
-      // The interleaving the flag check alone does not survive: a plain select
-      // takes no row lock, so the pause can update the page, find no audit to
-      // delete because this one is still uncommitted, and commit - leaving a
-      // paused page holding a queued audit.
       const url = process.env.DATABASE_URL;
       if (url === undefined) {
         throw new Error('DATABASE_URL not set by globalSetup');
@@ -1108,7 +959,6 @@ describe('PostgresAuditRepository', () => {
       });
 
       try {
-        // Long enough for the update above to have taken the row lock.
         await new Promise((resolve) => {
           setTimeout(resolve, 100);
         });
@@ -1131,8 +981,6 @@ describe('PostgresAuditRepository', () => {
         release();
         await pausing;
 
-        // And once it is let through, it reads the pause rather than its own
-        // stale snapshot.
         expect(await scheduling).toBeNull();
         expect(await db.selectFrom('audits').select('id').where('page_id', '=', pageId).execute()).toEqual([]);
       } finally {
@@ -1152,8 +1000,6 @@ describe('PostgresAuditRepository', () => {
       });
 
       expect(audit).not.toBeNull();
-      // Presence, not the instant: a `date` column comes back at local
-      // midnight, and nothing reads this value as a time.
       expect(audit?.scheduledFor).not.toBeNull();
     });
   });
@@ -1168,9 +1014,6 @@ describe('PostgresAuditRepository', () => {
     });
 
     it('refuses to remove an audit that is no longer queued', async () => {
-      // This is the only delete on the repository. The status predicate is
-      // what keeps it from ever removing a real audit - by the time anything
-      // is running or finished, somebody is relying on it.
       for (const advance of ['running', 'done', 'failed'] as const) {
         const audit = await sut.add({url: `https://${randomUUID()}.test/x`, pageId: null});
         const claimedAt = await sut.claimForRun(audit.id);
@@ -1207,10 +1050,6 @@ describe('claimLeaseFor', () => {
   const UNWIND_GRACE_MS = 15_000;
 
   it('outlasts the longest an attempt can possibly occupy', () => {
-    // The regression this pins: a flat ten-minute lease looked generous
-    // against the 45s default and was in fact SHORTER than the maximum the
-    // environment schema permits (600s) plus its unwind grace (15s) - so a
-    // valid configuration let a second worker reclaim a still-running audit.
     for (const jobTimeoutMs of [45_000, 120_000, MAX_JOB_TIMEOUT_MS]) {
       const longestPossibleAttempt = jobTimeoutMs + UNWIND_GRACE_MS;
 

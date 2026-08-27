@@ -33,9 +33,6 @@ describe('useSession', () => {
   });
 
   it('answers null for a 401, because that is an answer and not a failure', async () => {
-    // "Nobody is signed in" is exactly what the caller asked. Leaving it as an
-    // error would make the route guards unable to tell it apart from a backend
-    // they could not reach.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(401, {error: 'Unauthorized'})));
 
     const {result} = renderHook(() => useSession(), {wrapper});

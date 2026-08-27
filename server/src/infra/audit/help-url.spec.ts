@@ -22,11 +22,6 @@ describe('safeHelpUrl', () => {
       ['https://dequeuniversity.com:8443/rules', 'a non-default port, which shares the host'],
       ['http://dequeuniversity.com/rules', 'plain http on the right host'],
     ])('drops %p - %s', (helpUrl) => {
-      // `helpUrl` is a string the AUDITED PAGE chose: it can replace
-      // `window.axe` before the engine runs. Stored verbatim it becomes the
-      // href of a link reading "How to fix this" inside an accessibility
-      // report, on a share page anybody can forward. Phishing is the risk, so
-      // the origin is the check - a scheme test waves most of these through.
       expect(safeHelpUrl(helpUrl)).toBe('');
     });
   });
@@ -43,8 +38,6 @@ describe('safeHelpUrl', () => {
   });
 
   it('drops a value that is not a string at all', () => {
-    // `run()` returns whatever the page decided to return. Nothing guarantees
-    // the field is even a string.
     expect(safeHelpUrl(42)).toBe('');
     expect(safeHelpUrl(null)).toBe('');
     expect(safeHelpUrl(undefined)).toBe('');
@@ -65,10 +58,6 @@ describe('toStoredViolations', () => {
     ]);
 
   it('sanitises what the page returned, on the Node side of page.evaluate', () => {
-    // The wiring, not the function. This was inline in `audit()` first, and
-    // deleting the sanitiser there changed no test: the unit spec covered the
-    // function, and the integration spec drives a page whose real axe only ever
-    // produces trusted links, so neither could see it go.
     expect(fromPage('https://evil.example/phish')[0]?.helpUrl).toBe('');
   });
 

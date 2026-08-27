@@ -67,8 +67,6 @@ describe('the page view mappers', () => {
   });
 
   it('never puts an internal identifier on the wire', () => {
-    // `siteId` groups pages under an account and the audit's `id` is its
-    // primary key; the public uuid is the only id a client may see.
     const serialised = JSON.stringify(toPageSummaryView(summary()));
 
     expect(serialised).not.toContain('site-secret-1');
@@ -88,7 +86,6 @@ describe('the page view mappers', () => {
   });
 
   it('reports no score rather than zero when nothing has finished', () => {
-    // A failed run rendered as zero reads as a catastrophic regression.
     const view = toPageSummaryView(
       summary({
         latestAudit: {...audit, status: 'failed', score: null, completedAt: null, error: 'Navigation timeout'},
@@ -185,8 +182,6 @@ describe('the page history mapper', () => {
   });
 
   it('keeps a failed run as a point with no score rather than dropping it', () => {
-    // Dropping it makes an outage look like continuity; a zero makes it look
-    // like a catastrophic regression.
     const view = toPageHistoryView(history([failedAudit]), 90);
 
     expect(view.points).toHaveLength(1);

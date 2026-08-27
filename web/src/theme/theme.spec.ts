@@ -18,7 +18,6 @@ describe('isTheme', () => {
   });
 
   it('rejects anything else, because storage is user-writable', () => {
-    // Editable from devtools, so untrusted input like any other.
     expect(isTheme('DARK')).toBe(false);
     expect(isTheme('')).toBe(false);
     expect(isTheme(null)).toBe(false);
@@ -53,7 +52,6 @@ describe('applyTheme', () => {
   });
 
   it('removes the stamp for system, so the tokens fall back to the media query', () => {
-    // An attribute of "system" matches neither branch and pins light forever.
     applyTheme('dark');
 
     applyTheme('system');
@@ -62,7 +60,6 @@ describe('applyTheme', () => {
   });
 
   it('moves color-scheme with the choice, so native controls follow', () => {
-    // Light on a dark OS would otherwise keep dark scrollbars.
     applyTheme('light');
 
     expect(root().style.getPropertyValue('color-scheme')).toBe('light');
@@ -85,7 +82,6 @@ describe('storeTheme', () => {
   });
 
   it('clears the key for system rather than writing "system"', () => {
-    // Absence is what the inline boot script tests for; one spelling only.
     storeTheme('dark');
 
     storeTheme('system');
@@ -94,7 +90,6 @@ describe('storeTheme', () => {
   });
 
   it('survives storage being unavailable', () => {
-    // Safari private mode throws from setItem.
     const {setItem} = Storage.prototype;
     Storage.prototype.setItem = (): never => {
       throw new DOMException('QuotaExceededError');

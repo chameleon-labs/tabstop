@@ -42,8 +42,6 @@ describe('assertBuildOutput', () => {
   });
 
   it('throws when app.html was not written', () => {
-    // `_redirects` routes every non-prerendered path there; missing it is a
-    // build that looks green and 404s every route but `/` on the host.
     expect(() => assertBuildOutput('', stampedIndex)).toThrow(/app\.html/);
   });
 
@@ -74,8 +72,6 @@ describe('assertBuildOutput', () => {
   });
 
   it('throws when the artifact kept the template title', () => {
-    // The whole file is checked, not only the rendered body: a page that
-    // publishes the landing page's title renders perfectly and is still wrong.
     expect(() =>
       assertBuildOutput(APP_SHELL, stampedIndex, [writtenFormula({html: wholeDocument({title: 'tabstop'})})]),
     ).toThrow(/title/i);
@@ -90,7 +86,6 @@ describe('assertBuildOutput', () => {
   });
 
   it('throws when a route stylesheet is missing from the artifact', () => {
-    // Without it the page paints unstyled until the route chunk downloads.
     expect(() =>
       assertBuildOutput(APP_SHELL, stampedIndex, [
         writtenFormula({html: wholeDocument({stylesheet: '/assets/other.css'})}),
@@ -99,8 +94,6 @@ describe('assertBuildOutput', () => {
   });
 
   it('throws when a page with a route chunk resolved no stylesheets at all', () => {
-    // An entry that no longer matches a manifest key resolves to nothing, and
-    // an empty list would otherwise assert nothing and pass.
     expect(() => assertBuildOutput(APP_SHELL, stampedIndex, [writtenFormula({stylesheets: []})])).toThrow(
       scoreFormula.entry!,
     );

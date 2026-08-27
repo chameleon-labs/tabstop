@@ -108,8 +108,6 @@ describe('usePageHistory', () => {
   });
 
   it('leaves a settled window alone, however long the page stays open', async () => {
-    // Every point terminal means nothing in it can change, and the endpoint is
-    // already cached for a minute.
     const {wrapper} = harness();
     renderHook(() => usePageHistory('page-1', 90), {wrapper});
 
@@ -125,9 +123,6 @@ describe('usePageHistory', () => {
   });
 
   it.each(['queued', 'running'] as const)('follows a %s point until it settles', async (status) => {
-    // The window is not immutable: the server returns every status, so a point
-    // acquires its score later. Without this the reader watches a gap marked
-    // "running" for as long as the tab stays open.
     fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, history({points: [point({status})]}))));
     const {wrapper} = harness();
     renderHook(() => usePageHistory('page-1', 90), {wrapper});
@@ -168,9 +163,6 @@ describe('usePageHistory', () => {
   });
 
   it('asks past the browser cache once it knows a point is unfinished', async () => {
-    // The endpoint answers `private, max-age=60`, which is true of a finished
-    // audit and wrong about an unfinished one: every poll inside that minute
-    // would be served the same in-flight body from the browser's own cache.
     fetchMock.mockImplementation(() =>
       Promise.resolve(jsonResponse(200, history({points: [point({status: 'running'})]}))),
     );
@@ -205,8 +197,6 @@ describe('usePageHistory', () => {
       await vi.advanceTimersByTimeAsync(IN_FLIGHT_HISTORY_POLL_MS);
     });
 
-    // Read the cache, not `isError`: the observer keeps reporting success while
-    // it still has a window to draw.
     await waitFor(() => {
       expect(client.getQueryCache().find({queryKey: pageHistoryKeys.detail('page-1', 90)})?.state.status).toBe('error');
     });
@@ -229,8 +219,6 @@ describe('historyWindowFrom', () => {
     expect(historyWindowFrom(value)).toBe(expected);
   });
 
-  // `1000` is clamped to 365 server-side, so passing it on would show a reader
-  // a control set to one window and a chart drawn from another.
   it.each([null, '', '0', '-30', '45', 'abc', '1000', '90.5'])('falls back to the default for %s', (value) => {
     expect(historyWindowFrom(value)).toBe(DEFAULT_HISTORY_WINDOW);
   });

@@ -8,16 +8,6 @@ const mockSessions = (deleteExpired: DeleteExpired = () => Promise.resolve(0)) =
 });
 
 describe('startSessionSweeper', () => {
-  /**
-   * The sweeper reports every pass, including the ones that find nothing -
-   * deliberately, since a maintenance task that only speaks up when it has
-   * work is one nobody notices has stopped running. Right in production, pure
-   * noise here, where several specs drive a dozen passes apiece.
-   *
-   * Silenced AND asserted rather than merely silenced: the logging is the
-   * feature, so hiding it without checking it would remove the only cover
-   * that decision has.
-   */
   let log: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -52,9 +42,6 @@ describe('startSessionSweeper', () => {
   });
 
   it('does not sweep on boot', () => {
-    // A worker restarting in a crash loop would otherwise issue a table-wide
-    // delete on every start - which is precisely when the database is least
-    // likely to want one.
     const sessions = mockSessions();
 
     const sweeper = startSessionSweeper(sessions, 1000);
@@ -74,8 +61,6 @@ describe('startSessionSweeper', () => {
   });
 
   it('keeps sweeping after a failure', async () => {
-    // Failing to tidy up must never take the worker down, and the next pass
-    // finds the same rows still waiting.
     const sessions = mockSessions(() => Promise.reject(new Error('database down')));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const sweeper = startSessionSweeper(sessions, 1000);
@@ -87,11 +72,6 @@ describe('startSessionSweeper', () => {
   });
 
   it('never runs two sweeps at once, however long one takes', async () => {
-    // The failure this prevents: on a fixed interval, a delete that outlasts
-    // the period has a second delete start on top of it, then a third. Each
-    // holds a pool connection, and it is the same pool the audit jobs need -
-    // so the cleanup task starves the work the process exists to do, and it
-    // does so exactly when the table is big enough for the delete to be slow.
     let release = (): void => undefined;
     const blocked = new Promise<number>((resolve) => {
       release = () => {
@@ -101,12 +81,10 @@ describe('startSessionSweeper', () => {
     const sessions = mockSessions(async () => await blocked);
 
     const sweeper = startSessionSweeper(sessions, 1000);
-    // Ten periods pass while the first sweep is still in flight.
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(sessions.deleteExpired).toHaveBeenCalledTimes(1);
 
-    // And once it finishes, sweeping resumes rather than stopping for good.
     release();
     await vi.advanceTimersByTimeAsync(1000);
     expect(sessions.deleteExpired).toHaveBeenCalledTimes(2);

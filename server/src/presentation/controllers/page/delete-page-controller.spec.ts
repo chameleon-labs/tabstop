@@ -27,15 +27,11 @@ describe('DeletePageController', () => {
 
     const response = await sut.handle({id: 'someone-elses-page', userId: 'user-1'});
 
-    // Indistinguishable from a page that never existed, which is the point.
     expect(response.statusCode).toBe(404);
     expect(response.body).toEqual({error: 'No page found for that id'});
   });
 
   it('returns 404 rather than 204 for a second delete', async () => {
-    // Unlike logout, this is not idempotent by design: deleting a page
-    // destroys its whole audit history, so "that is already gone" is
-    // information the client needs rather than noise to swallow.
     const {sut, deletePage} = makeSut();
     deletePage.delete.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 

@@ -45,17 +45,11 @@ export const PageDetail = (): React.JSX.Element => {
   const selectedAuditId = params.get('audit');
   const asTable = params.get('view') === 'table';
 
-  // Identity, the controls and the summary come from the dashboard's own query,
-  // which is warm on arrival from it. The history response carries no domain and
-  // no monitoring flag, so a second source for them would be a second answer.
   const pages = useMonitoredPages();
   const page = pages.data?.pages.find((candidate) => candidate.id === id);
   const history = usePageHistory(id, days);
   const monitoring = useSetPageMonitoring();
   const auditNow = useRequestPageAudit(page?.id);
-  // The accepted audit, polled to a terminal state on this screen. The page's
-  // own queries follow it too, so the trend and the list settle by themselves;
-  // this is what lets the reader watch it happen rather than infer it.
   const startedAuditId = auditNow.data?.auditId;
   const started = useAudit(startedAuditId, auditNow.data === undefined ? {} : {pollAfterMs: auditNow.data.pollAfterMs});
   const deletePage = useDeleteMonitoredPage();
@@ -76,8 +70,6 @@ export const PageDetail = (): React.JSX.Element => {
   useDocumentTitle(heading);
   const latestAuditId = page?.latestAudit?.auditId ?? null;
   const timestamp = page === undefined ? null : pageTimestamp(page);
-  // The dashboard's own reading of the same row, so one screen cannot describe
-  // a retained score differently from the other.
   const rowState = page === undefined ? null : dashboardRowState(page);
   const latestCounts = page?.latestAudit?.status === 'done' ? page.latestAudit.countsByImpact : null;
   const monitoringVerb = page?.monitoringEnabled === false ? 'Resume' : 'Pause';
@@ -97,8 +89,6 @@ export const PageDetail = (): React.JSX.Element => {
   const now = Date.now();
 
   const setWindow = (next: string): void => {
-    // Replaced, not pushed: changing a view is not a navigation, and Back
-    // should leave the page rather than undo a choice of window.
     setParams(
       (current) => {
         const updated = new URLSearchParams(current);
@@ -125,8 +115,6 @@ export const PageDetail = (): React.JSX.Element => {
   };
 
   const openAudit = (auditId: string): void => {
-    // Pushed, which is the whole reason the open audit lives in the url: Back
-    // closes the panel.
     setParams((current) => {
       const updated = new URLSearchParams(current);
       updated.set('audit', auditId);
@@ -237,9 +225,6 @@ export const PageDetail = (): React.JSX.Element => {
       {startedAuditId !== undefined && started.error === null && (
         <div className="page-detail__progress">
           <AuditProgress phase={phase} complete={!startedRunning} />
-          {/* AuditProgress is decorative, so the phase is said in text as well
-              as drawn - and said politely, since a reader who has moved on
-              should not be interrupted for each of four steps. */}
           <p role="status" aria-live="polite" className="page-detail__phase">
             {startedRunning ? (phase ?? 'Starting the audit') : 'Audit finished'}
           </p>
@@ -258,9 +243,6 @@ export const PageDetail = (): React.JSX.Element => {
         </Callout>
       )}
 
-      {/* The summary and both controls come from the list query, so its failure
-          removes them from the screen. Said out loud rather than left as a gap
-          the reader has to interpret; the trend is a separate query and stays. */}
       {pages.data === undefined && pages.error !== null && (
         <Callout variant="danger" icon={<AlertCircle size="sm" />} title="Could not load this page's details">
           <p>{`The score summary and the page controls are unavailable. ${pages.error.message}`}</p>
@@ -300,9 +282,6 @@ export const PageDetail = (): React.JSX.Element => {
             )}
           </div>
 
-          {/* Only when the run that produced the score is also the latest one.
-              `page.score` is the most recent COMPLETED score, so after a failed
-              or in-flight re-audit these counts belong to a different run. */}
           {latestCounts !== null && (
             <dl className="page-detail__counts">
               {COUNT_ORDER.map((impact) => (
@@ -399,7 +378,6 @@ export const PageDetail = (): React.JSX.Element => {
               ))}
           </section>
 
-          {/* Hidden while there is nothing to list: the trend above already says the window is empty, and saying it twice reads as a fault. */}
           {points.length > 0 && (
             <section className="page-detail__audits" aria-labelledby={auditsHeadingId}>
               <h2 className="page-detail__section-heading" id={auditsHeadingId}>

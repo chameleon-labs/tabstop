@@ -25,9 +25,6 @@ describe('DbAuthenticate', () => {
   });
 
   it('still performs a comparison when the email is unknown', async () => {
-    // Without this, an unknown email returns in ~0ms and a known one in ~89ms,
-    // and the deliberate choice to return one identical error for both cases
-    // is undone by a stopwatch.
     const {sut, loadAccountByEmailRepository, hashComparer} = makeSut();
     loadAccountByEmailRepository.loadByEmail.mockResolvedValueOnce(null);
 
@@ -49,10 +46,6 @@ describe('DbAuthenticate', () => {
   });
 
   it('retries the dummy digest after a hashing failure, instead of caching the rejection', async () => {
-    // `??=` caches a rejected promise as happily as a fulfilled one, so one
-    // transient failure would make every later unknown-email login throw for
-    // the life of the process - a permanent 500 on exactly the path that must
-    // be indistinguishable from a wrong password.
     const {sut, loadAccountByEmailRepository, hasher} = makeSut();
     loadAccountByEmailRepository.loadByEmail.mockResolvedValue(null);
     hasher.hash.mockRejectedValueOnce(new Error('scrypt failed'));
@@ -66,8 +59,6 @@ describe('DbAuthenticate', () => {
   });
 
   it('answers null, not an error, when the dummy digest cannot be produced', async () => {
-    // Being unable to burn time is not a reason to answer 500 where a real
-    // account would have received 401.
     const {sut, loadAccountByEmailRepository, hasher} = makeSut();
     loadAccountByEmailRepository.loadByEmail.mockResolvedValue(null);
     hasher.hash.mockRejectedValue(new Error('scrypt permanently broken'));

@@ -29,8 +29,6 @@ describe('AddPageController', () => {
   });
 
   it('never puts the site id on the wire', async () => {
-    // siteId names a grouping that belongs to the account. A client has no use
-    // for it, and a spread of the model is how it would arrive.
     const {sut} = makeSut();
 
     expect(JSON.stringify((await sut.handle({userId: 'user-1'})).body)).not.toContain(mockPageModel().siteId);
@@ -57,8 +55,6 @@ describe('AddPageController', () => {
     const response = await sut.handle({userId: 'user-1'});
 
     expect(response.statusCode).toBe(400);
-    // Identical to what the worker says about an address it refuses at fetch
-    // time. A difference would tell an attacker which internal hosts exist.
     expect(response.body).toEqual({error: "That address can't be audited"});
   });
 
@@ -79,8 +75,6 @@ describe('AddPageController', () => {
     const response = await sut.handle({userId: 'user-1'});
 
     expect(response.statusCode).toBe(409);
-    // The code is what the dashboard branches on to render an upsell rather
-    // than a wall; `error` stays the sentence, as on every other endpoint.
     expect(response.body).toEqual({
       code: 'page_limit_reached',
       limit: 10,

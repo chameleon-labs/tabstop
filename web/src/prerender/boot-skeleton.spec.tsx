@@ -98,9 +98,6 @@ describe('bootShapeScript', () => {
   );
 
   it('carries the pattern flags into the table it emits, so the boot shape matches like the router', () => {
-    // The table is serialised with String(pattern). Dropping the flags there
-    // would leave the two halves of this agreeing with each other and both
-    // disagreeing with React Router, which matches without regard to case.
     expect(runScriptFor('/DASHBOARD')).toBe('dashboard');
     expect(runScriptFor('/SignUp')).toBe('form');
   });
@@ -130,9 +127,6 @@ describe('ruleFor', () => {
   });
 
   it('finds a rule the sheet opens a comment above, which is what the real sheet does', () => {
-    // `styles.css` starts with a block comment whose lines begin with `*`, and
-    // it mentions a `{`. A lookup that takes the first `*` and then the first
-    // `{` after it lifts the comment's brace and inlines the wrong block.
     const sheet = [
       '/*',
       ' * The shell only. The `:root {` overrides sit below.',

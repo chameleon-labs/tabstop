@@ -9,9 +9,6 @@ describe('prerender paths', () => {
   });
 
   it('gives every page but the landing its own head metadata and route chunk', () => {
-    // Every artifact is built from the same template, so a page that declares
-    // nothing publishes the landing page's title and description under its own
-    // URL - and its lazy chunk's stylesheets are never linked.
     const landing = PRERENDER_PAGES.find(({path}) => path === '/');
     const formula = PRERENDER_PAGES.find(({path}) => path === '/docs/score-formula');
 

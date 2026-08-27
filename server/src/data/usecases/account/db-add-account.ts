@@ -14,8 +14,6 @@ export class DbAddAccount implements AddAccount {
   async add(params: AddAccountParams): Promise<AuthenticatedSession | null> {
     const passwordDigest = await this.hasher.hash(params.password);
 
-    // No "does this email exist" check first: it would be a race with no
-    // benefit, since the unique constraint has to be handled either way.
     const account = await this.addAccountRepository.add({
       email: params.email,
       passwordDigest,

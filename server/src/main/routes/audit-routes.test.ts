@@ -33,11 +33,6 @@ describe('audit routes', () => {
     await disconnectDatabase();
   });
 
-  // The audit bucket lives for the whole process and has a small capacity
-  // (default 5), so a fixed submitter IP would make the many unrelated specs
-  // below rate-limit each other. A fresh address per call keeps each of them
-  // independent; the two specs that deliberately exercise the limiter define
-  // their own local `submit` with a fixed or looped address instead.
   let ipSeq = 0;
   const uniqueIp = (): string => {
     ipSeq += 1;
@@ -47,11 +42,6 @@ describe('audit routes', () => {
   const submit = async (url: string) =>
     await request(app).post('/api/audits').set('x-forwarded-for', uniqueIp()).send({url});
 
-  /**
-   * A public literal address, so gate 1 short-circuits resolution: a hostname
-   * would need real DNS, and `.test` deliberately does not resolve at all.
-   * Nothing here ever fetches the URL - no worker runs in these specs.
-   */
   const auditableUrl = (): string => `http://93.184.216.34/${randomUUID()}`;
 
   describe('POST /api/audits', () => {
@@ -78,17 +68,11 @@ describe('audit routes', () => {
         .where('public_uuid', '=', response.body.auditId as string)
         .executeTakeFirstOrThrow();
 
-      // Compared structurally, not as a substring: the internal id is a
-      // bigserial, so a single digit matches by coincidence inside a uuid or a
-      // timestamp and would prove nothing either way.
       expect(response.body.auditId).not.toBe(row.id);
       expect(Object.values(response.body)).not.toContain(row.id);
     });
 
     it('rejects the addresses gate 1 exists to catch', async () => {
-      // The submission-time half of #7: an obviously bad URL becomes a 400
-      // here rather than a queued job, a browser launch, and a failed audit
-      // thirty seconds later.
       for (const url of [
         'file:///etc/passwd',
         'https://alice:secret@example.com/',
@@ -111,19 +95,6 @@ describe('audit routes', () => {
     });
 
     it('stores nothing for a rejected URL', async () => {
-      // Both branches fixed this independently and each caught half of it;
-      // this keeps both halves.
-      //
-      // A unique marker, because the specs share one Postgres container and
-      // vitest runs files in parallel - a table-wide count reports whichever
-      // row another file inserted in the same instant, which is exactly how
-      // this assertion started flaking.
-      //
-      // And `like` on that marker rather than `=` on the whole url, because a
-      // regression that stored a NORMALISED variant - a trailing slash, a
-      // percent-decoded path - would match `=` on nothing and pass with the
-      // bug present. The marker is what keeps widening the match safe: no
-      // other spec can produce a row containing it.
       const marker = randomUUID();
 
       await submit(`file:///etc/passwd?${marker}`);
@@ -137,8 +108,6 @@ describe('audit routes', () => {
     });
 
     it('answers 429 once the per-IP bucket is empty', async () => {
-      // Distinct IP per spec: the bucket is shared process-wide, so a fixed
-      // address would make these specs depend on each other's order.
       const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
       const attempt = async () =>
         await request(app).post('/api/audits').set('x-forwarded-for', ip).send({url: auditableUrl()});
@@ -153,10 +122,6 @@ describe('audit routes', () => {
     });
 
     it('ignores a forwarded address the proxy did not write', async () => {
-      // With one trusted hop, supertest's connection is the trusted proxy and
-      // the client-supplied entry to its left is not. If Express trusted the
-      // whole chain, each spoofed address would mint a fresh bucket and the
-      // limiter would be decorative.
       const spoofed = async (address: string) =>
         await request(app)
           .post('/api/audits')
@@ -181,7 +146,6 @@ describe('audit routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('queued');
       expect(response.body.violations).toEqual([]);
-      // It changes on the next poll, so nothing may hold it.
       expect(response.headers['cache-control']).toBe('no-store');
     });
 
@@ -234,13 +198,10 @@ describe('audit routes', () => {
           nodes: [{target: ['img'], html: '<img>'}],
         },
       ]);
-      // Terminal and immutable, so the share page can be served from a cache.
       expect(response.headers['cache-control']).toBe('public, max-age=3600');
     });
 
     it('leaks nothing that identifies a user', async () => {
-      // This endpoint is public to anyone holding the uuid, so the payload is
-      // the whole security boundary.
       const created = await submit(auditableUrl());
       const auditId = created.body.auditId as string;
       const row = await db
@@ -255,8 +216,6 @@ describe('audit routes', () => {
       for (const forbidden of ['pageId', 'page_id', 'id', 'siteId', 'userId', 'durationMs']) {
         expect(keys).not.toContain(forbidden);
       }
-      // Structural again - a bigserial id is one or two characters, so a
-      // substring check would match by chance and mean nothing.
       expect(Object.values(response.body)).not.toContain(row.id);
       expect(response.body.auditId).not.toBe(row.id);
     });
@@ -266,7 +225,6 @@ describe('audit routes', () => {
     });
 
     it('answers 404 for a malformed id rather than 500', async () => {
-      // A value that cannot be a uuid is a miss, not a database error.
       for (const bad of ['not-a-uuid', '123', 'a'.repeat(50)]) {
         expect((await request(app).get(`/api/audits/${bad}`)).status).toBe(404);
       }

@@ -63,8 +63,6 @@ describe('parseEnv', () => {
   });
 
   it('rejects a FRONTEND_ORIGIN that is not exactly an origin', () => {
-    // Each of these boots cleanly under a mere non-empty check and then fails
-    // every authenticated browser request.
     for (const bad of [
       '*',
       'http://localhost:5173/',
@@ -151,8 +149,6 @@ describe('parseEnv', () => {
   });
 
   it('rejects a set-but-unusable value rather than silently defaulting', () => {
-    // Setting the variable is a statement of intent. Falling back to the
-    // default would turn a deliberate change into a no-op nobody notices.
     expect(() => parseEnv({...validSource, SCRYPT_COST: 'nonsense'})).toThrow('SCRYPT_COST');
     expect(() => parseEnv({...validSource, SCRYPT_COST: '0'})).toThrow('SCRYPT_COST');
     expect(() => parseEnv({...validSource, SESSION_TTL_DAYS: '-1'})).toThrow('SESSION_TTL_DAYS');
@@ -160,7 +156,6 @@ describe('parseEnv', () => {
 
   it('defaults the audit budgets, and caps concurrency', () => {
     const parsed = parseEnv(validSource);
-    // Chromium is 300-500MB per context, so one at a time is the safe default.
     expect(parsed.auditConcurrency).toBe(1);
     expect(parsed.auditJobTimeoutMs).toBe(45_000);
     expect(parsed.auditNavigationTimeoutMs).toBe(20_000);
@@ -173,9 +168,6 @@ describe('parseEnv', () => {
   });
 
   it('rejects navigation budgets that the job timeout can never reach', () => {
-    // Each budget passes its own check, but they are nested: the job timeout
-    // aborts first, so a 600s navigation budget under the 45s default is dead
-    // configuration - along with the specific error message mapped to it.
     expect(() => parseEnv({...validSource, AUDIT_NAVIGATION_TIMEOUT_MS: '600000'})).toThrow(
       'AUDIT_JOB_TIMEOUT_MS must leave room',
     );
@@ -186,8 +178,6 @@ describe('parseEnv', () => {
   });
 
   it('accepts navigation budgets that fit inside the job timeout', () => {
-    // The defaults must themselves satisfy the invariant, or the process could
-    // not boot at all: 20s + 10s + 1s + 10s headroom = 41s under a 45s budget.
     expect(parseEnv(validSource).auditNavigationTimeoutMs).toBe(20_000);
 
     expect(
@@ -200,11 +190,6 @@ describe('parseEnv', () => {
   });
 
   it('rejects a session ttl beyond what a cookie can express', () => {
-    // Browsers cap cookie expiry at 400 days, so a longer session would be
-    // clamped in the browser while the row kept the longer expiry. And at
-    // ~99,979,338 days the arithmetic leaves Date's range entirely, producing
-    // an Invalid Date that node-postgres serialises as "0NaN-NaN-NaN..." -
-    // which Postgres rejects, failing every signup and login.
     expect(() => parseEnv({...validSource, SESSION_TTL_DAYS: '401'})).toThrow('SESSION_TTL_DAYS');
     expect(() => parseEnv({...validSource, SESSION_TTL_DAYS: '100000000'})).toThrow('SESSION_TTL_DAYS');
   });
@@ -214,10 +199,7 @@ describe('parseEnv', () => {
   });
 
   it('rejects a scrypt cost that is a positive integer but not a usable one', () => {
-    // 20000 is an integer above zero and still makes every hash throw
-    // ERR_CRYPTO_INVALID_SCRYPT_PARAMS: N must be a power of two.
     expect(() => parseEnv({...validSource, SCRYPT_COST: '20000'})).toThrow('power of two');
-    // 262144 is a power of two that exceeds scrypt's memory budget.
     expect(() => parseEnv({...validSource, SCRYPT_COST: '262144'})).toThrow('SCRYPT_COST');
   });
 
@@ -226,10 +208,6 @@ describe('parseEnv', () => {
   });
 
   it('defaults trustProxyHops to zero', () => {
-    // Not `true`: Express would then trust the whole X-Forwarded-For chain,
-    // and any client could prepend a fabricated address to mint a fresh rate
-    // limit bucket per request. Over-restrictive fails visibly; over-trusting
-    // fails silently and makes the limiter decorative.
     expect(parseEnv(validSource).trustProxyHops).toBe(0);
   });
 
@@ -246,9 +224,6 @@ describe('parseEnv', () => {
   });
 
   it('accepts an explicit trustProxyHops of zero, not just the omitted default', () => {
-    // Zero is both the default and the safe setting, so it has to work when a
-    // deployment sets it on purpose - not merely when the variable is absent
-    // and falls through to the default.
     expect(parseEnv({...validSource, TRUST_PROXY_HOPS: '0'}).trustProxyHops).toBe(0);
   });
 
@@ -275,47 +250,30 @@ describe('parseEnv', () => {
   });
 
   it('rejects an anonymous audit bucket beyond its configured maximum', () => {
-    // This is the one dial documented as production-tunable, so unlike every
-    // other numeric variable here, a stray extra zero would boot cleanly and
-    // silently remove the limit that makes this endpoint deployable at all.
     expect(() => parseEnv({...validSource, AUDIT_RATE_CAPACITY: '50000'})).toThrow('AUDIT_RATE_CAPACITY');
     expect(() => parseEnv({...validSource, AUDIT_RATE_PER_HOUR: '50000'})).toThrow('AUDIT_RATE_PER_HOUR');
   });
 
   it('defaults the queue depth cap, and reads an override', () => {
-    // The default is load-bearing rather than a placeholder: it is the only
-    // thing bounding the queue in a deployment that never sets the variable,
-    // which is every deployment until someone has a reason to tune it.
     expect(parseEnv(validSource).auditQueueMaxDepth).toBe(100);
     expect(parseEnv({...validSource, AUDIT_QUEUE_MAX_DEPTH: '250'}).auditQueueMaxDepth).toBe(250);
   });
 
   it('rejects a queue depth cap that would remove the bound', () => {
-    // Same reasoning as the audit bucket above, and the same failure mode: a
-    // stray zero boots cleanly and silently turns the backstop off, which is
-    // invisible until the queue is already long.
     expect(() => parseEnv({...validSource, AUDIT_QUEUE_MAX_DEPTH: '100000'})).toThrow('AUDIT_QUEUE_MAX_DEPTH');
     expect(() => parseEnv({...validSource, AUDIT_QUEUE_MAX_DEPTH: '0'})).toThrow('AUDIT_QUEUE_MAX_DEPTH');
     expect(() => parseEnv({...validSource, AUDIT_QUEUE_MAX_DEPTH: 'lots'})).toThrow('AUDIT_QUEUE_MAX_DEPTH');
   });
 
   it('defaults the statement timeout, and reads an override', () => {
-    // Load-bearing for the same reason as the queue cap: no deployment sets
-    // this until someone has a reason to, so the default is the bound that
-    // actually ships (#52).
     expect(parseEnv(validSource).databaseStatementTimeoutMs).toBe(30_000);
     expect(parseEnv({...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '60000'}).databaseStatementTimeoutMs).toBe(60_000);
   });
 
   it('rejects a statement timeout that would remove the bound', () => {
-    // A stray extra zero boots cleanly and restores exactly the unbounded
-    // behaviour this variable exists to remove, which is invisible until a
-    // statement is already wedged holding a pooled connection.
     expect(() => parseEnv({...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '3000000'})).toThrow(
       'DATABASE_STATEMENT_TIMEOUT_MS',
     );
-    // Zero is Postgres's own spelling of "no timeout", so it has to be
-    // refused here rather than passed through as a valid-looking setting.
     expect(() => parseEnv({...validSource, DATABASE_STATEMENT_TIMEOUT_MS: '0'})).toThrow(
       'DATABASE_STATEMENT_TIMEOUT_MS',
     );

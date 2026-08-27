@@ -13,7 +13,6 @@ const arc = (): Element => {
 
 describe('ScoreArc', () => {
   it('shows the score as a number, not only as a sweep', () => {
-    // The arc is the illustration; the number is the answer.
     render(<ScoreArc score={63} />, {wrapper: Providers});
 
     expect(screen.getByText('63')).toBeInTheDocument();

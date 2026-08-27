@@ -22,9 +22,6 @@ describe('the page detail visual contract', () => {
   });
 
   it.each(sheets)('keeps %s free of hardcoded type', (_name, css) => {
-    // Read the value rather than lookahead past the colon: `\s*` backtracks to
-    // nothing, so `font-family:\s*(?!var\()` matches every declaration ever
-    // written with a space after the colon.
     const values = [...css.matchAll(/font-family:\s*([^;]+);/gi)].map(([, value]) => value!.trim());
 
     expect(values.filter((value) => !value.startsWith('var(--lat-'))).toEqual([]);
@@ -42,16 +39,11 @@ describe('the page detail visual contract', () => {
   });
 
   it('scales the chart from its own box, so nothing has to measure it', () => {
-    // A viewBox and a percentage width keep the aspect ratio without a resize
-    // observer, which jsdom cannot report anyway.
     expect(sheet('chart')).toContain('inline-size: 100%');
     expect(sheet('chart')).toContain('block-size: auto');
   });
 
   it('keeps the chart readable when colour is taken away', () => {
-    // `fill` is not force-adjusted by the browser, and a bare
-    // `.trend-chart__point` here loses to the state rules above it - so a
-    // failed marker kept its brand red against whatever palette was chosen.
     const forced = sheet('chart').slice(sheet('chart').indexOf('@media (forced-colors: active)'));
 
     expect(sheet('chart')).toContain('@media (forced-colors: active)');
@@ -83,8 +75,6 @@ describe('the page detail visual contract', () => {
   });
 
   it('keeps the audited time against the right edge, counts or no counts', () => {
-    // End-alignment alone leaves it beside the score on a page whose first
-    // audit has produced no counts, because the middle column collapses.
     const wide = sheet('detail').slice(0, sheet('detail').indexOf('@media (width < 40rem)'));
 
     expect(wide).toMatch(/\.page-detail__latest\s*{[^}]*grid-column: 3;/);

@@ -13,23 +13,9 @@ import type {Database} from '../../infra/db/postgres/database.js';
 import {PostgresAuditRepository} from '../../infra/db/postgres/audit/postgres-audit-repository.js';
 import {PostgresViolationRepository} from '../../infra/db/postgres/violation/postgres-violation-repository.js';
 
-/**
- * The acceptance criterion for #5, with nothing faked below the queue: a real
- * audit row, a real browser, a real page, and a real database. The unit specs
- * cover the branches; this proves the pieces actually fit together.
- */
-/**
- * The production policy with exactly two holes, both forced by the fixture
- * server: it listens on loopback and on an ephemeral port. Every other range -
- * 10/8, 169.254/16 and the rest - stays genuinely enforced, so the blocking
- * these specs assert is the real policy at work rather than a stub agreeing
- * with them.
- */
 const allowingFixtureServer: UrlPolicy = {
   isAllowedPort: () => true,
   isBlockedAddress: (address) => (address === '127.0.0.1' || address === '::1' ? false : isBlockedAddress(address)),
-  // Not relaxed: recognising an address is not part of what these specs need
-  // to bend, so it stays the real implementation.
   isIpLiteral: DEFAULT_URL_POLICY.isIpLiteral,
 };
 
@@ -99,8 +85,6 @@ describe('run-audit end to end', () => {
     expect(ruleIds).toContain('image-alt');
     expect(ruleIds).toContain('label');
 
-    // The score has to come from the violations this run actually stored, not
-    // from a constant that happens to match.
     const expected = summariseViolations(
       stored.map((violation) => ({
         ruleId: violation.rule_id,
@@ -109,18 +93,14 @@ describe('run-audit end to end', () => {
       })),
     );
     expect(audit.score).toBe(expected.score);
-    // Non-tautological: the fixture page has real violations, so a score of
-    // 100 would mean nothing was deducted for them.
     expect(audit.score).toBeLessThan(100);
 
-    // jsonb reorders keys, so compare structurally rather than as JSON text.
     const counts = audit.counts_by_impact;
     expect(Object.keys(counts).toSorted()).toEqual(['critical', 'minor', 'moderate', 'serious']);
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
     const nodeTotal = stored.reduce((sum, violation) => sum + violation.nodes.length, 0);
     expect(total).toBe(nodeTotal);
 
-    // nodes survive the jsonb round trip as objects, not a Postgres array literal
     expect(stored[0]?.nodes[0]).toEqual({
       target: expect.any(Array),
       html: expect.any(String),
@@ -128,17 +108,8 @@ describe('run-audit end to end', () => {
   }, 60_000);
 
   it('replaces the violations a crashed attempt left behind, rather than appending', async () => {
-    // The interruption this reproduces: an attempt commits violations and then
-    // dies before writing a terminal status. The retry must REPLACE what it
-    // left, not add to it - `violations` has no uniqueness constraint, so an
-    // append would double every rule and inflate every count derived from them.
-    //
-    // Asserting after a completed run instead would prove nothing: the audit
-    // would be `done`, and the ownership fence makes any further write a
-    // no-op, so the assertion would hold even with replacement broken.
     const auditId = await queueAudit(server.baseUrl);
 
-    // Attempt 1: claims, commits violations, then dies before completion.
     const firstClaim = await audits.claimForRun(auditId);
     if (firstClaim === null) {
       throw new Error('fixture failed to claim');
@@ -154,16 +125,13 @@ describe('run-audit end to end', () => {
     ]);
     await audits.releaseClaim(auditId, firstClaim);
 
-    // Attempt 2: the queue's retry, running the audit to completion.
     await sut.run(params(auditId));
 
     const stored = await violations.loadByAuditId(auditId);
     const ruleIds = stored.map((violation) => violation.ruleId);
 
-    // The crashed attempt's row is gone, not sitting alongside the new ones.
     expect(ruleIds).not.toContain('left-behind-by-the-crashed-attempt');
     expect(ruleIds).toContain('image-alt');
-    // And nothing is duplicated.
     expect(new Set(ruleIds).size).toBe(ruleIds.length);
 
     const audit = await load(auditId);
@@ -207,24 +175,16 @@ describe('run-audit end to end', () => {
   }, 60_000);
 
   it('hands the audit back after a retryable failure, and the retry completes it', async () => {
-    // The regression this pins, end to end and against the real repository: a
-    // retryable failure writes no terminal status, so if the claim were kept
-    // the row would sit in `running` holding a live lease. The queue's retry
-    // arrives seconds later, far inside a ten minute lease, fails to claim,
-    // finds nothing to do, reports success - and the audit is stranded in
-    // `running` for ever, with no result and no error.
     const auditId = await queueAudit(server.baseUrl);
     const aborted = new AbortController();
     aborted.abort();
 
-    // Attempt 1: fails transiently, with attempts still remaining.
     await expect(sut.run({auditId, signal: aborted.signal, isFinalAttempt: false})).rejects.toThrow(Error);
 
     const betweenAttempts = await load(auditId);
     expect(betweenAttempts.status).toBe('queued');
     expect(betweenAttempts.claimed_at).toBeNull();
 
-    // Attempt 2: the queue's retry, which must be able to claim and finish.
     await sut.run(params(auditId));
 
     const finished = await load(auditId);
@@ -243,9 +203,6 @@ describe('run-audit end to end', () => {
     const audit = await load(auditId);
     expect(audit.status).toBe('failed');
     expect(audit.error).toBe("That address can't be audited");
-    // The message must not reveal whether anything is listening there. A
-    // response that distinguished "blocked" from "unreachable" would turn this
-    // endpoint into an internal port scanner.
     expect(audit.error).not.toMatch(/refused|timed out|resolve|blocked|private|internal|169\.254/i);
   }, 60_000);
 
@@ -256,8 +213,6 @@ describe('run-audit end to end', () => {
 
     const failed = await load(auditId);
     expect(failed.status).toBe('failed');
-    // A released claim here would invite another delivery to re-run a
-    // finished audit.
     expect(await sut.run(params(auditId))).toBeUndefined();
     expect((await load(auditId)).status).toBe('failed');
   }, 60_000);

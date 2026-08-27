@@ -33,12 +33,9 @@ export const mockLoadAccountBySession = () => ({
 });
 
 export const mockRevokeSession = () => ({
-  revoke: vi.fn<RevokeSession['revoke']>(async () => {
-    /* no-op */
-  }),
+  revoke: vi.fn<RevokeSession['revoke']>(async () => {}),
 });
 
-/** Passes input straight through, so a controller spec exercises the happy path. */
 export const mockValidation = <T>(data: T) => ({
   validate: vi.fn<Validation<T>['validate']>(() => ({data})),
 });

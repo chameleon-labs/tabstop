@@ -12,12 +12,6 @@ export type LoadAuditResultRequest = {
 
 const TERMINAL: ReadonlySet<AuditStatus> = new Set<AuditStatus>(['done', 'failed']);
 
-/**
- * A finished audit is immutable and carries nothing user-identifying, so it is
- * safe for a shared cache to hold - which matters for the share page (#23),
- * where one link can bring real traffic. An in-flight one changes on the next
- * poll, so it must not be cached at all.
- */
 const cacheControlFor = (status: AuditStatus): string => (TERMINAL.has(status) ? 'public, max-age=3600' : 'no-store');
 
 export class LoadAuditResultController implements Controller<LoadAuditResultRequest> {
@@ -30,8 +24,6 @@ export class LoadAuditResultController implements Controller<LoadAuditResultRequ
       }
 
       const result = await this.loadAuditResult.load(request.uuid);
-      // Unknown and malformed are the same answer: a malformed uuid cannot
-      // match a row, so it is a miss rather than an error.
       if (result === null) {
         return notFound(new AuditNotFoundError());
       }

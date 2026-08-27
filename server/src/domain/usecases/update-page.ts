@@ -7,10 +7,5 @@ export type UpdatePageParams = {
 };
 
 export interface UpdatePage {
-  /**
-   * Null when this account has no such page - including when somebody else
-   * does. The caller cannot tell those apart, which is the point: a response
-   * that distinguished them would confirm the row exists.
-   */
   update: (params: UpdatePageParams) => Promise<PageModel | null>;
 }

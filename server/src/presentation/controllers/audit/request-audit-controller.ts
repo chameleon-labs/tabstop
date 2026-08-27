@@ -9,7 +9,6 @@ export type RequestAuditRequest = {
   url?: unknown;
 };
 
-/** How long a client should wait before polling. Widening it needs no frontend deploy. */
 const POLL_AFTER_MS = 2000;
 
 export class RequestAuditController implements Controller<RequestAuditRequest> {
@@ -28,13 +27,9 @@ export class RequestAuditController implements Controller<RequestAuditRequest> {
       }
 
       if (result.outcome === 'unavailable') {
-        // The row has been removed, so this is a clean "try again" rather than
-        // a half-created audit the client would have to reason about.
         return serviceUnavailable({error: 'Could not queue that audit, please try again'});
       }
 
-      // Through the view helper, so this payload is checked against the type
-      // the frontend compiles from rather than merely resembling it.
       return accepted(toRequestAuditResponse(result.audit, POLL_AFTER_MS));
     } catch (error) {
       return serverError(error as Error);

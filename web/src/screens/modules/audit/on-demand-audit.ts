@@ -32,19 +32,9 @@ const resetAtOf = (body: unknown): string | null => {
 
 export type AuditRefusal = {
   message: string;
-  /** True when the same request may work later without anything else changing. */
   retryable: boolean;
 };
 
-/**
- * The sentence a refused request shows, which is the SERVER's sentence.
- *
- * The same rule `failure.ts` records and for the same reason: a second table of
- * prose here would be a copy of the thing whose value is that there is one, and
- * it would drift the first time either side is reworded. What this adds is the
- * half a server cannot write - when the allowance comes back, in the reader's
- * own timezone, because "tomorrow" depends on where they are.
- */
 export const describeAuditRefusal = (
   error: unknown,
   now: number = Date.now(),
@@ -55,9 +45,6 @@ export const describeAuditRefusal = (
     return null;
   }
 
-  // A rejected `fetch` never reached the server, so there is no sentence to
-  // quote - and returning null here would leave the button re-enabling itself
-  // with nothing said, which reads as a click that did not register.
   if (!isApiError(error)) {
     return {message: UNREACHABLE_REQUEST, retryable: true};
   }
@@ -78,14 +65,6 @@ export const describeAuditRefusal = (
   return {message: error.message, retryable: code === 'audit_in_flight'};
 };
 
-/**
- * Asks for an audit of a page the account already tracks.
- *
- * Both queries are invalidated on success rather than one: the accepted audit
- * is queued, so it belongs in the page's own history AND in the dashboard row's
- * latest-audit field, and each of those polls itself to completion once it can
- * see an in-flight point. Without the invalidation neither notices for a minute.
- */
 export const useRequestPageAudit = (
   pageId: string | undefined,
 ): UseMutationResult<RequestAuditResponse, Error, void> => {

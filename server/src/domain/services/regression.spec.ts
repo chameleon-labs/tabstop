@@ -17,8 +17,6 @@ describe('diffViolations', () => {
       {...violation('fixed', 'critical'), source: 'previous-fixed'},
     ];
     const current = [
-      // A severity change does not make an existing rule new. The comparison
-      // is deliberately rule-level, not impact- or node-level.
       {...violation('kept', 'serious'), source: 'current-kept'},
       {...violation('added', 'moderate'), source: 'current-added'},
     ];

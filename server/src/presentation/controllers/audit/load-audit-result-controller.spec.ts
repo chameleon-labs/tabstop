@@ -37,8 +37,6 @@ describe('LoadAuditResultController', () => {
   });
 
   it('answers 404 for a malformed id, not 500', async () => {
-    // A malformed uuid cannot match a row, so it is a miss rather than an
-    // error - the repository already refuses to let SQLSTATE 22P02 escape.
     const {sut, loadAuditResult} = makeSut();
     loadAuditResult.load.mockResolvedValueOnce(null);
 

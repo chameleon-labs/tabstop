@@ -19,10 +19,6 @@ export const setupAccountRoutes = (router: Router, rateLimiter: RateLimiter): vo
     adaptRoute(makeSignupController()),
   );
 
-  // Two buckets. Per-IP alone misses credential stuffing - one password
-  // sprayed across many accounts from many addresses - and per-email alone
-  // lets one address walk a list. Both run before the controller, so neither
-  // can become an early return that skips the dummy scrypt verify.
   router.post(
     '/login',
     makeRateLimit(rateLimiter, [
@@ -32,22 +28,12 @@ export const setupAccountRoutes = (router: Router, rateLimiter: RateLimiter): vo
     adaptRoute(makeLoginController()),
   );
 
-  // Not behind the auth middleware: logout stays idempotent rather than 401.
-  //
-  // It IS behind a bucket, though a deliberately loose one. Idempotence and
-  // "nothing accumulates" are both true and neither is about load: every call
-  // carrying a cookie is an indexed DELETE that an anonymous caller can drive
-  // as fast as it can open sockets. The capacity is set so far above any
-  // genuine client that signing out cannot become a thing a person fails at.
   router.post(
     '/logout',
     makeRateLimit(rateLimiter, [{name: 'logout', bucket: RATE_LIMITS.logout, key: ipKey}]),
     adaptRoute(makeLogoutController()),
   );
 
-  // The limiter runs BEFORE the auth middleware, which looks a session up
-  // before rejecting it - so an unauthenticated caller could otherwise force
-  // one indexed query per request.
   router.get(
     '/me',
     makeRateLimit(rateLimiter, [{name: 'me', bucket: RATE_LIMITS.me, key: ipKey}]),

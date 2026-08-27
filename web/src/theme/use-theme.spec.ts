@@ -26,7 +26,6 @@ describe('useTheme', () => {
   });
 
   it('leaves the document alone on mount, because the boot script already stamped it', () => {
-    // Re-applying would hide a broken boot script.
     localStorage.setItem(THEME_STORAGE_KEY, 'dark');
 
     renderHook(() => useTheme());

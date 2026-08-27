@@ -17,9 +17,6 @@ const makeSut = (): ZodValidationAdapter<Input> => new ZodValidationAdapter<Inpu
 
 describe('ZodValidationAdapter', () => {
   it('returns the parsed value, normalised', () => {
-    // trim() must run BEFORE the email check. `z.email().transform(...)` looks
-    // equivalent and is not: the format check rejects '  a@b.co  ' before
-    // anything gets a chance to trim it.
     const result = makeSut().validate({email: '  A@Example.COM  ', password: 'a'.repeat(12)});
 
     expect(result).toEqual({data: {email: 'a@example.com', password: 'a'.repeat(12)}});

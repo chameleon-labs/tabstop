@@ -2,12 +2,6 @@ import type {AuditStatus, PageHistoryPoint} from '@tabstop/contract';
 
 export type TrendBounds = {lo: number; hi: number};
 
-/**
- * The tightest the fitted axis may get.
- *
- * Without a floor, a page whose score has not moved in a month is drawn as a
- * two-point sawtooth filling the plot area, and every visit reads as a crisis.
- */
 export const MIN_TREND_RANGE = 20;
 
 const STEP = 5;
@@ -55,8 +49,6 @@ export const trendPositions = (
   const bottom = box.height - box.padding.bottom;
   const range = bounds.hi - bounds.lo;
 
-  // Positioned by when each run happened, so a fortnight's pause is a gap
-  // rather than one more evenly spaced step.
   const times = points.map(({createdAt}) => Date.parse(createdAt));
   const start = times[0] ?? 0;
   const span = (times.at(-1) ?? 0) - start;
@@ -145,7 +137,6 @@ export const trendSummary = (points: readonly PageHistoryPoint[]): string => {
   return `Score trend: ${first} to ${last} over ${total}, ${direction}.${tail}`;
 };
 
-/** How a point's status is written where it stands on its own, rather than inside a sentence. */
 export const AUDIT_STATUS_LABELS: Readonly<Record<AuditStatus, string>> = {
   queued: 'Queued',
   running: 'Running',
@@ -155,13 +146,6 @@ export const AUDIT_STATUS_LABELS: Readonly<Record<AuditStatus, string>> = {
 
 export type HistoryRow = {point: PageHistoryPoint; previousScore: number | null};
 
-/**
- * Newest first, each row carrying the last score COMPLETED before it.
- *
- * Not the previous row's score: a failure between two audits would otherwise
- * blank a comparison the reader can still make. Computed across the whole
- * window, so a capped list still compares its oldest row honestly.
- */
 export const historyRows = (points: readonly PageHistoryPoint[]): HistoryRow[] => {
   const rows: HistoryRow[] = [];
   let previousScore: number | null = null;

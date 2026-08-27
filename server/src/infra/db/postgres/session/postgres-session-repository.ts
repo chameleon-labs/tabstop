@@ -29,10 +29,6 @@ export class PostgresSessionRepository
   }
 
   async deleteExpired(): Promise<number> {
-    // `now()` from the database, not a Date from this process - the same
-    // reason loadBySessionId compares against it. With more than one API
-    // instance the app clocks drift, and a sweeper running on the fast one
-    // would delete sessions the slow one still considers live.
     const result = await this.db
       .deleteFrom('sessions')
       .where('expires_at', '<=', sql<Date>`now()`)

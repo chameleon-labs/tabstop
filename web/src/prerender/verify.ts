@@ -1,22 +1,6 @@
 import {escapeHtml} from './inject';
 import type {PrerenderedPage} from './paths';
 
-/**
- * Fails the build when the write `main()` depends on did not actually happen.
- *
- * `_redirects` sends every non-prerendered path to `/app.html` (see the
- * comment there), so a build that silently stopped writing it would leave
- * every route but `/` 404ing on the host - while `pnpm build` still exited 0,
- * since neither `vite build` nor a plain `writeFile` call fails for that. This
- * is the one check standing between that and CI staying green. Every
- * prerendered output is checked independently: a valid landing page cannot
- * stand in for a missing or wrongly stamped nested page.
- *
- * The whole FILE is checked, not the rendered body alone. A page that shipped
- * the landing page's title, or none of its stylesheets, renders correctly in
- * every test that mounts the component and is still wrong for every crawler
- * and every first paint.
- */
 export type PrerenderedOutput = {
   page: PrerenderedPage;
   exists: boolean;

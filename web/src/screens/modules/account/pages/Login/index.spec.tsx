@@ -9,7 +9,6 @@ import {returnToSearch} from '../../return-to';
 import {Login} from './index';
 import type {LoadPagesResponse, PageHistoryResponse, PageSummary} from '@tabstop/contract';
 
-/** The recorded destination is `/pages/42`, which names itself after this. */
 const monitoredPage: PageSummary = {
   id: '42',
   url: 'https://example.com/checkout',
@@ -73,8 +72,6 @@ describe('Login', () => {
       .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
       .mockResolvedValueOnce(jsonResponse(200, account))
       .mockResolvedValueOnce(jsonResponse(200, account))
-      // The real dashboard reads its list the moment it mounts, and
-      // `/pages/42` reads its own history.
       .mockImplementation(afterSignIn);
   };
 
@@ -187,12 +184,9 @@ describe('Login', () => {
 
   it('locks the form while the login request is pending', async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'})).mockImplementationOnce(
-      () =>
-        new Promise<Response>(() => {
-          // Keep the mutation pending so every form control can be inspected in that state.
-        }),
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, {error: 'Unauthorized'}))
+      .mockImplementationOnce(() => new Promise<Response>(() => {}));
     await openLogin();
     await enterCredentials(user);
 

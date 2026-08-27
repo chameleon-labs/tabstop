@@ -19,8 +19,6 @@ describe('sparklineCoordinates', () => {
   });
 
   it('scales y from a fixed 0..100 domain, not the local range', () => {
-    // Normalising to the row's own min/max would make a 2-point wobble look
-    // identical to a 60-point collapse.
     expect(sparklineCoordinates([point(60), point(50)])).toEqual([
       {x: 2, y: 14.8},
       {x: 118, y: 18},

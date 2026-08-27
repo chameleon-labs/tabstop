@@ -25,10 +25,6 @@ describe('DbRequestPageAudit', () => {
   });
 
   it('counts the allowance in UTC calendar days, not over the last 24 hours', async () => {
-    // A rolling window would let an audit taken at 23:00 block the next
-    // morning, which is not what "one a day" means to a reader looking at a
-    // date. It also has to agree with the nightly run, whose whole dedupe is
-    // in UTC days.
     const {sut, audits} = makeSut();
 
     await sut.request({userId: '7', pageId: '42'});
@@ -62,9 +58,6 @@ describe('DbRequestPageAudit', () => {
   });
 
   it('refuses a full queue WITHOUT spending the day allowance', async () => {
-    // The order this pins is the whole point of checking depth first. A reader
-    // told to come back later has to still have something to come back with,
-    // so a refusal must not write the row that costs them their day.
     const {sut, audits, queue} = makeSut();
     queue.backlogCount = vi.fn<AuditJobQueue['backlogCount']>(() => Promise.resolve(100));
 
@@ -73,8 +66,6 @@ describe('DbRequestPageAudit', () => {
   });
 
   it('gives the allowance back when the queue genuinely refused the job', async () => {
-    // The row is removed, so the count that decides tomorrow's allowance does
-    // not include an audit nothing will ever run.
     const {sut, releases, queue} = makeSut();
     queue.enqueueOnce = vi.fn<AuditJobQueue['enqueueOnce']>(() => Promise.reject(new Error('redis down')));
     queue.has = vi.fn<AuditJobQueue['has']>(() => Promise.resolve(false));
@@ -84,9 +75,6 @@ describe('DbRequestPageAudit', () => {
   });
 
   it('keeps the row when the queue may have taken the job and lost the reply', async () => {
-    // Deleting it then would leave a job pointing at an audit that no longer
-    // exists - the reasoning `DbRequestAudit` records, and the reason this
-    // path is not simply "enqueue failed".
     const {sut, releases, queue} = makeSut();
     queue.enqueueOnce = vi.fn<AuditJobQueue['enqueueOnce']>(() => Promise.reject(new Error('timeout')));
     queue.has = vi.fn<AuditJobQueue['has']>(() => Promise.resolve(true));

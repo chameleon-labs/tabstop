@@ -24,8 +24,6 @@ describe('bySeverity', () => {
   });
 
   it('puts the most severe first, and the unrated last', () => {
-    // Unknown severity is not high. Dropping them, or sorting them among the
-    // minor ones, would hide findings that are genuinely findings.
     const sorted = bySeverity([at(null, 'e'), at('minor', 'd'), at('critical', 'a'), at('serious', 'b')]);
 
     expect(sorted.map((found) => found.ruleId)).toEqual(['a', 'b', 'd', 'e']);
@@ -38,7 +36,6 @@ describe('bySeverity', () => {
   });
 
   it('leaves the response alone', () => {
-    // The query cache hands out the same array to every reader.
     const original = [at('minor', 'b'), at('critical', 'a')];
 
     bySeverity(original);

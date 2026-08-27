@@ -5,17 +5,6 @@ import type {DnsResolver} from '../../protocols/net/dns-resolver.js';
 import type {AuditJobQueue} from '../../protocols/queue/audit-job-queue.js';
 import type {UrlPolicy} from '../../../domain/services/url-safety.js';
 
-/**
- * A stub, not the real policy. This is a unit spec for the usecase's
- * ORCHESTRATION - validate, resolve, insert, enqueue, and what it undoes when
- * one of those fails - and the policy is a collaborator it is handed. Reaching
- * into infra/ for the real one would put a driver-layer detail inside a data/
- * spec and make these assertions depend on a range list that has nothing to do
- * with what they are checking.
- *
- * Every range and port rule the real policy enforces is covered exhaustively
- * beside that implementation, with no mocks at all.
- */
 const stubPolicy: UrlPolicy = {
   isAllowedPort: (port) => port === 80 || port === 443,
   isBlockedAddress: (address) => !address.startsWith('93.184.216.'),
@@ -32,14 +21,6 @@ const makeSut = (addresses: string[] = ['93.184.216.34']) => {
 };
 
 describe('DbRequestAudit queue depth', () => {
-  /**
-   * The gap the per-IP rate limit cannot close. A bucket bounds ONE source;
-   * the queue is shared by all of them, so enough distinct addresses - each
-   * politely inside its own allowance - still drive the backlog to whatever
-   * length they collectively want. Nothing downstream refuses it either:
-   * AUDIT_CONCURRENCY bounds how many audits run at once, not how many wait,
-   * and each waiting one is a Redis job plus a row that a user is polling.
-   */
   const deepQueue = (backlog: number) => {
     const queue = mockAuditQueue();
     return Object.assign(queue, {
@@ -61,8 +42,6 @@ describe('DbRequestAudit queue depth', () => {
     const result = await sut.request({url: 'https://example.com/a'});
 
     expect(result.outcome).toBe('unavailable');
-    // Checked BEFORE the insert, so a refusal strands no row for the cleanup
-    // path to find - the client simply retries later for a fresh id.
     expect(audits.add).not.toHaveBeenCalled();
     expect(queue.enqueueOnce).not.toHaveBeenCalled();
   });
@@ -75,11 +54,6 @@ describe('DbRequestAudit queue depth', () => {
   });
 
   it('accepts when the queue cannot say how deep it is', async () => {
-    // Fails OPEN, deliberately. A depth check that cannot answer must not
-    // become a second way for a sick Redis to refuse submissions: the enqueue
-    // below already handles a genuinely unreachable queue, and it does so by
-    // retrying first. Turning "I could not measure" into a 503 would make an
-    // unmeasurable queue indistinguishable from a full one.
     const queue = mockAuditQueue();
     const failing = Object.assign(queue, {
       backlogCount: vi.fn<AuditJobQueue['backlogCount']>(() => Promise.reject(new Error('redis unreachable'))),
@@ -91,24 +65,6 @@ describe('DbRequestAudit queue depth', () => {
   });
 
   it('overshoots under a simultaneous burst, then refuses until it drains', async () => {
-    // The soft edge, pinned rather than papered over.
-    //
-    // Reading the depth and then enqueueing is check-then-act: everything in
-    // flight during that window has already passed the check, so a burst of
-    // simultaneous submissions - across instances too - all get in and the
-    // queue ends up over the cap by roughly the size of the burst.
-    //
-    // What the cap does bound is the STEADY STATE. Every request arriving
-    // after the burst sees the raised depth and is refused, so the queue
-    // cannot keep growing; it spikes and then drains. That is the property
-    // worth having here, and it is the second half of this test.
-    //
-    // Closing the window properly needs an atomic reservation in Redis -
-    // released on both the insert and the enqueue failing, with a TTL for the
-    // process dying in between. That is a distributed semaphore, and it would
-    // have to fail OPEN to respect this branch's rule that Redis is not a hard
-    // dependency of the write path - at which point it is not atomic when it
-    // matters either. The soft edge is the better trade for a backstop.
     const {sut: burstSut} = sutWith(deepQueue(99), 100);
 
     const burst = await Promise.all(
@@ -117,7 +73,6 @@ describe('DbRequestAudit queue depth', () => {
 
     expect(burst.every((result) => result.outcome === 'queued')).toBe(true);
 
-    // ...and the queue, now over its cap, turns the next one away.
     const {sut: afterSut, audits} = sutWith(deepQueue(109), 100);
 
     expect((await afterSut.request({url: 'https://example.com/a'})).outcome).toBe('unavailable');
@@ -125,8 +80,6 @@ describe('DbRequestAudit queue depth', () => {
   });
 
   it('checks depth only after the URL has been accepted', async () => {
-    // A blocked address must still get its specific rejection rather than a
-    // generic "try again later" that tells the caller nothing.
     const {sut, queue} = sutWith(deepQueue(100), 100);
 
     const result = await sut.request({url: 'file:///etc/passwd'});
@@ -138,8 +91,6 @@ describe('DbRequestAudit queue depth', () => {
 
 describe('DbRequestAudit', () => {
   it('validates, inserts, then enqueues - in that order', async () => {
-    // Order is the point: enqueueing first lets the worker dequeue an id whose
-    // row does not exist yet.
     const {sut, audits, queue} = makeSut();
 
     const result = await sut.request({url: 'https://example.com/a'});
@@ -174,9 +125,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('rejects a hostname that resolves to a private address', async () => {
-    // Gate 1's other half. Without this the audit is queued, a browser is
-    // launched, and the worker's guard fails it thirty seconds later - correct
-    // but wasteful, and it fails #7's stated criteria.
     const {sut, audits, queue} = makeSut(['10.0.0.5']);
 
     expect(await sut.request({url: 'https://internal.corp/'})).toEqual({
@@ -188,7 +136,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('rejects a host answering with one public and one private address', async () => {
-    // Taking only the first answer would wave this straight through.
     const {sut, audits} = makeSut(['93.184.216.34', '10.0.0.5']);
 
     expect((await sut.request({url: 'https://mixed.test/'})).outcome).toBe('rejected');
@@ -211,8 +158,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('rejects a URL carrying credentials before anything else happens', async () => {
-    // They would otherwise be stored and handed back by the public result
-    // endpoint, and cached for an hour.
     const {sut, audits} = makeSut();
 
     expect(await sut.request({url: 'https://alice:secret@example.com/'})).toEqual({
@@ -227,7 +172,6 @@ describe('DbRequestAudit', () => {
 
     await sut.request({url: 'HTTPS://Example.COM/Path'});
 
-    // Host folded, path left alone - the path is significant to a server.
     expect(audits.add).toHaveBeenCalledWith({url: 'https://example.com/Path', pageId: null});
   });
 
@@ -240,8 +184,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('retries a failing enqueue before giving up', async () => {
-    // Most enqueue failures are a blip. Absorbing them here keeps the delete
-    // path for a genuine outage.
     const {sut, queue, deletes} = makeSut();
     queue.enqueueOnce.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
@@ -259,14 +201,10 @@ describe('DbRequestAudit', () => {
     const result = await sut.request({url: 'https://example.com/a'});
 
     expect(result).toEqual({outcome: 'unavailable'});
-    // Nothing stranded: the row was acknowledged to nobody, so it goes.
     expect(deletes.deleteIfQueued).toHaveBeenCalledWith('audit-1');
   });
 
   it('keeps the audit when the queue turns out to have accepted it', async () => {
-    // An enqueue can fail from here while Redis committed the job and lost the
-    // reply. Deleting the row then would leave a job pointing at an audit that
-    // no longer exists - a guaranteed failure, for work that was accepted.
     const {sut, queue, deletes} = makeSut();
     queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'));
     queue.has.mockResolvedValue(true);
@@ -278,8 +216,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('retries the same audit rather than submitting a second one', async () => {
-    // The queue dedupes on the audit id, so a retry only enqueues once - but
-    // only as long as every attempt asks for the same audit.
     const {sut, queue} = makeSut();
     queue.enqueueOnce.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
@@ -289,8 +225,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('deletes the row when the queue cannot say whether it accepted', async () => {
-    // A job that fails once with "audit no longer exists" is a better outcome
-    // than a row nothing ever recovers.
     const {sut, queue, deletes} = makeSut();
     queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'));
     queue.has.mockRejectedValue(new Error('ECONNREFUSED'));
@@ -300,22 +234,9 @@ describe('DbRequestAudit', () => {
   });
 
   it('does not hang when the queue never answers', async () => {
-    // BullMQ retries a lost Redis forever, so `add` does not reject - it
-    // hangs. Measured at five minutes. Without a bound the request never
-    // answers and none of the recovery above is reachable.
     const {sut, queue, deletes} = makeSut();
-    queue.enqueueOnce.mockImplementation(
-      async () =>
-        await new Promise<never>(() => {
-          /* never settles */
-        }),
-    );
-    queue.has.mockImplementation(
-      async () =>
-        await new Promise<never>(() => {
-          /* never settles */
-        }),
-    );
+    queue.enqueueOnce.mockImplementation(async () => await new Promise<never>(() => {}));
+    queue.has.mockImplementation(async () => await new Promise<never>(() => {}));
 
     const result = await sut.request({url: 'https://example.com/a'});
 
@@ -324,8 +245,6 @@ describe('DbRequestAudit', () => {
   }, 30_000);
 
   it('still reports unavailable when the cleanup delete also fails', async () => {
-    // This degrades to a stranded queued row, which is the accepted residual -
-    // but it must not become a 500 on top of it.
     const {sut, queue, deletes} = makeSut();
     queue.enqueueOnce.mockRejectedValue(new Error('ECONNREFUSED'));
     deletes.deleteIfQueued.mockRejectedValue(new Error('database down'));
@@ -334,9 +253,6 @@ describe('DbRequestAudit', () => {
   });
 
   it('lets a database failure escape, rather than reporting unavailable', async () => {
-    // `unavailable` means the queue is down and the row is gone. A database
-    // failure is neither, and hiding it behind the same outcome would make a
-    // 503 the answer to everything.
     const {sut, audits} = makeSut();
     audits.add.mockRejectedValueOnce(new Error('database down'));
 

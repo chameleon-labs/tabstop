@@ -17,8 +17,6 @@ const show = (failure: DescribedFailure): {onRetry: ReturnType<typeof vi.fn>} =>
 
 describe('AuditFailure', () => {
   it('shows the sentence the server wrote, rather than one of its own', () => {
-    // Eight of these exist server-side, written for a person. A ninth table
-    // here would drift the first time either side is reworded.
     show({message: 'Could not resolve that domain', action: 'retry', source: 'audit'});
 
     expect(screen.getByText('Could not resolve that domain')).toBeVisible();
@@ -26,15 +24,12 @@ describe('AuditFailure', () => {
 
   describe('the heading names what actually failed', () => {
     it('does not say an audit did not finish when none was started', () => {
-      // A refused request means there is nothing that could have finished.
       show({message: "That address can't be audited", action: 'check-url', source: 'request'});
 
       expect(screen.getByRole('heading', {level: 2})).toHaveTextContent('That audit could not be started');
     });
 
     it('does not claim a running audit failed when only the poll did', () => {
-      // The audit may well be finishing right now; only the question about it
-      // failed. Telling someone it did not finish is worse than vague.
       show({message: 'Internal server error', action: 'retry', source: 'poll'});
 
       expect(screen.getByRole('heading', {level: 2})).toHaveTextContent('Lost track of that audit');
@@ -48,8 +43,6 @@ describe('AuditFailure', () => {
   });
 
   it('interrupts, because it replaces something being waited on', () => {
-    // The one place in this flow where interrupting is right: a question was
-    // asked thirty seconds ago and the answer is that it failed.
     show({message: 'boom', action: 'retry', source: 'audit'});
 
     expect(screen.getByRole('alert')).toHaveTextContent('boom');
@@ -65,9 +58,6 @@ describe('AuditFailure', () => {
     });
 
     it('offers no button when the caller has nothing to retry', () => {
-      // The share page reads someone else's finished audit. Re-running it there
-      // would either do nothing or start a different audit under a different
-      // link, so the button would lie either way.
       render(
         <Providers>
           <AuditFailure failure={{message: 'The page took too long to load', action: 'retry', source: 'audit'}} />
@@ -81,8 +71,6 @@ describe('AuditFailure', () => {
 
   describe('check-url', () => {
     it('does not offer a retry that is guaranteed to fail identically', () => {
-      // A 400 is a property of the URL. A button that cannot work is worse than
-      // no button.
       show({message: "That address can't be audited", action: 'check-url', source: 'request'});
 
       expect(screen.queryByRole('button', {name: 'Try again'})).not.toBeInTheDocument();
@@ -99,10 +87,6 @@ describe('AuditFailure', () => {
     };
 
     it('reads as an offer rather than a failure', () => {
-      // Someone who has audited enough pages to exhaust the anonymous limit has
-      // demonstrated the product's value more convincingly than any landing
-      // page could. Framing that as a failure would be the most expensive copy
-      // in the app.
       show(limited);
 
       expect(screen.getByRole('heading', {level: 2})).toHaveTextContent('You have used your free audits');
@@ -110,8 +94,6 @@ describe('AuditFailure', () => {
     });
 
     it('still says how long the wait is', () => {
-      // An offer that hides the free alternative is a dark pattern, and this
-      // product cannot afford one.
       show(limited);
 
       expect(screen.getByText(/wait 45 seconds/)).toBeVisible();

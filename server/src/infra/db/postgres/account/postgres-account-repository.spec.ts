@@ -55,9 +55,6 @@ describe('PostgresAccountRepository', () => {
     });
 
     it('returns null for the loser of a concurrent insert, rather than throwing', async () => {
-      // Two signups for the same email both pass any prior existence check and
-      // one hits the unique constraint. That has to be an ordinary "taken", not
-      // an unhandled database error surfacing to the client as a 500.
       const email = newEmail();
 
       const results = await Promise.all([
@@ -110,7 +107,6 @@ describe('PostgresAccountRepository', () => {
     });
 
     it('returns null for an expired session', async () => {
-      // Expiry is enforced in SQL so that no caller can forget it.
       const {sessionId} = await makeAccountWithSession(new Date(Date.now() - 1000));
 
       expect(await sut.loadBySessionId(sessionId)).toBeNull();

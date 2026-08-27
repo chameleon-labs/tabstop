@@ -35,15 +35,11 @@ describe('DbRunAudit', () => {
     expect(auditStatus.claimForRun).toHaveBeenCalledWith('audit-1');
     expect(violations.replaceAll).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), expect.any(Array));
     expect(auditStatus.complete).toHaveBeenCalledWith('audit-1', new Date('2026-07-27T10:00:00Z'), {
-      // (10 x 2 critical) + (5 x 1 serious) = 25 deducted.
       score: 75,
-      // counted per NODE, not per rule: two alt-less images are two problems
       countsByImpact: {minor: 0, moderate: 0, serious: 1, critical: 2},
       axeVersion: '4.12.1',
       durationMs: 1234,
       settled: true,
-      // Exact objects: nodes and display copy are not part of rule-level
-      // regression identity, while impact is what makes a new rule severe.
       violations: [
         {ruleId: 'image-alt', impact: 'critical'},
         {ruleId: 'color-contrast', impact: 'serious'},
@@ -79,8 +75,6 @@ describe('DbRunAudit', () => {
   });
 
   it('writes all four impact keys for a clean page', async () => {
-    // The check constraint rejects a partial record, so zero counts still have
-    // to be spelled out in full.
     const {sut, auditStatus, pageAuditor} = makeSut();
     pageAuditor.audit.mockResolvedValueOnce({
       violations: [],
@@ -125,10 +119,7 @@ describe('DbRunAudit', () => {
 
     await sut.run(params());
 
-    // Both are stored...
     expect(violations.replaceAll.mock.calls[0]?.[2]).toHaveLength(2);
-    // ...but only the one with a severity is counted. Inventing a bucket for
-    // the other would corrupt the comparison regression detection makes.
     expect(auditStatus.complete.mock.calls[0]?.[2].countsByImpact).toEqual({
       minor: 0,
       moderate: 0,
@@ -165,8 +156,6 @@ describe('DbRunAudit', () => {
   });
 
   it('does not mark failed for a transient failure while attempts remain', async () => {
-    // Writing `failed` here would flap the row failed -> running -> failed
-    // while the queue is still retrying.
     const {sut, auditStatus, pageAuditor} = makeSut();
     pageAuditor.audit.mockRejectedValueOnce(new Error('some transient blip'));
 
@@ -175,10 +164,6 @@ describe('DbRunAudit', () => {
   });
 
   it('hands the claim back when a transient failure will be retried', async () => {
-    // Without this the row sits in `running` holding a live lease, and the
-    // queue's retry - arriving seconds later, far inside a ten minute lease -
-    // cannot claim it. That attempt finds nothing to do, reports success, and
-    // the audit is stranded in `running` for good.
     const {sut, auditStatus, pageAuditor} = makeSut();
     pageAuditor.audit.mockRejectedValueOnce(new Error('some transient blip'));
 
@@ -188,8 +173,6 @@ describe('DbRunAudit', () => {
   });
 
   it('keeps the claim when a permanent failure ends the audit', async () => {
-    // Nothing will retry it, and the row is terminal, so handing the claim
-    // back would only invite another delivery to re-run a finished audit.
     const {sut, auditStatus, pageAuditor} = makeSut();
     pageAuditor.audit.mockRejectedValueOnce(new Error('page.goto: net::ERR_NAME_NOT_RESOLVED at http://x/'));
 
@@ -208,7 +191,6 @@ describe('DbRunAudit', () => {
       new Date('2026-07-27T10:00:00Z'),
       'Something went wrong running this audit',
     );
-    // Terminal, so there is nothing to hand back.
     expect(auditStatus.releaseClaim).not.toHaveBeenCalled();
   });
 
@@ -236,10 +218,6 @@ describe('DbRunAudit', () => {
   });
 
   it('refuses to acknowledge an audit still held by a live claim', async () => {
-    // Acknowledging here loses the audit: the attempt holding the claim may
-    // still die without writing a terminal status - after runWithTimeout's
-    // bounded grace, or because its own release failed - and nothing would
-    // ever pick it up again. Failing keeps the job on the queue.
     const {sut, loadAudit, auditStatus, pageAuditor} = makeSut();
     auditStatus.claimForRun.mockResolvedValueOnce(null);
     loadAudit.loadById

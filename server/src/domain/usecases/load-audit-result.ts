@@ -7,6 +7,5 @@ export type AuditResult = {
 };
 
 export interface LoadAuditResult {
-  /** Null when no audit carries that public uuid, including a malformed one. */
   load: (publicUuid: string) => Promise<AuditResult | null>;
 }

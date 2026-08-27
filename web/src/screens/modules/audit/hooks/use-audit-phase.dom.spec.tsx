@@ -10,17 +10,6 @@ const Harness = ({status}: {status: ProgressStatus}): React.JSX.Element => {
   return <p data-testid="phase">{phase}</p>;
 };
 
-/**
- * Observed through the DOM rather than through the hook's return value, and the
- * distinction is the whole test.
- *
- * The adjust-state-during-render pattern deliberately runs the component body
- * once with the stale epoch and then DISCARDS that render - so a spec recording
- * every return value sees "Scoring", while nothing was ever committed or shown.
- * A first version of this asserted on those return values and failed against
- * correct code. What a person hears follows the DOM, so the DOM is what to
- * watch.
- */
 describe('useAuditPhase, as it reaches the screen', () => {
   beforeEach(() => {
     vi.useFakeTimers({shouldAdvanceTime: true});
@@ -39,10 +28,6 @@ describe('useAuditPhase, as it reaches the screen', () => {
 
     const node = screen.getByTestId('phase');
     const seen: string[] = [];
-    // `takeRecords()` DRAINS the queue without invoking the callback, so the
-    // draining has to do the recording too - a version that called it and
-    // relied on the callback collected nothing at all, and passed against the
-    // bug for that reason.
     const drain = (records: MutationRecord[]): void => {
       for (const record of records) {
         if (record.oldValue !== null && record.oldValue !== undefined) {

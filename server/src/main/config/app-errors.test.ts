@@ -5,15 +5,6 @@ import {setupApp} from './app.js';
 import {connectDatabase, disconnectDatabase} from './database.js';
 import {makeTestAppDependencies} from '../test/test-app-dependencies.js';
 
-/**
- * Everything reaching Express that no controller ever sees.
- *
- * `adaptRoute` catches what a controller throws, so the layers below it are
- * the only ones that can still answer for the app - and until there was a
- * handler for them, they answered as Express's default: an HTML page carrying
- * a stack trace. Two separate problems in one response, and both are the kind
- * that only ever show up in production.
- */
 describe('framework-level failures', () => {
   let app: Express;
 
@@ -31,13 +22,6 @@ describe('framework-level failures', () => {
     await disconnectDatabase();
   });
 
-  /**
-   * The specific leak: absolute paths naming the deploy user and directory
-   * layout, plus the exact version of every package in the frame list - which
-   * is a shopping list for known CVEs. Node's default handler prints this
-   * whenever NODE_ENV is not "production", and nothing in this repo sets
-   * NODE_ENV at all.
-   */
   const expectsNoInternals = (text: string): void => {
     expect(text).not.toMatch(/SyntaxError|PayloadTooLargeError/);
     expect(text).not.toMatch(/node_modules|\/Users\/|\/home\/|\.pnpm/);
@@ -84,16 +68,12 @@ describe('framework-level failures', () => {
   });
 
   it('does not advertise the framework', async () => {
-    // Free reconnaissance: it names the framework on every response, including
-    // the error paths above, and costs one line to turn off.
     const response = await request(app).get('/api/health');
 
     expect(response.headers['x-powered-by']).toBeUndefined();
   });
 
   it('tells browsers not to sniff the content type', async () => {
-    // This API only ever returns JSON, and a sniffed response is how a
-    // reflected value (a url, an audit error) gets treated as markup.
     const response = await request(app).get('/api/health');
 
     expect(response.headers['x-content-type-options']).toBe('nosniff');

@@ -5,9 +5,7 @@ import type {DnsResolver} from '../../data/protocols/net/dns-resolver.js';
 const response = (status: number, headers: Record<string, string> = {}): FetchedResponse => ({
   status: () => status,
   headers: () => headers,
-  dispose: vi.fn(async () => {
-    /* no-op */
-  }),
+  dispose: vi.fn(async () => {}),
 });
 
 type Attempted = {url: string; method: string; headers: Record<string, string>; data?: Buffer};
@@ -38,20 +36,14 @@ const makeRoute = (
         options.binaryBody ??
         (options.postData === undefined || options.postData === null ? null : Buffer.from(options.postData)),
     }),
-    abort: vi.fn(async (_errorCode: string) => {
-      /* no-op */
-    }),
+    abort: vi.fn(async (_errorCode: string) => {}),
     fetch: vi.fn((attempt: Attempted & {maxRedirects: number}) => {
       fetched.push(attempt.url);
       attempts.push(attempt);
       return Promise.resolve(responses[Math.min(served++, responses.length - 1)] as FetchedResponse);
     }),
-    fulfill: vi.fn(async (_options: {response: FetchedResponse}) => {
-      /* no-op */
-    }),
-    continue: vi.fn(async () => {
-      /* no-op */
-    }),
+    fulfill: vi.fn(async (_options: {response: FetchedResponse}) => {}),
+    continue: vi.fn(async () => {}),
   };
   return {route, fetched, attempts};
 };
@@ -95,7 +87,6 @@ describe('makeRequestGuard', () => {
     });
 
     it('blocks a host answering with one public and one private address', async () => {
-      // Taking only the first answer would wave this straight through.
       const guard = makeRequestGuard(resolverFor({'evil.test': ['93.184.216.34', '10.0.0.5']}));
       const {route} = makeRoute('https://evil.test/');
 
@@ -114,9 +105,6 @@ describe('makeRequestGuard', () => {
     });
 
     it('blocks a public host that redirects to a private one', async () => {
-      // THE case the issue's own mechanism misses: context.route never fires
-      // for the redirect target, so without this walk the private response
-      // lands in the page.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route} = makeRoute('https://example.com/redirect', {
         responses: [response(302, {location: 'http://169.254.169.254/'})],
@@ -176,8 +164,6 @@ describe('makeRequestGuard', () => {
 
   describe('redirect semantics', () => {
     it('demotes a POST to GET and drops its body on a 303', async () => {
-      // Replaying the POST would repeat a side effect the server has already
-      // performed, and send a body to an endpoint that never expected one.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route, attempts} = makeRoute('https://example.com/submit', {
         method: 'POST',
@@ -192,7 +178,6 @@ describe('makeRequestGuard', () => {
       expect(attempts[0]?.data?.toString()).toBe('name=value');
       expect(attempts[1]?.method).toBe('GET');
       expect(attempts[1]?.data).toBeUndefined();
-      // A content-length left on a bodyless GET is its own source of confusion.
       expect(attempts[1]?.headers['content-type']).toBeUndefined();
       expect(attempts[1]?.headers['content-length']).toBeUndefined();
     });
@@ -214,7 +199,6 @@ describe('makeRequestGuard', () => {
     });
 
     it('preserves the method and body on 307 and 308', async () => {
-      // Those two status codes exist precisely to say "do it again, the same".
       for (const status of [307, 308]) {
         const guard = makeRequestGuard(resolverFor(PUBLIC));
         const {route, attempts} = makeRoute('https://example.com/submit', {
@@ -256,23 +240,13 @@ describe('makeRequestGuard', () => {
         headers: () => ({}),
         postDataBuffer: () => null,
       }),
-      abort: vi.fn(async (_code: string) => {
-        /* no-op */
-      }),
+      abort: vi.fn(async (_code: string) => {}),
       fetch: vi.fn(() => Promise.reject(new Error(message))),
-      fulfill: vi.fn(async () => {
-        /* no-op */
-      }),
-      continue: vi.fn(async () => {
-        /* no-op */
-      }),
+      fulfill: vi.fn(async () => {}),
+      continue: vi.fn(async () => {}),
     });
 
     it('translates the failure into the matching abort code', async () => {
-      // Taking over the fetch means taking over its failures. Left to escape,
-      // the route is never answered, page.goto runs to its full timeout, and a
-      // fast "Nothing responded at that address" becomes a slow, wrong "The
-      // page took too long to load".
       const cases: [string, string][] = [
         ['connect ECONNREFUSED 127.0.0.1:45999', 'connectionrefused'],
         ['getaddrinfo ENOTFOUND nope.invalid', 'namenotresolved'],
@@ -310,8 +284,6 @@ describe('makeRequestGuard', () => {
     });
 
     it('blocks a subresource pointed at a private address', async () => {
-      // <img src="http://169.254.169.254/..."> reaches nothing the user can
-      // read, but the request still fires from inside the network.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route} = makeRoute('http://169.254.169.254/latest/meta-data/', {navigation: false});
 
@@ -322,10 +294,6 @@ describe('makeRequestGuard', () => {
     });
 
     it('walks a subresource redirect instead of handing it to the browser', async () => {
-      // The same bypass as the navigation case, one level down: continue() on
-      // a public subresource lets Chromium follow its 30x internally, and the
-      // handler is never called for the target - so an attacker-controlled
-      // image URL could redirect to a metadata address unchecked.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route} = makeRoute('https://example.com/tracker.png', {
         navigation: false,
@@ -354,10 +322,6 @@ describe('makeRequestGuard', () => {
 
   describe('memory', () => {
     it('disposes an intermediate redirect response, whose body is never served', async () => {
-      // Playwright retains every fetched body until dispose() or teardown, and
-      // the guard now fetches every subresource as well as every navigation -
-      // so a page serving large responses could pile them up in worker memory
-      // for the whole audit.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const intermediate = response(302, {location: 'https://example.com/b'});
       const final = response(200);
@@ -384,9 +348,6 @@ describe('makeRequestGuard', () => {
 
   describe('statuses that are not redirects', () => {
     it('does not follow a 304 that carries a Location header', async () => {
-      // fetch follows 301, 302, 303, 307 and 308 - and nothing else. Treating
-      // any 3xx as a redirect lets a server make the auditor issue a request
-      // Chromium itself would never make.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route, fetched} = makeRoute('https://example.com/a', {
         responses: [response(304, {location: 'http://169.254.169.254/'})],
@@ -402,9 +363,6 @@ describe('makeRequestGuard', () => {
 
   describe('a malformed Location header', () => {
     it('aborts deterministically rather than leaving the route unanswered', async () => {
-      // new URL() throwing here would escape the fetch handler entirely, so a
-      // hostile page could turn an invalid redirect into a full navigation
-      // timeout and three audit attempts instead of one classified failure.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route} = makeRoute('https://example.com/a', {
         responses: [response(302, {location: 'http://[not a url'})],
@@ -417,11 +375,6 @@ describe('makeRequestGuard', () => {
 
   describe('preserving the browser-visible URL', () => {
     it('redirects the browser to the final url instead of collapsing the chain', async () => {
-      // Fulfilling the final body against the original request copies status,
-      // headers and body onto the FIRST url - so Chromium keeps the document
-      // at the start address. Measured: /start -> /dir/page left the page at
-      // /start and resolved <img src="asset.png"> to /asset.png, a 404, while
-      // running the target's content under the start origin.
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route} = makeRoute('https://example.com/start', {
         responses: [response(302, {location: '/dir/page'}), response(200)],
@@ -449,8 +402,6 @@ describe('makeRequestGuard', () => {
 
   describe('binary request bodies', () => {
     it('replays the bytes it was given, not a UTF-8 round trip', async () => {
-      // postData() decodes as UTF-8, which mangles binary bodies and multipart
-      // uploads carrying arbitrary file bytes.
       const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe]);
       const guard = makeRequestGuard(resolverFor(PUBLIC));
       const {route, attempts} = makeRoute('https://example.com/upload', {

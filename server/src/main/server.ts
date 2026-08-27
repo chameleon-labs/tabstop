@@ -13,19 +13,12 @@ const server = startListening(app, env.port, {
   info: (message) => {
     console.log(message);
   },
-  // Exit rather than log and continue. A process that stays alive holding no
-  // socket is the failure this replaces: the log claimed it was serving, and
-  // nothing - supervisor or `concurrently --kill-others` - saw an exit to
-  // react to. See #84.
   fatal: (message) => {
     console.error(message);
     process.exit(1);
   },
 });
 
-// The reachability probe is purely informational - a log line - so it must
-// never gate the listener. An unreachable database degrades the service
-// (503 from /api/health) rather than blocking boot.
 void new PostgresHealthAdapter(getDatabase()).isReachable().then((reachable) => {
   console.log(
     reachable
@@ -49,8 +42,6 @@ const shutdown = (signal: string): void => {
         process.exit(0);
       })
       .catch((error: unknown) => {
-        // Exit non-zero so a supervisor or CI can distinguish a failed teardown
-        // from a clean one - matching the force-exit path above.
         console.error('Error closing the database pool or rate limiter:', error);
         process.exit(1);
       });

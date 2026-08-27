@@ -1,11 +1,3 @@
-/**
- * The icon set. One folder per icon, so a consumer can import just the one
- * it draws and a bundler can drop the rest - a single file exporting
- * eighteen of them cannot be split by anything downstream.
- *
- * `SvgIcon` is the only `<svg>` in the set. See its own folder for the size
- * scale and why `aria-hidden` lives there rather than in each icon.
- */
 export {SvgIcon, type IconProps, type IconSize} from './SvgIcon';
 export {AlertCircle} from './AlertCircle';
 export {AlertTriangle} from './AlertTriangle';

@@ -2,11 +2,6 @@ import {env} from '../config/env.js';
 import {makeDatabase} from '../../infra/db/postgres/helpers/postgres-helper.js';
 import {runMigrations} from '../../infra/db/postgres/migrations/migrator.js';
 
-// Deliberately `makeDatabase` and not `connectDatabase`: this is the caller
-// that must run with no statement_timeout. Migrations build indexes, which on
-// a large `audits` table legitimately outruns any bound worth setting for
-// request and job traffic, and a migration killed halfway is a far worse
-// failure than a slow one. See #52.
 const db = makeDatabase(env.databaseUrl);
 
 try {

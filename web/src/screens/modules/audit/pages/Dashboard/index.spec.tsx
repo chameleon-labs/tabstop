@@ -48,7 +48,6 @@ const list = (pages: PageSummary[], limit = 10): LoadPagesResponse => ({pages, l
 
 type Routes = Record<string, (init?: RequestInit) => Response | Promise<Response>>;
 
-/** Path-aware, so a poll or a refetch cannot be mistaken for the next answer. */
 const routed = (routes: Routes): ReturnType<typeof vi.fn> =>
   vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -62,15 +61,9 @@ const routed = (routes: Routes): ReturnType<typeof vi.fn> =>
 
 const rows = (): HTMLElement[] => within(screen.getByRole('list', {name: 'Monitored pages'})).getAllByRole('listitem');
 
-/**
- * The same rows while the removal dialog is open. Ariakit aria-hides the page
- * behind a modal, which is correct, so counting what survived a failed removal
- * has to say that it is looking behind it.
- */
 const rowsBehindDialog = (): HTMLElement[] =>
   within(screen.getByRole('list', {name: 'Monitored pages', hidden: true})).getAllByRole('listitem', {hidden: true});
 
-/** Scoped to the visible stack: the live region repeats every message. */
 const toast = (text: string | RegExp): HTMLElement =>
   within(screen.getByRole('list', {name: 'Notifications'})).getByText(text);
 
@@ -128,7 +121,6 @@ describe('Dashboard first paint', () => {
     await waitFor(() => {
       expect(screen.getByText('Could not load your pages')).toBeVisible();
     });
-    // Not announced: nothing changed under the reader, this is the page.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     const user = userEvent.setup();
@@ -142,8 +134,6 @@ describe('Dashboard first paint', () => {
 
 describe('Dashboard empty state', () => {
   it('puts the field itself in front of a new account', async () => {
-    // The only useful thing to do here is add a page, so the form is the
-    // empty state rather than a button pointing at one.
     stub({'/api/pages': () => jsonResponse(200, list([]))});
     renderDashboard();
 
@@ -233,10 +223,6 @@ describe('Dashboard adding a page', () => {
     });
     expect(screen.getByText(/First audit: /)).toBeVisible();
 
-    // The refresh is triggered rather than waited for. That the interval is
-    // two seconds while an audit runs is proven at the data boundary; what
-    // matters here is that a refreshed list turns the row into a score and
-    // announces it exactly once.
     act(() => {
       focusManager.setFocused(false);
     });
@@ -302,7 +288,6 @@ describe('Dashboard adding a page', () => {
   });
 
   it('refreshes the count when the server says the limit is already reached', async () => {
-    // The cached count said there was room, so another tab filled the slot.
     const user = userEvent.setup();
     let reads = 0;
     const full = Array.from({length: 10}, (_, index) => page(`page-${index}`, `https://example.test/${index}`));
@@ -394,9 +379,6 @@ describe('Dashboard background failures', () => {
 
 describe('Dashboard pausing a page', () => {
   it('says what it is doing, not what the optimistic row already claims', async () => {
-    // onMutate flips monitoringEnabled in the cache before the PATCH settles,
-    // so a row that derives its pending verb from the row itself announces
-    // the opposite of the request in flight.
     const user = userEvent.setup();
     let release!: (value: Response) => void;
     stub({

@@ -34,16 +34,12 @@ describe('ScoreDelta', () => {
   });
 
   it('hides the arrow glyph, because the wrapper label already carries the direction', () => {
-    // Announced as-is, the glyph reads as "down arrow 8" ahead of a label that
-    // says the same thing in words.
     const {container} = render(<ScoreDelta score={74} previousScore={82} />);
 
     expect(container.querySelector('[aria-hidden="true"]')).toHaveTextContent('↓');
   });
 
   it('carries its sentence as text, which a bare span may do and aria-label may not', () => {
-    // ARIA prohibits aria-label on a span with no role, so the name computed
-    // in jsdom was one no browser is required to expose.
     const {container} = render(<ScoreDelta score={74} previousScore={82} />);
 
     expect(container.querySelector('.score-delta')).not.toHaveAttribute('aria-label');

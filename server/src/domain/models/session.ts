@@ -7,11 +7,6 @@ export type SessionModel = {
   expiresAt: Date;
 };
 
-/**
- * What signup and login both produce. They differ in how they establish trust,
- * not in what they hand back, so the controllers stay near-identical and the
- * cookie's expiry comes from the session row rather than being recomputed.
- */
 export type AuthenticatedSession = {
   account: AccountModel;
   sessionId: string;

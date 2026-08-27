@@ -60,8 +60,6 @@ describe('ScoreFormula', () => {
   });
 
   it('sets the same title its prerendered artifact publishes', () => {
-    // Two writers, one tab title: this hook after hydration, and the static
-    // head a crawler or a no-JavaScript visit gets instead.
     renderPage();
 
     expect(document.title).toBe(PRERENDER_PAGES.find(({path}) => path === '/docs/score-formula')?.title);
@@ -180,8 +178,6 @@ describe('ScoreFormula', () => {
     const notMeasuredList = within(notMeasured).getByRole('list');
     const limitationsList = within(limitations).getByRole('list');
 
-    // No explicit `role="list"`: these keep their markers, so nothing strips
-    // the implicit role that `getByRole` above already found.
     expect(container.querySelectorAll('ul.score-formula__list')).toHaveLength(2);
     expect(notMeasuredList).not.toHaveAttribute('role');
     expect(limitationsList).not.toHaveAttribute('role');

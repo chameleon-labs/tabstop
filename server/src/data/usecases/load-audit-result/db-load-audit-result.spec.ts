@@ -40,10 +40,6 @@ describe('DbLoadAuditResult', () => {
   });
 
   it('reports no violations until the audit has finished', async () => {
-    // A running audit's violations are whatever the current attempt has
-    // written so far, and a retry replaces them wholesale - publishing them
-    // would show a partial set as the answer. A failed audit's leftovers
-    // describe a run that did not complete.
     for (const status of ['queued', 'running', 'failed'] as const) {
       const {sut, audits, violations} = makeSut();
       audits.loadByPublicUuid.mockResolvedValueOnce({...mockAuditModel(), status});
@@ -63,7 +59,6 @@ describe('DbLoadAuditResult', () => {
   });
 
   it('does not query violations when there is no audit', async () => {
-    // A mistyped share link is the common case, and it should cost one query.
     const {sut, audits, violations} = makeSut();
     audits.loadByPublicUuid.mockResolvedValueOnce(null);
 

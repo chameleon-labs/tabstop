@@ -8,15 +8,6 @@ import './styles.css';
 
 export type AccountNavigationProps = {
   logout: LogoutMutation;
-  /**
-   * Read the session if it is already known, never ask for it.
-   *
-   * `useSession` turns this into `enabled: false`, which returns cached data
-   * and issues no request - so the landing page still shows an account header
-   * to a visitor who arrived from inside the app, and still costs a marketing
-   * visitor nothing. A cold load of `/` shows the signed-out header even to
-   * someone signed in, which is the accepted trade on #102.
-   */
   sessionFree?: boolean;
 };
 

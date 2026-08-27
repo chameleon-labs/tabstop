@@ -19,9 +19,6 @@ const makeRow = (overrides: Partial<Selectable<AuditsTable>> = {}): Selectable<A
   completed_at: new Date('2026-07-26T10:00:30Z'),
   settled: true,
   claimed_at: null,
-  // The nightly run's dedupe key, and now mapped: it is what separates an audit
-  // the run scheduled - queued for hours behind its jitter delay - from one
-  // written to start at once.
   scheduled_for: new Date('2026-07-26T00:00:00Z'),
   ...overrides,
 });
@@ -49,8 +46,6 @@ describe('toAuditModel', () => {
   });
 
   it('fills missing impact keys with zero', () => {
-    // jsonb enforces no shape, so a row written outside this repository can be
-    // missing keys that the domain type promises are present.
     const row = makeRow({counts_by_impact: {serious: 2} as unknown as CountsByImpact});
 
     expect(toAuditModel(row).countsByImpact).toEqual({minor: 0, moderate: 0, serious: 2, critical: 0});

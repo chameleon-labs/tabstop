@@ -8,8 +8,6 @@ describe('shareUrlFor', () => {
   });
 
   it('answers with a canonical link, not whatever the reader happens to be looking at', () => {
-    // A share page reached with a tracking parameter must not hand that
-    // parameter to the next person.
     expect(shareUrlFor('3f2b', 'https://tabstop.test/r/3f2b?utm_source=slack#top')).toBe('https://tabstop.test/r/3f2b');
   });
 
@@ -18,21 +16,16 @@ describe('shareUrlFor', () => {
   });
 
   it('escapes the id rather than pasting it into a path', () => {
-    // The id reaches this from a route parameter, so it is not ours to trust.
     expect(shareUrlFor('a/../b', 'https://tabstop.test')).toBe('https://tabstop.test/r/a%2F..%2Fb');
   });
 });
 
 describe('telling the owner of an audit from a stranger', () => {
   it('recognises the marker the landing attaches', () => {
-    // The two halves are written apart - one navigates, one reads - so a
-    // renamed key would be a silent no-op rather than a failure.
     expect(startedHereFrom(startedHere())).toBe(true);
   });
 
   it('reads every other arrival as someone who followed a link', () => {
-    // A pasted link is a fresh navigation and carries no state, which is the
-    // whole mechanism: absence is the signal.
     for (const state of [null, undefined, {}, {from: '/dashboard'}]) {
       expect(startedHereFrom(state)).toBe(false);
     }

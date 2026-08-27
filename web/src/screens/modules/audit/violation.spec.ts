@@ -7,11 +7,6 @@ describe('describeTarget', () => {
   });
 
   it('does not turn a frame chain into a descendant selector', () => {
-    // The bug this exists to prevent. `['iframe#embed', '#inside']` means "in
-    // that frame, this element". Joined with a space it becomes
-    // `iframe#embed #inside` - a valid selector for a completely different
-    // element that almost certainly does not exist. It looks right, and it is
-    // wrong in a way nobody would question.
     const shown = describeTarget(['iframe#embed', '#inside']);
 
     expect(shown).not.toBe('iframe#embed #inside');
@@ -20,9 +15,6 @@ describe('describeTarget', () => {
   });
 
   it('leaves the shadow-DOM notation the server already produced', () => {
-    // Shadow segments never reach here as separate entries: the server flattens
-    // them with axe's own ` >>> ` piercing notation first. So every entry that
-    // survives into this array is a frame.
     expect(describeTarget(['#host >>> input'])).toBe('#host >>> input');
   });
 });
@@ -49,11 +41,6 @@ describe('safeHelpUrl', () => {
 
   describe('the origin is the check, not the scheme', () => {
     it('refuses another https origin, which a scheme test waves through', () => {
-      // The whole risk, and what an earlier version of this function missed.
-      // `https://evil.example/phish` passes a protocol check perfectly. What it
-      // buys is a link reading "How to fix this", inside an accessibility
-      // report, on a share page (#23) anybody can send to a colleague. Script
-      // execution was never the dangerous part - the origin was.
       expect(safeHelpUrl('https://evil.example/phish')).toBeNull();
     });
 
@@ -63,27 +50,18 @@ describe('safeHelpUrl', () => {
     });
 
     it('refuses a subdomain, since the engine never uses one', () => {
-      // A wildcard would admit anything Deque ever delegates, and the vendored
-      // engine builds every link on the bare host.
       expect(safeHelpUrl('https://evil.dequeuniversity.com/rules')).toBeNull();
     });
 
     it('refuses a non-default port on the right host', () => {
-      // `https://dequeuniversity.com:8443/` shares the hostname and is a
-      // different origin. A hostname check accepted it while the comment above
-      // claimed the exact origin was allowlisted.
       expect(safeHelpUrl('https://dequeuniversity.com:8443/rules/axe/4.12/label')).toBeNull();
     });
 
     it('refuses plain http even on the right host', () => {
-      // `helpUrlBase` is https. An http link is either downgraded or forged,
-      // and neither is worth rendering.
       expect(safeHelpUrl('http://dequeuniversity.com/rules/axe/4.12/label')).toBeNull();
     });
 
     it('refuses credentials smuggled into the authority', () => {
-      // `https://dequeuniversity.com@evil.example/` has hostname
-      // `evil.example`, and reads to a person as the trusted host.
       expect(safeHelpUrl('https://dequeuniversity.com@evil.example/')).toBeNull();
     });
   });

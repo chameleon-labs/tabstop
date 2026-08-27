@@ -33,8 +33,6 @@ describe('the brand mark stylesheet', () => {
     expect(landing).not.toContain('.landing-page__logo-mark {');
   });
 
-  // The landing page renders the mark in the nav AND in the footer. Deleting
-  // the rule while a third reference survived left that one as unstyled `t/`.
   it('leaves no markup referring to the rules it deleted', () => {
     expect(landingTsx).not.toContain('landing-page__logo-mark');
     expect(authTsx).not.toContain('auth-page__brand-mark');

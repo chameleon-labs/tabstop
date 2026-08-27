@@ -8,11 +8,6 @@ export type LogoutRequest = {
   cookies: Record<string, string>;
 };
 
-/**
- * Deliberately not behind the auth middleware. Logout is idempotent: no cookie,
- * an expired session, or an unknown id all return 204 and clear the cookie. It
- * never reports whether the session existed.
- */
 export class LogoutController implements Controller<LogoutRequest> {
   constructor(
     private readonly revokeSession: RevokeSession,
