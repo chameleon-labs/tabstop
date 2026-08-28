@@ -92,6 +92,19 @@ describe('useAuditPhase', () => {
     });
   });
 
+  describe('a tick that arrives late', () => {
+    it('measures the gap by the clock rather than by the callback count', async () => {
+      const {result, rerender} = at('queued');
+      rerender({s: 'running'});
+      expect(result.current).toBe('Fetching the page');
+
+      vi.setSystemTime(START + 30_000);
+      await advance(TICK_MS);
+
+      expect(result.current).toBe('Scoring');
+    });
+  });
+
   describe('a second audit on the same screen', () => {
     it("does not inherit the first audit's epoch", async () => {
       const {result, rerender} = renderHook(({s}: {s: ProgressStatus}) => useAuditPhase(s, START, true), {
