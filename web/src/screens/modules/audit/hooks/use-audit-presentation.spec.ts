@@ -184,6 +184,24 @@ describe('useAuditPresentation', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('starts a fresh sequence when the audit changes mid-finish', async () => {
+    const finished: AuditPresentationOptions = {...base, status: 'done', phase: null};
+    const {result, rerender} = renderHook((props: AuditPresentationOptions) => useAuditPresentation(props), {
+      initialProps: finished,
+    });
+
+    expect(result.current).toMatchObject({phase: PHASES[0]?.label});
+    await advance(FAST_PHASE_MS);
+    expect(result.current).toMatchObject({phase: PHASES[1]?.label});
+
+    rerender({...finished, auditId: 'audit-2'});
+    expect(result.current).toMatchObject({phase: PHASES[0]?.label});
+
+    await advance(FAST_PHASE_MS);
+
+    expect(result.current).toMatchObject({phase: PHASES[1]?.label});
+  });
+
   it('clears its timer on unmount', () => {
     const {rerender, unmount} = renderHook((props: AuditPresentationOptions) => useAuditPresentation(props), {
       initialProps: base,

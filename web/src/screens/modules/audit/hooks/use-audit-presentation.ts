@@ -1,5 +1,5 @@
 import type {AuditStatus} from '@tabstop/contract';
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {PHASES} from '../phase';
 
 export const FAST_PHASE_MS = 300;
@@ -75,16 +75,66 @@ const finishFramesFrom = (phase: string | null): readonly Frame[] => {
   ];
 };
 
-type StoredPresentation = AuditPresentation & {auditId: string};
+const LOOKING_HEADLINE = 'Looking for that audit…';
 
-const looking = (auditId: string): StoredPresentation => ({
-  auditId,
-  view: 'progress',
-  phase: null,
-  complete: false,
-  headline: 'Looking for that audit…',
-  completedInSession: false,
-});
+type Tracked = {
+  auditId: string;
+  progress: boolean;
+  phase: string | null;
+};
+
+type ImmediateOptions = Omit<AuditPresentationOptions, 'auditId'> & {progress: boolean};
+
+const immediateFor = ({status, phase, owner, failure, progress}: ImmediateOptions): AuditPresentation | null => {
+  if (failure || status === 'failed') {
+    return {view: 'failure', phase: null, complete: false, headline: LOOKING_HEADLINE, completedInSession: false};
+  }
+
+  if (status === undefined) {
+    return {view: 'progress', phase: null, complete: false, headline: LOOKING_HEADLINE, completedInSession: false};
+  }
+
+  if (status === 'queued' || status === 'running') {
+    return {
+      view: 'progress',
+      phase,
+      complete: false,
+      headline: phase === null ? LOOKING_HEADLINE : `${phase}…`,
+      completedInSession: false,
+    };
+  }
+
+  if (!owner && !progress) {
+    return {view: 'report', phase: null, complete: true, headline: null, completedInSession: false};
+  }
+
+  return null;
+};
+
+const trackedFor = (
+  seen: Tracked,
+  {
+    auditId,
+    status,
+    phase,
+    inProgress,
+  }: {auditId: string; status: AuditStatus | undefined; phase: string | null; inProgress: boolean},
+): Tracked => {
+  if (seen.auditId !== auditId) {
+    return {auditId, progress: inProgress, phase: status === 'running' ? phase : null};
+  }
+
+  if (!inProgress) {
+    return seen;
+  }
+
+  const running = status === 'running' && phase !== null ? phase : seen.phase;
+  if (seen.progress && seen.phase === running) {
+    return seen;
+  }
+
+  return {auditId, progress: true, phase: running};
+};
 
 export const useAuditPresentation = ({
   auditId,
@@ -93,83 +143,67 @@ export const useAuditPresentation = ({
   owner,
   failure,
 }: AuditPresentationOptions): AuditPresentation => {
-  const [stored, setStored] = useState<StoredPresentation>(() => looking(auditId));
-  const identity = useRef(auditId);
-  const observedProgress = useRef(false);
-  const lastRunningPhase = useRef<string | null>(null);
+  const inProgress = status === 'queued' || status === 'running';
+  const [seen, setSeen] = useState<Tracked>(() => ({auditId, progress: false, phase: null}));
 
-  if (identity.current !== auditId) {
-    identity.current = auditId;
-    observedProgress.current = false;
-    lastRunningPhase.current = null;
+  const tracked = trackedFor(seen, {auditId, status, phase, inProgress});
+
+  if (tracked !== seen) {
+    setSeen(tracked);
+  }
+
+  const immediate = immediateFor({status, phase, owner, failure, progress: tracked.progress});
+  const settling = immediate === null;
+  const run = useMemo(() => ({auditId, frames: finishFramesFrom(tracked.phase)}), [auditId, tracked.phase]);
+  const [step, setStep] = useState(0);
+  const [sequence, setSequence] = useState({run, settling});
+
+  if (sequence.run !== run || sequence.settling !== settling) {
+    setSequence({run, settling});
+    setStep(0);
   }
 
   useEffect(() => {
-    if (failure || status === 'failed') {
-      setStored({...looking(auditId), view: 'failure'});
-      return;
+    if (!settling) {
+      return undefined;
     }
 
-    if (status === undefined) {
-      setStored(looking(auditId));
-      return;
-    }
-
-    if (status === 'queued' || status === 'running') {
-      observedProgress.current = true;
-      if (status === 'running' && phase !== null) {
-        lastRunningPhase.current = phase;
-      }
-      setStored({
-        auditId,
-        view: 'progress',
-        phase,
-        complete: false,
-        headline: phase === null ? 'Looking for that audit…' : `${phase}…`,
-        completedInSession: false,
-      });
-      return;
-    }
-
-    if (!owner && !observedProgress.current) {
-      setStored({
-        auditId,
-        view: 'report',
-        phase: null,
-        complete: true,
-        headline: null,
-        completedInSession: false,
-      });
-      return;
-    }
-
-    const frames = finishFramesFrom(lastRunningPhase.current);
     let index = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
     const advance = (): void => {
-      if (identity.current !== auditId) {
+      const holdMs = run.frames[index]?.holdMs ?? null;
+      if (cancelled || holdMs === null) {
         return;
       }
-      const frame = frames[index];
-      if (frame === undefined) {
-        return;
-      }
-      index += 1;
-      const {holdMs, ...presentation} = frame;
-      setStored({auditId, ...presentation});
-      if (holdMs !== null) {
-        timer = setTimeout(advance, holdMs);
-      }
+
+      timer = setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
+
+        index += 1;
+        setStep(index);
+        advance();
+      }, holdMs);
     };
+
     advance();
+
     return (): void => {
+      cancelled = true;
       if (timer !== undefined) {
         clearTimeout(timer);
       }
     };
-  }, [auditId, failure, owner, phase, status]);
+  }, [settling, run]);
 
-  const current = stored.auditId === auditId ? stored : looking(auditId);
+  const current = immediate ?? run.frames[Math.min(step, run.frames.length - 1)];
+  if (current === undefined) {
+    return {view: 'report', phase: null, complete: true, headline: null, completedInSession: true};
+  }
+
   return {
     view: current.view,
     phase: current.phase,

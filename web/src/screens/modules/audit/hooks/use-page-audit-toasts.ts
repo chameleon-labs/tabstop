@@ -17,7 +17,9 @@ export const usePageAuditToasts = (
   const watched = useRef<Map<string, Watched> | null>(null);
   const pushRef = useRef(push);
 
-  pushRef.current = push;
+  useEffect(() => {
+    pushRef.current = push;
+  }, [push]);
 
   useEffect(() => {
     if (pages === undefined) {

@@ -6,6 +6,7 @@ import {pageConflictOf} from '@/api/client';
 import {AlertCircle} from '@/screens/components/Icons';
 import {ToastRegion, useToastQueue} from '@/screens/components/ToastRegion';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import {useNow} from '@/screens/hooks/use-now';
 import {AddPageForm} from '../../components/AddPageForm';
 import {DeletePageDialog} from '../../components/DeletePageDialog';
 import {PageRow} from '../../components/PageRow';
@@ -32,9 +33,10 @@ export const Dashboard = (): React.JSX.Element => {
   const emptyInputRef = useRef<HTMLInputElement>(null);
   const listHeadingId = useId();
   const reportedFailures = useRef(0);
-  const now = Date.now();
+  const now = useNow();
 
   const {data, error, errorUpdateCount, refetch} = pages;
+  const pageCount = data?.pages.length ?? 0;
   const {push} = toasts;
 
   usePageAuditToasts(data?.pages, push);
@@ -62,7 +64,8 @@ export const Dashboard = (): React.JSX.Element => {
       return undefined;
     }
 
-    const target = pendingFocus === 'list-heading' ? listHeadingRef.current : emptyInputRef.current;
+    const heading = pageCount > 0 ? listHeadingRef.current : null;
+    const target = pendingFocus === 'list-heading' ? heading : emptyInputRef.current;
     if (target === null) {
       return undefined;
     }
@@ -75,7 +78,7 @@ export const Dashboard = (): React.JSX.Element => {
     return (): void => {
       cancelAnimationFrame(frame);
     };
-  }, [pendingFocus, data?.pages.length]);
+  }, [pendingFocus, pageCount]);
 
   const submitPage = async (url: string): Promise<boolean> => {
     try {

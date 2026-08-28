@@ -88,7 +88,9 @@ const ToastItem = ({toast, onDismiss}: ToastItemProps): React.JSX.Element => {
   const focused = useRef(false);
   const dismiss = useRef(onDismiss);
 
-  dismiss.current = onDismiss;
+  useEffect(() => {
+    dismiss.current = onDismiss;
+  }, [onDismiss]);
 
   const stop = useCallback((): void => {
     if (timer.current === null) {
@@ -214,14 +216,15 @@ export const ToastRegion = ({toasts, onDismiss}: ToastRegionProps): React.JSX.El
     setQueued((current) => [...current, ...fresh.map(({message}) => message)]);
   }, [toasts]);
 
+  const next = announcement === '' ? queued.at(0) : undefined;
+
+  if (next !== undefined) {
+    setAnnouncement(next);
+    setQueued((current) => current.slice(1));
+  }
+
   useEffect(() => {
     if (announcement === '') {
-      const next = queued.at(0);
-      if (next !== undefined) {
-        setAnnouncement(next);
-        setQueued((current) => current.slice(1));
-      }
-
       return undefined;
     }
 
@@ -232,7 +235,7 @@ export const ToastRegion = ({toasts, onDismiss}: ToastRegionProps): React.JSX.El
     return (): void => {
       clearTimeout(timer);
     };
-  }, [announcement, queued]);
+  }, [announcement]);
 
   return (
     <div className="toast-region">
