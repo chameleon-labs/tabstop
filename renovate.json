@@ -6,6 +6,7 @@
   "labels": [
     "maintenance"
   ],
+  "minimumReleaseAge": "3 days",
   "packageRules": [
     {
       "matchUpdateTypes": [
