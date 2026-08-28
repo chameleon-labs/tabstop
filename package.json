@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@11.15.1",
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "typecheck": "pnpm -r typecheck",
@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "oxlint": "^1.80.0",
-    "oxfmt": "^0.62.0"
+    "oxfmt": "^0.65.0"
   }
 }
