@@ -41,9 +41,11 @@ type EventConstructor = new (type: string, init?: never) => Event
 const withoutHostView = (init: unknown): unknown => {
   if (typeof init !== 'object' || init === null) return init
 
-  return new Proxy(init as EventInitSource, {
-    get: (target, key, receiver) => {
-      const value = Reflect.get(target, key, receiver)
+  const source = init as EventInitSource
+
+  return new Proxy({} as EventInitSource, {
+    get: (_target, key) => {
+      const value = Reflect.get(source, key, source)
       if (key !== 'view') return value
       return value === globalThis ? null : value
     }

@@ -79,6 +79,13 @@ describe('constructing a UI event with the host window as its view', () => {
     expect(event.type).toBe('click');
   });
 
+  it('accepts a frozen init', () => {
+    const event = new PointerEvent('click', Object.freeze({view: window, pointerId: 4}));
+
+    expect(event.view).toBeNull();
+    expect(event.pointerId).toBe(4);
+  });
+
   it('still dispatches to a listener', () => {
     const button = document.createElement('button');
     document.body.append(button);
