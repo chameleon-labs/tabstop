@@ -154,12 +154,12 @@ export const useAuditPresentation = ({
 
   const immediate = immediateFor({status, phase, owner, failure, progress: tracked.progress});
   const settling = immediate === null;
-  const frames = useMemo(() => finishFramesFrom(tracked.phase), [tracked.phase]);
+  const run = useMemo(() => ({auditId, frames: finishFramesFrom(tracked.phase)}), [auditId, tracked.phase]);
   const [step, setStep] = useState(0);
-  const [sequence, setSequence] = useState({auditId, settling});
+  const [sequence, setSequence] = useState({run, settling});
 
-  if (sequence.auditId !== auditId || sequence.settling !== settling) {
-    setSequence({auditId, settling});
+  if (sequence.run !== run || sequence.settling !== settling) {
+    setSequence({run, settling});
     setStep(0);
   }
 
@@ -173,7 +173,7 @@ export const useAuditPresentation = ({
     let cancelled = false;
 
     const advance = (): void => {
-      const holdMs = frames[index]?.holdMs ?? null;
+      const holdMs = run.frames[index]?.holdMs ?? null;
       if (cancelled || holdMs === null) {
         return;
       }
@@ -197,9 +197,9 @@ export const useAuditPresentation = ({
         clearTimeout(timer);
       }
     };
-  }, [settling, frames]);
+  }, [settling, run]);
 
-  const current = immediate ?? frames[Math.min(step, frames.length - 1)];
+  const current = immediate ?? run.frames[Math.min(step, run.frames.length - 1)];
   if (current === undefined) {
     return {view: 'report', phase: null, complete: true, headline: null, completedInSession: true};
   }

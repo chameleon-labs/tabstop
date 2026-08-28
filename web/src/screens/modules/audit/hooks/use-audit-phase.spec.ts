@@ -1,6 +1,6 @@
 import {act, renderHook} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {useAuditPhase} from './use-audit-phase';
+import {TICK_MS, useAuditPhase} from './use-audit-phase';
 import type {ProgressStatus} from '../phase';
 
 const START = 1_700_000_000_000;
@@ -73,6 +73,22 @@ describe('useAuditPhase', () => {
       renderHook(() => useAuditPhase('running', START, false));
 
       expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('a run that starts after the screen has been idle', () => {
+    it('does not date the run from whenever the screen was mounted', async () => {
+      const {result, rerender} = renderHook(({s, a}: {s: ProgressStatus; a: boolean}) => useAuditPhase(s, START, a), {
+        initialProps: {s: 'queued' as ProgressStatus, a: false},
+      });
+
+      await advance(3_600_000);
+      rerender({s: 'running', a: true});
+      expect(result.current).toBe('Fetching the page');
+
+      await advance(TICK_MS);
+
+      expect(result.current).toBe('Fetching the page');
     });
   });
 

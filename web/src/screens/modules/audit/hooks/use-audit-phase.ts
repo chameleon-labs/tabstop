@@ -5,33 +5,54 @@ export const TICK_MS = 1_000;
 
 export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, active: boolean): string | null => {
   const [now, setNow] = useState(() => Date.now());
-  const [runningSince, setRunningSince] = useState<number | null>(null);
+  const [ticks, setTicks] = useState(0);
   const [seenStatus, setSeenStatus] = useState(status);
+  const [observedStart, setObservedStart] = useState(false);
 
   if (status !== seenStatus) {
     setSeenStatus(status);
-    if (status === 'running') {
-      setRunningSince(now);
-    }
+    setTicks(0);
+    setObservedStart(status === 'running');
   }
-
-  const since = runningSince ?? startedAt;
 
   useEffect(() => {
     if (!active) {
       return undefined;
     }
+
     const timer = setInterval(() => {
+      setTicks((current) => current + 1);
       setNow(Date.now());
     }, TICK_MS);
+
     return (): void => {
       clearInterval(timer);
     };
   }, [active]);
 
-  if (!active || since === null) {
+  const elapsedMs = elapsedFor({observedStart, ticks, now, startedAt});
+
+  if (!active || elapsedMs === null) {
     return null;
   }
 
-  return phaseFor(status, now - since);
+  return phaseFor(status, elapsedMs);
+};
+
+const elapsedFor = ({
+  observedStart,
+  ticks,
+  now,
+  startedAt,
+}: {
+  observedStart: boolean;
+  ticks: number;
+  now: number;
+  startedAt: number | null;
+}): number | null => {
+  if (observedStart) {
+    return ticks * TICK_MS;
+  }
+
+  return startedAt === null ? null : now - startedAt;
 };
