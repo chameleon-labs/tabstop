@@ -35,6 +35,39 @@ class NoopResizeObserver implements ResizeObserver {
 }
 globalThis.ResizeObserver ??= NoopResizeObserver
 
+type EventInitSource = Record<PropertyKey, unknown>
+type EventConstructor = new (type: string, init?: never) => Event
+
+const withoutHostView = (init: unknown): unknown => {
+  if (typeof init !== 'object' || init === null) return init
+
+  const source = init as EventInitSource
+
+  return new Proxy({} as EventInitSource, {
+    get: (_target, key) => {
+      const value = Reflect.get(source, key, source)
+      if (key !== 'view') return value
+      return value === globalThis ? null : value
+    }
+  })
+}
+
+const withHostViewDropped = <T extends EventConstructor>(Base: T): T => new Proxy(Base, {
+  construct: (target, args, newTarget) => {
+    if (args.length < 2) return Reflect.construct(target, args, newTarget)
+
+    const forwarded = [...args]
+    forwarded[1] = withoutHostView(args[1])
+    return Reflect.construct(target, forwarded, newTarget)
+  }
+})
+
+if (typeof globalThis.UIEvent === 'function') globalThis.UIEvent = withHostViewDropped(globalThis.UIEvent)
+if (typeof globalThis.MouseEvent === 'function') globalThis.MouseEvent = withHostViewDropped(globalThis.MouseEvent)
+if (typeof globalThis.PointerEvent === 'function') {
+  globalThis.PointerEvent = withHostViewDropped(globalThis.PointerEvent)
+}
+
 /**
  * The messages React and React Router emit when an error boundary CATCHES an
  * error - which several specs cause on purpose, because catching is the
