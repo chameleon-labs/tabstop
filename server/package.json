@@ -24,7 +24,7 @@
   "dependencies": {
     "bullmq": "^5.81.2",
     "express": "^5.2.1",
-    "ioredis": "^5.11.1",
+    "ioredis": "^6.0.0",
     "ipaddr.js": "1.9.1",
     "kysely": "^0.29.4",
     "pg": "^8.22.0",
