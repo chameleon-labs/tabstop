@@ -57,7 +57,7 @@ jobs:
           # with "No pnpm version is specified" - which reads like a missing
           # field rather than a wrong path.
           package_json_file: package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: 'web/.nvmrc'
           cache: 'pnpm'
