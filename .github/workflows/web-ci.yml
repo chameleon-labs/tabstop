@@ -49,7 +49,7 @@ jobs:
       # the old name - and this Linux runner is precisely where that fails to
       # resolve. The spec reads the index, so the default shallow checkout is
       # enough; it just has to be a real repository.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           # The ROOT manifest, not `web/package.json`. `packageManager` lives at
