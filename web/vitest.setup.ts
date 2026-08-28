@@ -41,16 +41,23 @@ type EventConstructor = new (type: string, init?: never) => Event
 const withoutHostView = (init: unknown): unknown => {
   if (typeof init !== 'object' || init === null) return init
 
-  const source = init as EventInitSource
-  if (source.view !== globalThis) return init
-
-  return new Proxy(source, {
-    get: (target, key, receiver) => (key === 'view' ? null : Reflect.get(target, key, receiver))
+  return new Proxy(init as EventInitSource, {
+    get: (target, key, receiver) => {
+      const value = Reflect.get(target, key, receiver)
+      if (key !== 'view') return value
+      return value === globalThis ? null : value
+    }
   })
 }
 
 const withHostViewDropped = <T extends EventConstructor>(Base: T): T => new Proxy(Base, {
-  construct: (target, args, newTarget) => Reflect.construct(target, [args[0], withoutHostView(args[1])], newTarget)
+  construct: (target, args, newTarget) => {
+    if (args.length < 2) return Reflect.construct(target, args, newTarget)
+
+    const forwarded = [...args]
+    forwarded[1] = withoutHostView(args[1])
+    return Reflect.construct(target, forwarded, newTarget)
+  }
 })
 
 if (typeof globalThis.UIEvent === 'function') globalThis.UIEvent = withHostViewDropped(globalThis.UIEvent)

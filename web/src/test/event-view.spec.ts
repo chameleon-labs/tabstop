@@ -38,6 +38,47 @@ describe('constructing a UI event with the host window as its view', () => {
     expect(event.pointerId).toBe(3);
   });
 
+  it('reads the view once, as the constructor would', () => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const inner = frame.contentWindow;
+    let reads = 0;
+    const init = {
+      get view(): Window | null {
+        reads += 1;
+        return inner;
+      },
+    };
+
+    const event = new PointerEvent('click', init);
+
+    expect(event.view).toBe(inner);
+    expect(reads).toBe(1);
+    frame.remove();
+  });
+
+  it('leaves an init whose view is not the host global alone', () => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const inner = frame.contentWindow;
+    const event = new PointerEvent('click', {view: inner});
+
+    expect(event.view).toBe(inner);
+    frame.remove();
+  });
+
+  it('still refuses a constructor call with no type', () => {
+    const Bare = UIEvent as unknown as new () => UIEvent;
+
+    expect(() => new Bare()).toThrow(/1 argument required/);
+  });
+
+  it('keeps arguments past the init', () => {
+    const event = Reflect.construct(PointerEvent, ['click', {view: window}, 'ignored']);
+
+    expect(event.type).toBe('click');
+  });
+
   it('still dispatches to a listener', () => {
     const button = document.createElement('button');
     document.body.append(button);
