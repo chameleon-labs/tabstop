@@ -1,5 +1,5 @@
 import {Button, Dialog, DialogDismiss, DialogHeading, DialogProvider} from '@chameleon-labs/lattice-react';
-import {useEffect, useId, useRef, useState} from 'react';
+import {useId, useRef, useState} from 'react';
 import type {PageSummary} from '@tabstop/contract';
 import {AlertTriangle} from '@/screens/components/Icons';
 import './delete-page-dialog.css';
@@ -25,11 +25,13 @@ export const DeletePageDialog = ({
   const [succeeded, setSucceeded] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const descriptionId = useId();
+  const [tracked, setTracked] = useState(target?.id);
 
-  useEffect(() => {
+  if (tracked !== target?.id) {
+    setTracked(target?.id);
     setSucceeded(false);
     setPending(false);
-  }, [target?.id]);
+  }
 
   const confirm = async (): Promise<void> => {
     if (target === null) {

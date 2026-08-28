@@ -8,15 +8,18 @@ export type AuditStatusProps = {
 
 export const AuditStatus = ({message, visibleMessage}: AuditStatusProps): React.JSX.Element => {
   const [shown, setShown] = useState('');
+  const [tracked, setTracked] = useState(message);
 
-  useEffect(() => {
+  if (tracked !== message) {
+    setTracked(message);
     if (message === null) {
       setShown('');
-      return;
     }
+  }
 
-    if (message === shown) {
-      return;
+  useEffect(() => {
+    if (message === null || message === shown) {
+      return undefined;
     }
 
     const timer = setTimeout(() => {

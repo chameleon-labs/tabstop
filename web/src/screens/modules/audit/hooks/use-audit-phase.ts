@@ -11,15 +11,15 @@ export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, 
   if (status !== seenStatus) {
     setSeenStatus(status);
     if (status === 'running') {
-      setRunningSince(Date.now());
+      setRunningSince(now);
     }
   }
 
   const since = runningSince ?? startedAt;
 
   useEffect(() => {
-    if (!active || since === null) {
-      return;
+    if (!active) {
+      return undefined;
     }
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -27,7 +27,7 @@ export const useAuditPhase = (status: ProgressStatus, startedAt: number | null, 
     return (): void => {
       clearInterval(timer);
     };
-  }, [active, since]);
+  }, [active]);
 
   if (!active || since === null) {
     return null;

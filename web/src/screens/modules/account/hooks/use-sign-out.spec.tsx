@@ -1,4 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {useEffect} from 'react';
 import {act, render} from '@testing-library/react';
 import {RouterProvider, createMemoryRouter} from 'react-router';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -14,10 +15,14 @@ type Harness = {
 };
 
 const renderSignOut = (): Harness => {
-  let latest: (() => Promise<void>) | null = null;
+  const latest: {current: (() => Promise<void>) | null} = {current: null};
 
   const Probe = (): React.JSX.Element => {
-    latest = useSignOut(useLogout());
+    const signOut = useSignOut(useLogout());
+
+    useEffect(() => {
+      latest.current = signOut;
+    });
 
     return <p>settings</p>;
   };
@@ -42,7 +47,7 @@ const renderSignOut = (): Harness => {
   return {
     router,
     signOut: async (): Promise<void> => {
-      const call = latest;
+      const call = latest.current;
       if (call === null) {
         throw new Error('the probe never rendered, so there is no sign-out to call');
       }

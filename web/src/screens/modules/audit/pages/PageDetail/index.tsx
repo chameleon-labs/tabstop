@@ -14,6 +14,7 @@ import type {Impact, PageSummary} from '@tabstop/contract';
 import {isApiError} from '@/api/client';
 import {AlertCircle} from '@/screens/components/Icons';
 import {useDocumentTitle} from '@/screens/hooks/use-document-title';
+import {useNow} from '@/screens/hooks/use-now';
 import {AuditList} from '../../components/AuditList';
 import {AuditPanel} from '../../components/AuditPanel';
 import {DeletePageDialog} from '../../components/DeletePageDialog';
@@ -86,7 +87,7 @@ export const PageDetail = (): React.JSX.Element => {
     startedRunning && started.error === null,
   );
   const refusal = describeAuditRefusal(auditNow.error);
-  const now = Date.now();
+  const now = useNow();
 
   const setWindow = (next: string): void => {
     setParams(

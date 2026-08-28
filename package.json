@@ -18,7 +18,7 @@
     "format:check": "oxfmt --check web/src web/scripts server/src contract/src"
   },
   "devDependencies": {
-    "oxlint": "^1.77.0",
+    "oxlint": "^1.80.0",
     "oxfmt": "^0.62.0"
   }
 }
