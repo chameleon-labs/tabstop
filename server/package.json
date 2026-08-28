@@ -22,7 +22,7 @@
     "vendor:axe": "node scripts/vendor-axe.mjs"
   },
   "dependencies": {
-    "bullmq": "^5.81.2",
+    "bullmq": "^6.0.0",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
     "ipaddr.js": "1.9.1",
