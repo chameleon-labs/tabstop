@@ -1,4 +1,12 @@
-import {Queue, Worker, type Job, type JobSchedulerTemplateOptions, type Processor, type WorkerOptions} from 'bullmq';
+import {
+  Queue,
+  Worker,
+  type Job,
+  type JobSchedulerTemplateOptions,
+  type Processor,
+  type RedisClient,
+  type WorkerOptions,
+} from 'bullmq';
 
 export type PayloadQueue<TPayload> = Queue<Job<TPayload, void, string>>;
 export type PayloadWorker<TPayload> = Worker<TPayload, void, string>;
@@ -31,11 +39,13 @@ else
 end
 `;
 
+export const queueClient = <TPayload>(queue: PayloadQueue<TPayload>): Promise<RedisClient> => queue.getBackend().client;
+
 export const rateLimitForAtLeast = async <TPayload>(
   queue: PayloadQueue<TPayload>,
   durationMs: number,
 ): Promise<void> => {
-  const client = await queue.client;
+  const client = await queueClient(queue);
   if (!clientsWithRateLimitCommand.has(client)) {
     client.defineCommand(RATE_LIMIT_FOR_AT_LEAST_COMMAND, {
       numberOfKeys: 1,

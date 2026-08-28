@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {
   makeQueue,
   makeWorker,
+  queueClient,
   rateLimitForAtLeast,
   setGlobalConcurrency,
   upsertDailySchedule,
@@ -212,7 +213,7 @@ describe('rateLimitForAtLeast', () => {
   };
 
   const limiterState = async (queue: PayloadQueue<TestPayload>) => {
-    const client = await queue.client;
+    const client = await queueClient(queue);
     return {
       value: await client.get(queue.toKey('limiter')),
       ttl: await queue.getRateLimitTtl(),
@@ -232,7 +233,7 @@ describe('rateLimitForAtLeast', () => {
 
   it('promotes the counter without replacing a longer delay with a shorter one', async () => {
     const [first, second] = replicas();
-    const client = await first.client;
+    const client = await queueClient(first);
     await client.set(first.toKey('limiter'), '1', {PX: 10_000});
     const before = await limiterState(first);
 
@@ -246,7 +247,7 @@ describe('rateLimitForAtLeast', () => {
 
   it('extends a shorter delay to the requested longer delay', async () => {
     const [first, second] = replicas();
-    const client = await first.client;
+    const client = await queueClient(first);
     await client.set(first.toKey('limiter'), '1', {PX: 1_000});
 
     await rateLimitForAtLeast(second, 10_000);
@@ -273,7 +274,7 @@ describe('rateLimitForAtLeast', () => {
 
   it('installs the manual sentinel without expiring an infinite limiter', async () => {
     const [queue] = replicas();
-    const client = await queue.client;
+    const client = await queueClient(queue);
     await client.set(queue.toKey('limiter'), '1');
 
     await rateLimitForAtLeast(queue, 10_000);
