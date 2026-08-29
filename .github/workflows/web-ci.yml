@@ -50,7 +50,7 @@ jobs:
       # resolve. The spec reads the index, so the default shallow checkout is
       # enough; it just has to be a real repository.
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           # The ROOT manifest, not `web/package.json`. `packageManager` lives at
           # the workspace root, and pointing this at `web/package.json` fails
