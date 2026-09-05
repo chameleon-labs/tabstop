@@ -98,10 +98,10 @@ importers:
     dependencies:
       '@ariakit/react':
         specifier: ^0.4.38
-        version: 0.4.38(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 0.4.39(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@chameleon-labs/lattice-react':
         specifier: 0.1.0-rc.6
-        version: 0.1.0-rc.6(@ariakit/react@0.4.38(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@chameleon-labs/lattice-tokens@0.1.0-rc.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 0.1.0-rc.6(@ariakit/react@0.4.39(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@chameleon-labs/lattice-tokens@0.1.0-rc.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@chameleon-labs/lattice-tokens':
         specifier: 0.1.0-rc.6
         version: 0.1.0-rc.6
@@ -129,7 +129,7 @@ importers:
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@testing-library/user-event':
         specifier: ^14.6.1
-        version: 14.6.6(@testing-library/dom@10.4.1)
+        version: 14.6.7(@testing-library/dom@10.4.1)
       '@types/node':
         specifier: ^26.1.1
         version: 26.4.1
@@ -163,11 +163,11 @@ packages:
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
 
-  '@ariakit/components@0.1.11':
-    resolution: {integrity: sha512-hFmfWKkK8jpATf39kNZSMDlG3o+tftfQwyooRhbPl/YCpFur+IGz5ZPA+PGIIfFjfdkAURLNDJPSeWtXO3xssQ==}
+  '@ariakit/components@0.1.12':
+    resolution: {integrity: sha512-50Rg4Fp7W49fEVqa16eX2eYoIDrMGr+NbrQeTy0ujVZ/d12qwNZsdyA+wnbDfaZjoTy717Ohu0YYMAW+8tUusA==}
 
-  '@ariakit/react-components@0.5.0':
-    resolution: {integrity: sha512-NEpptkB3sJZrwTIIzFydyGjLGVLpfDt0X3naLh9x2Z0WyIkJuz6ZbzyWAxMrc9m4oNJgnex4cy5MZYndrJTtKQ==}
+  '@ariakit/react-components@0.6.0':
+    resolution: {integrity: sha512-T+u+8UzJEGbEg9f4yb76MFjaWMY9NYd47Bk8MOMStDuMh+vyn3GKj1m6++7gXUziQ+wD2f+uQkB3n+ay1seKbw==}
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -182,8 +182,8 @@ packages:
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  '@ariakit/react@0.4.38':
-    resolution: {integrity: sha512-VubItCXqly9GNFxulOYDkFP94jh1M5iHeuo0BDTTiN1ndrGNeZCvsRUWd06BC9yjg+/LKEAnFLeolE1pG1IQBg==}
+  '@ariakit/react@0.4.39':
+    resolution: {integrity: sha512-Urj6knR0+xJzs/xpccl3AKB0OwDlEZvvUI3BFcb7QJge96quy8cub5QLwsE1Suiu1jUBvj4GIbja3jGhuU301w==}
     peerDependencies:
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -956,8 +956,8 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@testing-library/user-event@14.6.6':
-    resolution: {integrity: sha512-Jbs9FpkkIDw8FgSc6kOVsOv8JuuqGAL7J4X1oot77JxAoDlkNn2GRkd0aYRVuQ+pVQAiHWVkE4rX/dkF5fBiCw==}
+  '@testing-library/user-event@14.6.7':
+    resolution: {integrity: sha512-MPCpX8bxe8zS+JmmTwLp8jd0dy1rAm60Te/SL8JrQM3qvQJcBOs1d7IefJMyZzqM3EWBrDn/LWDt1BCGu4ASfg==}
     engines: {node: '>=12', npm: '>=6'}
     peerDependencies:
       '@testing-library/dom': '>=7.21.4'
@@ -2770,14 +2770,14 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@ariakit/components@0.1.11':
+  '@ariakit/components@0.1.12':
     dependencies:
       '@ariakit/store': 0.1.9
       '@ariakit/utils': 0.2.0
 
-  '@ariakit/react-components@0.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@ariakit/react-components@0.6.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@ariakit/components': 0.1.11
+      '@ariakit/components': 0.1.12
       '@ariakit/react-store': 0.1.10(react@19.2.8)
       '@ariakit/react-utils': 0.2.5(react@19.2.8)
       '@ariakit/store': 0.1.9
@@ -2800,9 +2800,9 @@ snapshots:
       '@ariakit/utils': 0.2.0
       react: 19.2.8
 
-  '@ariakit/react@0.4.38(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@ariakit/react@0.4.39(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@ariakit/react-components': 0.5.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ariakit/react-components': 0.6.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
@@ -2856,9 +2856,9 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@chameleon-labs/lattice-react@0.1.0-rc.6(@ariakit/react@0.4.38(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@chameleon-labs/lattice-tokens@0.1.0-rc.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@chameleon-labs/lattice-react@0.1.0-rc.6(@ariakit/react@0.4.39(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@chameleon-labs/lattice-tokens@0.1.0-rc.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@ariakit/react': 0.4.38(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ariakit/react': 0.4.39(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@chameleon-labs/lattice-tokens': 0.1.0-rc.6
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
@@ -3299,7 +3299,7 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.5(@types/react@19.2.18)
 
-  '@testing-library/user-event@14.6.6(@testing-library/dom@10.4.1)':
+  '@testing-library/user-event@14.6.7(@testing-library/dom@10.4.1)':
     dependencies:
       '@testing-library/dom': 10.4.1
 
